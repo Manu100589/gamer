@@ -171,3 +171,18 @@ export const initialStockMovements = [
   { id: 5, date: new Date(Date.now() - 1.5 * 3600 * 1000).toISOString(), productId: 103, productName: "Orangina 33cl", type: "consommation", quantity: 2, reason: "Offert au personnel (staff)", user: "Administrateur" },
   { id: 6, date: new Date(Date.now() - 1 * 3600 * 1000).toISOString(), productId: 108, productName: "Chicha Double Pomme", type: "sortie", quantity: 1, reason: "Consommation Session VIP Salon Rouge", user: "Gérant" }
 ];
+
+export const defaultExpenseCategories = [
+  "électricité",
+  "internet",
+  "salaires",
+  "maintenance",
+  "transport",
+  "autres"
+];
+
+export const initialExpenses = [
+  { id: 1, date: new Date(Date.now() - 5 * 3600 * 1000).toISOString(), category: "électricité", amount: 25000, description: "Recharge compteur électricité prépayé", responsible: "Sofiane" },
+  { id: 2, date: new Date(Date.now() - 24 * 3600 * 1000).toISOString(), category: "internet", amount: 15000, description: "Abonnement fibre mensuel", responsible: "Zidane" },
+  { id: 3, date: new Date(Date.now() - 48 * 3600 * 1000).toISOString(), category: "maintenance", amount: 8000, description: "Achat pâte thermique et nettoyage PC Station #1", responsible: "Gérant" }
+];

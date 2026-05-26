@@ -6,6 +6,7 @@ import {
   GlassWater, 
   UserCheck, 
   TrendingUp, 
+  TrendingDown, 
   DollarSign, 
   Wallet, 
   User, 
@@ -43,7 +44,9 @@ import {
   initialTopConsoles, 
   initialTopProducts, 
   initialActivityLog,
-  initialStockMovements
+  initialStockMovements,
+  defaultExpenseCategories,
+  initialExpenses
 } from "./mockData";
 
 export default function App() {
@@ -126,6 +129,21 @@ export default function App() {
   const [addProdPrice, setAddProdPrice] = useState(0);
   const [addProdInitialStock, setAddProdInitialStock] = useState(0);
   const [addProdMinThreshold, setAddProdMinThreshold] = useState(5);
+
+  // Expenses management states
+  const [expenses, setExpenses] = useState(initialExpenses);
+  const [expenseCategories, setExpenseCategories] = useState(defaultExpenseCategories);
+  const [expenseSearchQuery, setExpenseSearchQuery] = useState("");
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState("all");
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  const [showManageCategoriesModal, setShowManageCategoriesModal] = useState(false);
+
+  // Add Expense Form State
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseCategory, setExpenseCategory] = useState("électricité");
+  const [expenseDescription, setExpenseDescription] = useState("");
+  const [expenseResponsible, setExpenseResponsible] = useState("");
+  const [expenseDate, setExpenseDate] = useState("");
 
   // Stock operations helpers
   const handleStockAdjustment = (productId, type, quantity, reason) => {
@@ -245,6 +263,70 @@ export default function App() {
     setAddProdPrice(0);
     setAddProdInitialStock(0);
     setAddProdMinThreshold(5);
+  };
+
+  // Expense operations helpers
+  const handleAddExpense = (amount, category, description, responsible, dateStr) => {
+    const amt = parseFloat(amount) || 0;
+    if (amt <= 0) return;
+    const newExpense = {
+      id: Date.now(),
+      date: dateStr ? new Date(dateStr).toISOString() : new Date().toISOString(),
+      category,
+      amount: amt,
+      description: description.trim(),
+      responsible: responsible.trim() || (role === "admin" ? "Administrateur" : "Gérant")
+    };
+
+    setExpenses(prev => [newExpense, ...prev]);
+
+    // deduct from stats.cashBalance
+    setStats(prev => ({
+      ...prev,
+      cashBalance: prev.cashBalance - amt
+    }));
+
+    addLog(
+      "expense_add", 
+      `Dépense enregistrée : ${amt.toLocaleString('fr-FR')} FCFA (${category}) - ${description.slice(0, 30)}`,
+      "console"
+    );
+  };
+
+  const handleDeleteExpense = (id) => {
+    if (role !== "admin") return;
+    
+    const target = expenses.find(e => e.id === id);
+    if (!target) return;
+
+    setExpenses(prev => prev.filter(e => e.id !== id));
+
+    // refund to stats.cashBalance
+    setStats(prev => ({
+      ...prev,
+      cashBalance: prev.cashBalance + target.amount
+    }));
+
+    addLog(
+      "expense_delete", 
+      `Dépense supprimée : ${target.amount.toLocaleString('fr-FR')} FCFA (${target.category}) - ${target.description.slice(0, 30)} (Remboursé à la caisse)`,
+      "console"
+    );
+  };
+
+  const handleAddExpenseCategory = (name) => {
+    if (role !== "admin") return;
+    const cleanName = name.trim().toLowerCase();
+    if (!cleanName || expenseCategories.includes(cleanName)) return;
+
+    setExpenseCategories(prev => [...prev, cleanName]);
+    addLog("expense_category_add", `Nouvelle catégorie de dépenses ajoutée : ${cleanName}`, "console");
+  };
+
+  const handleDeleteExpenseCategory = (name) => {
+    if (role !== "admin") return;
+    setExpenseCategories(prev => prev.filter(c => c !== name));
+    addLog("expense_category_delete", `Catégorie de dépenses supprimée : ${name}`, "console");
   };
 
   // Snack POS State
@@ -1553,6 +1635,18 @@ export default function App() {
                 </span>
               )}
             </button>
+
+            <button
+              onClick={() => setActiveTab("expenses")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "expenses"
+                  ? "bg-gradient-to-r from-violet-900/40 to-fuchsia-900/20 text-violet-300 border-l-2 border-violet-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <TrendingDown className="w-5 h-5 text-rose-500" />
+              Gestion Dépenses
+            </button>
           </nav>
         </div>
 
@@ -1609,7 +1703,7 @@ export default function App() {
         <header className="h-20 w-full glass-panel border-b border-zinc-800/60 flex items-center justify-between px-8 relative z-20">
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-bold tracking-tight text-white capitalize">
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Console Station Hub" : activeTab === "snack" ? "Snack Bar Point de Vente" : "Gestion des Stocks"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Console Station Hub" : activeTab === "snack" ? "Snack Bar Point de Vente" : activeTab === "stocks" ? "Gestion des Stocks" : "Gestion des Dépenses"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -2823,6 +2917,276 @@ export default function App() {
               </div>
             )}
 
+
+            {/* ==================== VUE 5 : GESTION DES DEPENSES ==================== */}
+            {activeTab === "expenses" && (
+              <div className="space-y-6">
+                
+                {/* Stats & Actions Header */}
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full lg:w-auto flex-1">
+                    {/* Stat: Cash Balance */}
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1.5 shadow-md border border-zinc-800/40 relative overflow-hidden">
+                      <div className="absolute -right-6 -bottom-6 w-16 h-16 rounded-full bg-emerald-500/5 blur-xl"></div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Solde de Caisse Actuel</span>
+                      <span className="text-xl font-extrabold text-emerald-400 font-mono">
+                        {stats.cashBalance.toLocaleString('fr-FR')} FCFA
+                      </span>
+                    </div>
+
+                    {/* Stat: Today's Expenses */}
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1.5 shadow-md border border-zinc-800/40 relative overflow-hidden">
+                      <div className="absolute -right-6 -bottom-6 w-16 h-16 rounded-full bg-rose-500/5 blur-xl"></div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Dépenses du Jour</span>
+                      <span className="text-xl font-extrabold text-rose-400 font-mono">
+                        {expenses
+                          .filter(e => new Date(e.date).toDateString() === new Date().toDateString())
+                          .reduce((sum, e) => sum + e.amount, 0)
+                          .toLocaleString('fr-FR')} FCFA
+                      </span>
+                    </div>
+
+                    {/* Stat: Weekly Expenses */}
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1.5 shadow-md border border-zinc-800/40 relative overflow-hidden">
+                      <div className="absolute -right-6 -bottom-6 w-16 h-16 rounded-full bg-rose-500/5 blur-xl"></div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Dépenses de la Semaine</span>
+                      <span className="text-xl font-extrabold text-rose-300 font-mono">
+                        {expenses
+                          .filter(e => new Date(e.date).getTime() >= (Date.now() - 7 * 24 * 3600 * 1000))
+                          .reduce((sum, e) => sum + e.amount, 0)
+                          .toLocaleString('fr-FR')} FCFA
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions buttons */}
+                  <div className="flex items-center gap-3 shrink-0 w-full lg:w-auto justify-end">
+                    {role === "admin" && (
+                      <button
+                        onClick={() => setShowManageCategoriesModal(true)}
+                        className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+                      >
+                        <Settings className="w-4 h-4" />
+                        Gérer Catégories
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setExpenseAmount("");
+                        setExpenseCategory(expenseCategories[0] || "électricité");
+                        setExpenseDescription("");
+                        setExpenseResponsible(role === "admin" ? "Administrateur" : "Gérant");
+                        // Format current local date-time to YYYY-MM-DDTHH:MM
+                        const now = new Date();
+                        const offset = now.getTimezoneOffset() * 60000;
+                        const localISOTime = (new Date(now - offset)).toISOString().slice(0, 16);
+                        setExpenseDate(localISOTime);
+                        setShowAddExpenseModal(true);
+                      }}
+                      className="px-4 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/20 active:scale-95 transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Saisir une Dépense
+                    </button>
+                  </div>
+                </div>
+
+                {/* Main Content Layout Grid */}
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                  
+                  {/* Left Column: Expense History & Filters (2 cols span) */}
+                  <div className="xl:col-span-2 glass-panel p-6 rounded-2xl shadow-md space-y-6 flex flex-col min-h-[500px]">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div>
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                          <History className="w-4.5 h-4.5 text-rose-500" />
+                          Historique des Dépenses
+                        </h4>
+                        <p className="text-[10px] text-zinc-500">Liste des mouvements de débit de caisse</p>
+                      </div>
+
+                      {/* Filters */}
+                      <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        {/* Search Input */}
+                        <div className="relative flex-1 sm:flex-initial">
+                          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                          <input
+                            type="text"
+                            placeholder="Rechercher description..."
+                            value={expenseSearchQuery}
+                            onChange={(e) => setExpenseSearchQuery(e.target.value)}
+                            className="bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-2 text-xs text-white focus:outline-none focus:border-rose-500 w-full sm:w-48"
+                          />
+                        </div>
+
+                        {/* Category Filter */}
+                        <select
+                          value={expenseCategoryFilter}
+                          onChange={(e) => setExpenseCategoryFilter(e.target.value)}
+                          className="bg-zinc-950 border border-zinc-850 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-300 focus:outline-none focus:border-rose-500"
+                        >
+                          <option value="all">Toutes Catégories</option>
+                          {expenseCategories.map((c, i) => (
+                            <option key={i} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Table View */}
+                    <div className="flex-1 overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-zinc-850 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                            <th className="p-4">Date & Heure</th>
+                            <th className="p-4">Catégorie</th>
+                            <th className="p-4 text-right">Montant</th>
+                            <th className="p-4">Motif / Description</th>
+                            <th className="p-4">Responsable</th>
+                            {role === "admin" && <th className="p-4 text-center">Action</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {expenses
+                            .filter(e => {
+                              const matchesSearch = e.description.toLowerCase().includes(expenseSearchQuery.toLowerCase()) ||
+                                                    e.responsible.toLowerCase().includes(expenseSearchQuery.toLowerCase());
+                              const matchesCat = expenseCategoryFilter === "all" || e.category === expenseCategoryFilter;
+                              return matchesSearch && matchesCat;
+                            })
+                            .map((e) => {
+                              const date = new Date(e.date);
+                              return (
+                                <tr key={e.id} className="border-b border-zinc-850/40 hover:bg-zinc-900/20 transition-colors">
+                                  <td className="p-4 text-xs text-zinc-400 font-semibold font-mono">
+                                    {date.toLocaleDateString('fr-FR')} {date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                  </td>
+                                  <td className="p-4 text-xs font-bold text-white capitalize">
+                                    <span className="px-2 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300">
+                                      {e.category}
+                                    </span>
+                                  </td>
+                                  <td className="p-4 text-right font-mono font-extrabold text-sm text-rose-400">
+                                    {e.amount.toLocaleString('fr-FR')} FCFA
+                                  </td>
+                                  <td className="p-4 text-xs text-zinc-300 font-medium">
+                                    {e.description}
+                                  </td>
+                                  <td className="p-4 text-xs text-zinc-400">
+                                    {e.responsible}
+                                  </td>
+                                  {role === "admin" && (
+                                    <td className="p-4 text-center">
+                                      <button
+                                        onClick={() => {
+                                          if (confirm(`Voulez-vous vraiment supprimer cette dépense de ${e.amount.toLocaleString('fr-FR')} FCFA ? Le solde de caisse sera réajusté.`)) {
+                                            handleDeleteExpense(e.id);
+                                          }
+                                        }}
+                                        className="p-1.5 hover:bg-rose-950/40 text-zinc-500 hover:text-rose-400 rounded-lg transition-all"
+                                        title="Supprimer la dépense"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </td>
+                                  )}
+                                </tr>
+                              );
+                            })}
+
+                          {expenses.filter(e => {
+                            const matchesSearch = e.description.toLowerCase().includes(expenseSearchQuery.toLowerCase()) ||
+                                                  e.responsible.toLowerCase().includes(expenseSearchQuery.toLowerCase());
+                            const matchesCat = expenseCategoryFilter === "all" || e.category === expenseCategoryFilter;
+                            return matchesSearch && matchesCat;
+                          }).length === 0 && (
+                            <tr>
+                              <td colSpan={role === "admin" ? 6 : 5} className="p-8 text-center text-zinc-500 italic text-xs">
+                                Aucune dépense enregistrée.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Category Breakdown Chart */}
+                  <div className="glass-panel p-6 rounded-2xl shadow-md space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <BarChart3 className="w-4.5 h-4.5 text-rose-500" />
+                        Répartition par Catégorie
+                      </h4>
+                      <span className="text-[10px] text-zinc-500 font-semibold">Analyse des coûts</span>
+                    </div>
+
+                    <div className="space-y-5">
+                      {(() => {
+                        // Calculate sums per category
+                        const categorySums = expenseCategories.map(cat => {
+                          const sum = expenses
+                            .filter(e => e.category === cat)
+                            .reduce((acc, e) => acc + e.amount, 0);
+                          return { category: cat, sum };
+                        }).sort((a, b) => b.sum - a.sum);
+
+                        const maxCategorySum = Math.max(...categorySums.map(x => x.sum), 1);
+                        const totalAllExpenses = categorySums.reduce((acc, x) => acc + x.sum, 0);
+
+                        return (
+                          <>
+                            {categorySums.map((item, index) => {
+                              const percentage = (item.sum / maxCategorySum) * 100;
+                              const shareOfTotal = totalAllExpenses > 0 ? (item.sum / totalAllExpenses) * 100 : 0;
+                              
+                              if (item.sum === 0) return null; // Don't clutter with empty categories
+
+                              return (
+                                <div key={index} className="space-y-1.5">
+                                  <div className="flex justify-between text-xs font-semibold">
+                                    <span className="text-zinc-300 capitalize flex items-center gap-1.5">
+                                      <span className="text-zinc-500 text-[10px] font-bold">#{index+1}</span>
+                                      {item.category}
+                                    </span>
+                                    <div className="space-x-2 text-zinc-400 font-mono">
+                                      <span className="text-[10px] text-zinc-500 font-semibold">({shareOfTotal.toFixed(0)}%)</span>
+                                      <span className="font-extrabold text-rose-300">{item.sum.toLocaleString('fr-FR')} FCFA</span>
+                                    </div>
+                                  </div>
+                                  <div className="w-full h-2.5 bg-zinc-900/60 rounded-full overflow-hidden border border-zinc-950">
+                                    <div 
+                                      className="h-full bg-gradient-to-r from-rose-600 to-pink-500 rounded-full transition-all duration-1000"
+                                      style={{ width: `${percentage}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            
+                            {totalAllExpenses === 0 && (
+                              <div className="text-center py-12 text-zinc-500 italic text-xs">
+                                Aucune donnée à afficher pour le moment
+                              </div>
+                            )}
+
+                            {totalAllExpenses > 0 && (
+                              <div className="pt-4 border-t border-zinc-850 flex justify-between items-center text-xs font-bold">
+                                <span className="text-zinc-400">Total Dépenses Cumulées</span>
+                                <span className="text-rose-400 font-mono text-sm">{totalAllExpenses.toLocaleString('fr-FR')} FCFA</span>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            )}
+
           </div>
 
         </div>
@@ -3870,6 +4234,214 @@ export default function App() {
         </div>
       )}
 
+      {/* Modal Saisir une Dépense */}
+      {showAddExpenseModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-6 animate-scale-up">
+            
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-4">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="w-5 h-5 text-rose-500" />
+                <h3 className="text-base font-bold text-white">Saisir une Dépense</h3>
+              </div>
+              <button 
+                onClick={() => setShowAddExpenseModal(false)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
+              >
+                ✖
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Amount */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Montant (FCFA) *</label>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="Ex: 15000"
+                  value={expenseAmount}
+                  onChange={(e) => setExpenseAmount(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-rose-500"
+                />
+                {Number(expenseAmount) > stats.cashBalance && (
+                  <p className="text-[10px] text-amber-500 mt-1 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Attention : dépasse le solde de caisse ({stats.cashBalance.toLocaleString('fr-FR')} FCFA).</span>
+                  </p>
+                )}
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Catégorie *</label>
+                <select
+                  value={expenseCategory}
+                  onChange={(e) => setExpenseCategory(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-rose-500 capitalize"
+                >
+                  {expenseCategories.map((c, i) => (
+                    <option key={i} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Motif / Description *</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Recharge compteur électricité"
+                  value={expenseDescription}
+                  onChange={(e) => setExpenseDescription(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              {/* Responsible */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Responsable</label>
+                <input
+                  type="text"
+                  placeholder="Nom du responsable"
+                  value={expenseResponsible}
+                  onChange={(e) => setExpenseResponsible(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              {/* Date */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Date & Heure</label>
+                <input
+                  type="datetime-local"
+                  value={expenseDate}
+                  onChange={(e) => setExpenseDate(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-rose-500 font-mono font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button 
+                onClick={() => setShowAddExpenseModal(false)}
+                className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
+              >
+                Annuler
+              </button>
+              <button 
+                disabled={!expenseAmount || Number(expenseAmount) <= 0 || !expenseDescription.trim()}
+                onClick={() => {
+                  handleAddExpense(
+                    expenseAmount,
+                    expenseCategory,
+                    expenseDescription,
+                    expenseResponsible,
+                    expenseDate
+                  );
+                  setShowAddExpenseModal(false);
+                }}
+                className="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 disabled:from-zinc-850 disabled:to-zinc-850 disabled:text-zinc-650 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/20 active:scale-95 transition-all"
+              >
+                Enregistrer la dépense
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Gérer les Catégories */}
+      {showManageCategoriesModal && role === "admin" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-6 animate-scale-up">
+            
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-4">
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-violet-400" />
+                <h3 className="text-base font-bold text-white">Gérer les Catégories</h3>
+              </div>
+              <button 
+                onClick={() => setShowManageCategoriesModal(false)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
+              >
+                ✖
+              </button>
+            </div>
+
+            {/* List of categories */}
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase block">Catégories existantes</label>
+              <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                {expenseCategories.map((c, i) => (
+                  <div key={i} className="flex justify-between items-center p-2.5 bg-zinc-900/60 border border-zinc-850 rounded-xl">
+                    <span className="text-xs text-white capitalize font-semibold">{c}</span>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Voulez-vous vraiment supprimer la catégorie "${c}" ? (Les dépenses existantes de cette catégorie ne seront pas affectées)`)) {
+                          handleDeleteExpenseCategory(c);
+                        }
+                      }}
+                      className="p-1 hover:bg-rose-950/40 text-zinc-500 hover:text-rose-400 rounded transition-all"
+                      title="Supprimer la catégorie"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {expenseCategories.length === 0 && (
+                  <p className="text-xs text-zinc-500 italic py-2 text-center">Aucune catégorie de dépense.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Add new category form */}
+            <div className="pt-4 border-t border-zinc-850 space-y-2">
+              <label className="text-[10px] font-bold text-zinc-500 uppercase block">Ajouter une catégorie</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ex: Publicité"
+                  id="new-expense-category-input"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const input = document.getElementById("new-expense-category-input");
+                      if (input && input.value.trim()) {
+                        handleAddExpenseCategory(input.value);
+                        input.value = "";
+                      }
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    const input = document.getElementById("new-expense-category-input");
+                    if (input && input.value.trim()) {
+                      handleAddExpenseCategory(input.value);
+                      input.value = "";
+                    }
+                  }}
+                  className="px-3.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button 
+                onClick={() => setShowManageCategoriesModal(false)}
+                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all text-center"
+              >
+                Fermer
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* ===== MODAL CLÔTURE DE CAISSE (Z-REPORT) ===== */}
       {showZReportModal && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
@@ -3935,6 +4507,15 @@ export default function App() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-zinc-400 font-semibold">Total des recettes du jour</span>
                   <span className="font-extrabold text-white font-mono text-base">{(stats.gamesRevenue + stats.snackRevenue).toLocaleString('fr-FR')} FCFA</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-400 font-semibold">Total des dépenses du jour</span>
+                  <span className="font-extrabold text-rose-400 font-mono text-base">
+                    {expenses
+                      .filter(e => new Date(e.date).toDateString() === new Date().toDateString())
+                      .reduce((sum, e) => sum + e.amount, 0)
+                      .toLocaleString('fr-FR')} FCFA
+                  </span>
                 </div>
                 <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-900/20 border border-emerald-500/25">
                   <div className="flex items-center gap-2">
