@@ -1720,7 +1720,7 @@ export default function App() {
         <div className="absolute top-1/2 left-1/3 w-80 h-80 rounded-full bg-purple-600/5 blur-[110px] pointer-events-none z-0"></div>
 
         {/* HEADER */}
-        <header className="h-20 w-full glass-panel border-b border-zinc-800/60 flex items-center justify-between px-8 relative z-20">
+        <header className="h-20 w-full glass-panel border-b border-zinc-800/60 flex items-center justify-between px-8 relative z-20 graffiti-drip-gradient">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
@@ -1780,7 +1780,10 @@ export default function App() {
 
             {/* ==================== VUE 1 : DASHBOARD ==================== */}
             {activeTab === "dashboard" && (
-              <div className="space-y-8">
+              <div className="space-y-8 graffiti-spray-blue">
+                <div>
+                  <span className="sticker-badge bg-blue-600 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Tableau de Bord</span>
+                </div>
                 
                 {/* 4 Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -2199,7 +2202,10 @@ export default function App() {
 
             {/* ==================== VUE 2 : GESTION DES CONSOLES ==================== */}
             {activeTab === "consoles" && (
-              <div className="space-y-6">
+              <div className="space-y-6 graffiti-spray-red">
+                <div>
+                  <span className="sticker-badge-red bg-rose-600 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Live Stations PS</span>
+                </div>
                 
                 {/* Rates & Actions panel for Admins */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 p-4 rounded-xl bg-zinc-900 border border-zinc-800">
@@ -2450,7 +2456,10 @@ export default function App() {
 
             {/* ==================== VUE 3 : POINT DE VENTE (POS) ==================== */}
             {activeTab === "snack" && (
-              <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start graffiti-spray-blue">
+                <div className="xl:col-span-12">
+                  <span className="sticker-badge bg-zinc-900 text-amber-400 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Comptoir POS Bar</span>
+                </div>
                 
                 {/* Left: Product List (8 columns) */}
                 <div className="xl:col-span-8 space-y-6">
@@ -2671,7 +2680,10 @@ export default function App() {
 
             {/* ==================== VUE 4 : GESTION DES STOCKS ==================== */}
             {activeTab === "stocks" && (
-              <div className="space-y-6">
+              <div className="space-y-6 graffiti-spray-blue">
+                <div>
+                  <span className="sticker-badge-blue bg-blue-700 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Suivi Inventaire Stock</span>
+                </div>
                 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2941,7 +2953,10 @@ export default function App() {
 
             {/* ==================== VUE 5 : GESTION DES DEPENSES ==================== */}
             {activeTab === "expenses" && (
-              <div className="space-y-6">
+              <div className="space-y-6 graffiti-spray-red">
+                <div>
+                  <span className="sticker-badge-red bg-rose-950/60 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Journal des Débits & Dépenses</span>
+                </div>
                 
                 {/* Stats & Actions Header */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">

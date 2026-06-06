@@ -115,6 +115,20 @@ body {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.glass-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3.5px;
+  height: 100%;
+  background: linear-gradient(to bottom, #005aff, #ff003c);
+  opacity: 0.75;
+  z-index: 2;
 }
 
 .glass-panel-hover:hover {
@@ -243,4 +257,56 @@ body {
   pointer-events: none;
   z-index: 0;
 }
+
+/* Paint drips gradient overlay at the bottom of headers/panels */
+.graffiti-drip-gradient {
+  position: relative;
+}
+
+.graffiti-drip-gradient::after {
+  content: '';
+  position: absolute;
+  bottom: -11px;
+  left: 0;
+  width: 100%;
+  height: 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 120' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%23005aff'/%3E%3Cstop offset='100%25' stop-color='%23ff003c'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M0,0V40c10,12,30,12,40,0V0h30c10,20,40,20,50,0V0h50c12,30,45,30,60,0V0h40c10,15,35,15,45,0V0h80c15,25,55,25,70,0V0h60c10,15,35,15,45,0V0h50c12,30,45,30,60,0V0h40c10,18,38,18,48,0V0h60c15,25,55,25,70,0V0h60c10,15,35,15,45,0V0h50c12,30,45,30,60,0V0h40c10,15,35,15,45,0V0h80c15,25,55,25,70,0V0h60c10,15,35,15,45,0V0h50c12,30,45,30,60,0V0h20V0Z' fill='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Paint splatters */
+.graffiti-spray-blue {
+  position: relative;
+}
+.graffiti-spray-blue::before {
+  content: '';
+  position: absolute;
+  top: 10%;
+  left: 5%;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, rgba(0, 90, 255, 0.08) 0%, transparent 70%);
+  filter: blur(15px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.graffiti-spray-red {
+  position: relative;
+}
+.graffiti-spray-red::before {
+  content: '';
+  position: absolute;
+  bottom: 10%;
+  right: 5%;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, rgba(255, 0, 60, 0.08) 0%, transparent 70%);
+  filter: blur(15px);
+  pointer-events: none;
+  z-index: 0;
+}
+
 
