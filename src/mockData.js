@@ -3,15 +3,15 @@
 // Football club logo URLs mapped to console/zone
 export const clubLogos = {
   // Zone A
-  "ETIHAD CAMPUS":        { logo: "https://upload.wikimedia.org/wikipedia/en/e/eb/Manchester_City_FC_badge.svg",    club: "Manchester City",   color: "#6CABDD", zone: "A" },
-  "ALLIANZ ARENA":        { logo: "https://upload.wikimedia.org/wikipedia/commons/1/1b/FC_Bayern_M%C3%BCnchen_logo_%282002%E2%80%932017%29.svg", club: "FC Bayern München", color: "#DC052D", zone: "A" },
-  "PARC DES PRINCES":     { logo: "https://upload.wikimedia.org/wikipedia/en/a/a7/Paris_Saint-Germain_F.C..svg",    club: "Paris Saint-Germain", color: "#004170", zone: "A" },
+  "ETIHAD CAMPUS":         { logo: "https://upload.wikimedia.org/wikipedia/en/e/eb/Manchester_City_FC_badge.svg",           club: "Manchester City",    color: "#6CABDD", zone: "A" },
+  "ALLIANZ ARENA":         { logo: "https://upload.wikimedia.org/wikipedia/commons/1/1f/FC_Bayern_M%C3%BCnchen_logo_%28sRGB%29.svg", club: "FC Bayern München",  color: "#DC052D", zone: "A" },
+  "PARC DES PRINCES":      { logo: "https://upload.wikimedia.org/wikipedia/en/a/a7/Paris_Saint-Germain_F.C..svg",           club: "Paris Saint-Germain", color: "#004170", zone: "A" },
   // Zone B
-  "SANTIAGO BERNABÉU":    { logo: "https://upload.wikimedia.org/wikipedia/en/5/56/Real_Madrid_CF.svg",             club: "Real Madrid CF",    color: "#FEBE10", zone: "B" },
-  "CAMP NOU":             { logo: "https://upload.wikimedia.org/wikipedia/en/4/47/FC_Barcelona_%28crest%29.svg",   club: "FC Barcelona",      color: "#A50044", zone: "B" },
+  "SANTIAGO BERNABÉU":     { logo: "https://upload.wikimedia.org/wikipedia/en/5/56/Real_Madrid_CF.svg",                    club: "Real Madrid CF",     color: "#FEBE10", zone: "B" },
+  "CAMP NOU":              { logo: "https://upload.wikimedia.org/wikipedia/en/4/47/FC_Barcelona_%28crest%29.svg",           club: "FC Barcelona",       color: "#A50044", zone: "B" },
   // Zone C
-  "CIVITAS METROPOLITANO":{ logo: "https://upload.wikimedia.org/wikipedia/en/f/f4/Atletico_Madrid_2017_logo.svg", club: "Atlético de Madrid", color: "#CB3524", zone: "C" },
-  "ÉMIRATS DE LONDRES":   { logo: "https://upload.wikimedia.org/wikipedia/en/5/53/Arsenal_FC.svg",                club: "Arsenal FC",        color: "#EF0107", zone: "C" },
+  "CIVITAS METROPOLITANO": { logo: "https://upload.wikimedia.org/wikipedia/en/f/f4/Atletico_Madrid_2017_logo.svg",         club: "Atlético de Madrid", color: "#2A3B8F", zone: "C" },
+  "ÉMIRATS DE LONDRES":    { logo: "https://upload.wikimedia.org/wikipedia/en/5/53/Arsenal_FC.svg",                        club: "Arsenal FC",         color: "#EF0107", zone: "C" },
 };
 
 export const initialConsoles = [
