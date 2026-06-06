@@ -1560,12 +1560,15 @@ export default function App() {
                 <span className="text-[8px] text-zinc-300 font-extrabold uppercase tracking-widest text-center">HousePub</span>
               </div>
             </div>
-            <div className="text-center">
-              <h1 className="font-extrabold text-base tracking-tight bg-gradient-to-r from-blue-400 via-purple-400 to-rose-400 bg-clip-text text-transparent">
+            <div className="text-center space-y-0.5">
+              <h1 className="text-xl font-black tracking-tight graffiti-tag italic">
                 HOUSEPUB
               </h1>
-              <p className="text-[9px] text-zinc-500 font-extrabold tracking-widest uppercase">
-                PS Lounge • La Maison du Bonheur
+              <p className="text-[9px] text-zinc-400 font-extrabold tracking-widest uppercase">
+                PS LOUNGE
+              </p>
+              <p className="text-[8px] text-zinc-500 font-bold italic tracking-normal">
+                "La Maison du Bonheur"
               </p>
             </div>
           </div>
@@ -1697,8 +1700,17 @@ export default function App() {
       </aside>
 
       {/* MAIN CONTAINER */}
-      <main className="flex-1 flex flex-col h-full bg-zinc-950 overflow-hidden relative z-10">
+      <main className="flex-1 flex flex-col h-full bg-zinc-950 bg-graffiti-wall overflow-hidden relative z-10">
         
+        {/* Background Logo Watermark (Filigrane) */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden select-none">
+          <img 
+            src="/logo.jpg" 
+            alt="Watermark Logo" 
+            className="w-[45%] max-w-[550px] aspect-square opacity-[0.03] filter blur-[0.5px] transform rotate-[-8deg] pointer-events-none" 
+          />
+        </div>
+
         {/* Background Decorative Gradient Grid */}
         <div className="absolute inset-0 pointer-events-none opacity-20 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:4rem_4rem]"></div>
 
@@ -1710,8 +1722,9 @@ export default function App() {
         {/* HEADER */}
         <header className="h-20 w-full glass-panel border-b border-zinc-800/60 flex items-center justify-between px-8 relative z-20">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-bold tracking-tight text-white capitalize">
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Console Station Hub" : activeTab === "snack" ? "Snack Bar Point de Vente" : activeTab === "stocks" ? "Gestion des Stocks" : "Gestion des Dépenses"}
+            <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
+              <span className="text-blue-500 font-black">⚡</span>
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : "Gestion des Dépenses"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>

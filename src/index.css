@@ -163,3 +163,84 @@ body {
   opacity: 0;
   transform: translateY(15px);
 }
+
+/* ==================== HIP HOP & GRAFFITI STYLE SYSTEM ==================== */
+
+/* 3D Anaglyph Graffiti Tag style */
+.graffiti-tag {
+  font-family: 'Outfit', sans-serif;
+  text-transform: uppercase;
+  font-style: italic;
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  color: #ffffff;
+  text-shadow: 
+    2px 2px 0px rgba(255, 0, 60, 0.85), 
+    -2px -2px 0px rgba(0, 90, 255, 0.85);
+}
+
+/* Highlight tags */
+.graffiti-highlight-blue {
+  text-shadow: 0 0 8px rgba(0, 90, 255, 0.8), 0 0 15px rgba(0, 90, 255, 0.4);
+}
+
+.graffiti-highlight-red {
+  text-shadow: 0 0 8px rgba(255, 0, 60, 0.8), 0 0 15px rgba(255, 0, 60, 0.4);
+}
+
+/* Sticker badge layouts */
+.sticker-badge {
+  transform: rotate(-1.5deg);
+  box-shadow: 3px 3px 0px rgba(0, 0, 0, 0.85);
+  border: 1.5px solid #ffffff;
+  transition: all 0.2s ease;
+}
+
+.sticker-badge:hover {
+  transform: rotate(0deg) scale(1.03);
+}
+
+.sticker-badge-red {
+  transform: rotate(1deg);
+  box-shadow: 3px 3px 0px rgba(255, 0, 60, 0.7);
+  border: 1.5px solid rgba(255, 0, 60, 0.8);
+}
+
+.sticker-badge-blue {
+  transform: rotate(-2deg);
+  box-shadow: 3px 3px 0px rgba(0, 90, 255, 0.7);
+  border: 1.5px solid rgba(0, 90, 255, 0.8);
+}
+
+/* Hip-Hop Card with vertical gradient edge indicator */
+.hiphop-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.hiphop-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(to bottom, rgba(0, 90, 255, 0.7), rgba(255, 0, 60, 0.7));
+}
+
+/* Urban dark brick/graffiti texture overlay */
+.bg-graffiti-wall {
+  position: relative;
+}
+
+.bg-graffiti-wall::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 0);
+  background-size: 24px 24px;
+  pointer-events: none;
+  z-index: 0;
+}
+
