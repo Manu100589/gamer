@@ -4566,6 +4566,11 @@ export default function App() {
                     <option key={p.id} value={p.name}>{p.name} (Achat: {p.purchasePrice} FCFA)</option>
                   ))}
                 </select>
+                {purchaseProduct !== "Autre" && (
+                  <p className="text-[10px] text-emerald-400 font-bold mt-1.5 flex items-center gap-1.5 animate-pulse">
+                    <span>➡️</span> Augmentation automatique du stock snack (+{purchaseQuantity})
+                  </p>
+                )}
               </div>
 
               {purchaseProduct === "Autre" && (
@@ -4747,6 +4752,11 @@ export default function App() {
                     <option key={p.id} value={p.name}>{p.name} (Achat: {p.purchasePrice} FCFA)</option>
                   ))}
                 </select>
+                {purchaseProduct !== "Autre" && (
+                  <p className="text-[10px] text-emerald-400 font-bold mt-1.5 flex items-center gap-1.5 animate-pulse">
+                    <span>➡️</span> Ajustement automatique du stock snack (+{purchaseQuantity})
+                  </p>
+                )}
               </div>
 
               {purchaseProduct === "Autre" && (
