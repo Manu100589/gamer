@@ -5010,13 +5010,23 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-400 uppercase">URL du Logo (Image) :</label>
-                        <input 
-                          type="text" 
-                          value={systemSettings.logoUrl}
-                          onChange={(e) => setSystemSettings(prev => ({ ...prev, logoUrl: e.target.value }))}
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
-                        />
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase block">URL du Logo (Image) :</label>
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                            <img 
+                              src={systemSettings.logoUrl || "/logo.jpg"} 
+                              alt="Logo" 
+                              className="w-full h-full object-cover" 
+                              onError={(e) => { e.target.src = "/logo.jpg"; }}
+                            />
+                          </div>
+                          <input 
+                            type="text" 
+                            value={systemSettings.logoUrl}
+                            onChange={(e) => setSystemSettings(prev => ({ ...prev, logoUrl: e.target.value }))}
+                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                          />
+                        </div>
                       </div>
                     </div>
 
