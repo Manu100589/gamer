@@ -724,7 +724,7 @@ export default function App() {
     }
   };
 
-  const handleConfirmCloseSession = (consoleId, finalGameAmount, finalSnackAmount, playerRef, consoleName) => {
+  const handleConfirmCloseSession = (consoleId, finalGameAmount, finalSnackAmount, playerRef, consoleName, fullGameCost = 0, prepaidAmount = 0) => {
     const totalRevenue = finalGameAmount + finalSnackAmount;
     setDailySessionsCount(prev => prev + 1);
     
@@ -831,9 +831,10 @@ export default function App() {
       id: `FAC-${Date.now().toString().slice(-6)}`,
       customer: playerRef,
       item: consoleName,
-      gameCost: finalGameAmount,
+      gameCost: fullGameCost > 0 ? fullGameCost : finalGameAmount,
       snackCost: finalSnackAmount,
-      total: totalRevenue,
+      total: (fullGameCost > 0 ? fullGameCost : finalGameAmount) + finalSnackAmount,
+      prepaid: prepaidAmount,
       date: new Date().toLocaleTimeString(),
       type: "Console + Snack"
     });
@@ -3260,6 +3261,17 @@ export default function App() {
               <span className="font-bold text-emerald-400">{showStartModal.ratePerHour.toLocaleString('fr-FR')} FCFA/h</span>
             </div>
 
+            {/* Prepaid Info Badge */}
+            <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Paiement d'avance requis</p>
+                <p className="text-[10px] text-zinc-400 leading-normal">
+                  Le client doit régler la session avant de jouer. Un forfait d'une heure minimum est perçu pour les sessions libres.
+                </p>
+              </div>
+            </div>
+
             {/* Forms */}
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -3654,7 +3666,9 @@ export default function App() {
                         gameCostDue,
                         snackCost,
                         showCloseModal.activeSession?.player || "Joueur",
-                        showCloseModal.name
+                        showCloseModal.name,
+                        gameCost,
+                        prepaid
                       )}
                       className="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/20 active:scale-95 transition-all"
                     >
