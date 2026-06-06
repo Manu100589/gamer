@@ -1,9 +1,25 @@
 // Mock data for GameZone & Snack Bar management system in FCFA
 
+// Football club logo URLs mapped to console/zone
+export const clubLogos = {
+  // Zone A
+  "ETIHAD CAMPUS":        { logo: "https://upload.wikimedia.org/wikipedia/en/e/eb/Manchester_City_FC_badge.svg",    club: "Manchester City",   color: "#6CABDD", zone: "A" },
+  "ALLIANZ ARENA":        { logo: "https://upload.wikimedia.org/wikipedia/commons/1/1b/FC_Bayern_M%C3%BCnchen_logo_%282002%E2%80%932017%29.svg", club: "FC Bayern München", color: "#DC052D", zone: "A" },
+  "PARC DES PRINCES":     { logo: "https://upload.wikimedia.org/wikipedia/en/a/a7/Paris_Saint-Germain_F.C..svg",    club: "Paris Saint-Germain", color: "#004170", zone: "A" },
+  // Zone B
+  "SANTIAGO BERNABÉU":    { logo: "https://upload.wikimedia.org/wikipedia/en/5/56/Real_Madrid_CF.svg",             club: "Real Madrid CF",    color: "#FEBE10", zone: "B" },
+  "CAMP NOU":             { logo: "https://upload.wikimedia.org/wikipedia/en/4/47/FC_Barcelona_%28crest%29.svg",   club: "FC Barcelona",      color: "#A50044", zone: "B" },
+  // Zone C
+  "CIVITAS METROPOLITANO":{ logo: "https://upload.wikimedia.org/wikipedia/en/f/f4/Atletico_Madrid_2017_logo.svg", club: "Atlético de Madrid", color: "#CB3524", zone: "C" },
+  "ÉMIRATS DE LONDRES":   { logo: "https://upload.wikimedia.org/wikipedia/en/5/53/Arsenal_FC.svg",                club: "Arsenal FC",        color: "#EF0107", zone: "C" },
+};
+
 export const initialConsoles = [
+  // ─── Zone A ─────────────────────────────────────────────────────────────
   {
     id: 1,
-    name: "PS5 - Zone A #1",
+    name: "ETIHAD CAMPUS",
+    zone: "A",
     type: "PS5",
     status: "occupée",
     ratePerHour: 1500.00,
@@ -12,16 +28,17 @@ export const initialConsoles = [
       firstName: "Sofiane",
       lastName: "Zidane",
       phone: "06 12 34 56 78",
-      startTime: new Date(Date.now() - 45 * 60 * 1000).toISOString(), // 45 mins ago
+      startTime: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
       durationType: "limited",
-      durationMinutes: 120, // 2 hours
+      durationMinutes: 120,
       timeElapsedSeconds: 45 * 60,
-      totalAmountDue: 1125.00 // 0.75 hour * 1500 FCFA = 1125 FCFA
+      totalAmountDue: 1125.00
     }
   },
   {
     id: 2,
-    name: "PS5 - Zone A #2",
+    name: "ALLIANZ ARENA",
+    zone: "A",
     type: "PS5",
     status: "libre",
     ratePerHour: 1500.00,
@@ -29,15 +46,18 @@ export const initialConsoles = [
   },
   {
     id: 3,
-    name: "PS5 - Zone A #3",
+    name: "PARC DES PRINCES",
+    zone: "A",
     type: "PS5",
     status: "maintenance",
     ratePerHour: 1500.00,
     activeSession: null
   },
+  // ─── Zone B ─────────────────────────────────────────────────────────────
   {
     id: 4,
-    name: "PS4 - Retro Zone #1",
+    name: "SANTIAGO BERNABÉU",
+    zone: "B",
     type: "PS4",
     status: "occupée",
     ratePerHour: 1000.00,
@@ -46,24 +66,27 @@ export const initialConsoles = [
       firstName: "Karim",
       lastName: "Belhadj",
       phone: "06 98 76 54 32",
-      startTime: new Date(Date.now() - 90 * 60 * 1000).toISOString(), // 90 mins ago
+      startTime: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
       durationType: "unlimited",
       durationMinutes: 0,
       timeElapsedSeconds: 90 * 60,
-      totalAmountDue: 1500.00 // 1.5 hours * 1000 FCFA = 1500 FCFA
+      totalAmountDue: 1500.00
     }
   },
   {
     id: 5,
-    name: "PC Gaming - Station #1",
-    type: "PC Gaming",
+    name: "CAMP NOU",
+    zone: "B",
+    type: "PS4",
     status: "libre",
-    ratePerHour: 2000.00,
+    ratePerHour: 1000.00,
     activeSession: null
   },
+  // ─── Zone C ─────────────────────────────────────────────────────────────
   {
     id: 6,
-    name: "PC Gaming - Station #2",
+    name: "CIVITAS METROPOLITANO",
+    zone: "C",
     type: "PC Gaming",
     status: "occupée",
     ratePerHour: 2000.00,
@@ -72,38 +95,31 @@ export const initialConsoles = [
       firstName: "Lucas",
       lastName: "Martin",
       phone: "07 11 22 33 44",
-      startTime: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15 mins ago
+      startTime: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
       durationType: "limited",
-      durationMinutes: 60, // 1 hour
+      durationMinutes: 60,
       timeElapsedSeconds: 15 * 60,
-      totalAmountDue: 500.00 // 0.25 hour * 2000 FCFA = 500 FCFA
+      totalAmountDue: 500.00
     }
   },
   {
     id: 7,
-    name: "VIP Salon Rouge",
-    type: "VIP",
+    name: "ÉMIRATS DE LONDRES",
+    zone: "C",
+    type: "PC Gaming",
     status: "occupée",
-    ratePerHour: 5000.00,
+    ratePerHour: 2000.00,
     activeSession: {
       player: "Amine El Amrani",
       firstName: "Amine",
       lastName: "El Amrani",
       phone: "06 55 44 33 22",
-      startTime: new Date(Date.now() - 180 * 60 * 1000).toISOString(), // 3 hours ago
+      startTime: new Date(Date.now() - 180 * 60 * 1000).toISOString(),
       durationType: "unlimited",
       durationMinutes: 0,
       timeElapsedSeconds: 180 * 60,
-      totalAmountDue: 15000.00 // 3 hours * 5000 FCFA = 15000 FCFA
+      totalAmountDue: 15000.00
     }
-  },
-  {
-    id: 8,
-    name: "VIP Salon Bleu",
-    type: "VIP",
-    status: "libre",
-    ratePerHour: 5000.00,
-    activeSession: null
   }
 ];
 
@@ -217,8 +233,10 @@ export const initialCaisseSessions = [
     openingBalance: 200000,
     gamesRevenue: 95000,
     snackRevenue: 120000,
-    expenses: 15000,
+    expensesMaintenance: 0,
+    expensesDiverses: 15000,
     purchases: 90000,
+    refunds: 0,
     expectedBalance: 310000,
     realBalance: 310000,
     variance: 0,
@@ -234,8 +252,10 @@ export const initialCaisseSessions = [
     openingBalance: 150000,
     gamesRevenue: 150000,
     snackRevenue: 175000,
-    expenses: 8000,
+    expensesMaintenance: 8000,
+    expensesDiverses: 0,
     purchases: 0,
+    refunds: 0,
     expectedBalance: 467000,
     realBalance: 465000,
     variance: -2000,

@@ -42,7 +42,8 @@ import {
   Key
 } from "lucide-react";
 import { 
-  initialConsoles, 
+  initialConsoles,
+  clubLogos,
   snackProducts, 
   initialStats, 
   initialTopConsoles, 
@@ -174,8 +175,10 @@ export default function App() {
     openingBalance: 250000.00,
     gamesRevenue: 120000.00,
     snackRevenue: 180000.00,
-    expenses: 25000.00,
-    purchases: 25000.00
+    expensesMaintenance: 8000.00,
+    expensesDiverses: 17000.00,
+    purchases: 25000.00,
+    refunds: 0
   });
   const [caisseSubTab, setCaisseSubTab] = useState("suivi"); // 'suivi' or 'historique'
   const [showOpenCaisseModal, setShowOpenCaisseModal] = useState(false);
@@ -680,8 +683,10 @@ export default function App() {
       openingBalance: openingBal,
       gamesRevenue: 0,
       snackRevenue: 0,
-      expenses: 0,
-      purchases: 0
+      expensesMaintenance: 0,
+      expensesDiverses: 0,
+      purchases: 0,
+      refunds: 0
     };
 
     setActiveCaisseSession(newSession);
@@ -714,8 +719,10 @@ export default function App() {
     const expectedBal = activeCaisseSession.openingBalance 
       + activeCaisseSession.gamesRevenue 
       + activeCaisseSession.snackRevenue 
-      - activeCaisseSession.expenses 
-      - activeCaisseSession.purchases;
+      - activeCaisseSession.expensesMaintenance
+      - activeCaisseSession.expensesDiverses
+      - activeCaisseSession.purchases
+      - activeCaisseSession.refunds;
     
     const variance = realBal - expectedBal;
 
@@ -1226,7 +1233,7 @@ export default function App() {
     if (caisseStatus === "ouverte") {
       setActiveCaisseSession(prev => ({
         ...prev,
-        gamesRevenue: Math.max(0, prev.gamesRevenue - prepaidAmount)
+        refunds: prev.refunds + prepaidAmount
       }));
     }
 
@@ -1294,8 +1301,9 @@ export default function App() {
     if (caisseStatus === "ouverte") {
       setActiveCaisseSession(prev => ({
         ...prev,
-        gamesRevenue: prev.gamesRevenue + gameAdjustment,
-        snackRevenue: prev.snackRevenue + finalSnackAmount
+        gamesRevenue: prev.gamesRevenue + (gameAdjustment > 0 ? gameAdjustment : 0),
+        snackRevenue: prev.snackRevenue + finalSnackAmount,
+        refunds: prev.refunds + (gameAdjustment < 0 ? Math.abs(gameAdjustment) : 0)
       }));
     }
 
@@ -2988,9 +2996,31 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Console Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                  {consoles.map((c) => {
+                {/* Console Grid – grouped by Zone */}
+                {["A", "B", "C"].map(zone => {
+                  const zoneConsoles = consoles.filter(c => c.zone === zone);
+                  if (zoneConsoles.length === 0) return null;
+
+                  const zoneColors = {
+                    A: { border: "border-sky-500/30", text: "text-sky-400", bg: "bg-sky-950/30", dot: "bg-sky-400" },
+                    B: { border: "border-violet-500/30", text: "text-violet-400", bg: "bg-violet-950/30", dot: "bg-violet-400" },
+                    C: { border: "border-rose-500/30", text: "text-rose-400", bg: "bg-rose-950/30", dot: "bg-rose-400" }
+                  }[zone];
+
+                  return (
+                    <div key={zone} className="space-y-3">
+                      {/* Zone separator */}
+                      <div className={`flex items-center gap-3 px-1`}>
+                        <div className={`w-2 h-2 rounded-full ${zoneColors.dot} shadow-lg animate-pulse`} />
+                        <span className={`text-[11px] font-black uppercase tracking-[0.2em] ${zoneColors.text}`}>
+                          Zone {zone}
+                        </span>
+                        <div className={`flex-1 h-px ${zoneColors.bg} border-t ${zoneColors.border}`} />
+                        <span className="text-[9px] text-zinc-600 font-semibold">{zoneConsoles.length} poste{zoneConsoles.length > 1 ? 's' : ''}</span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {zoneConsoles.map((c) => {
                     const isOccupied = c.status === "occupée";
                     const isMaintenance = c.status === "maintenance";
                     const isLibre = c.status === "libre";
@@ -3016,27 +3046,50 @@ export default function App() {
                       badgeColor = "bg-orange-500/10 text-orange-400 border-orange-500/30";
                     }
 
+                    // Club logo data
+                    const club = clubLogos[c.name];
+                    const clubColor = club?.color || "#6CABDD";
+
                     return (
                       <div 
                         key={c.id} 
-                        className={`glass-panel rounded-2xl border p-5 relative overflow-hidden transition-all duration-300 stagger-card flex flex-col justify-between min-h-[265px] ${cardBorderClass} ${
+                        className={`glass-panel rounded-2xl border p-5 relative overflow-hidden transition-all duration-300 stagger-card flex flex-col justify-between min-h-[280px] ${cardBorderClass} ${
                           isLibre ? "hover:border-emerald-500/40" : isOccupied ? "hover:border-rose-500/40" : ""
                         }`}
+                        style={{ boxShadow: isOccupied ? `0 0 0 1px ${clubColor}22` : undefined }}
                       >
+                        {/* Club color top accent stripe */}
+                        <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl" style={{ background: `linear-gradient(90deg, ${clubColor}99, transparent)` }} />
+
                         {/* Top Meta info */}
                         <div className="space-y-1">
                           <div className="flex items-center justify-between">
                             <span className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-400 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">
                               {c.type}
                             </span>
-                            
                             <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider border ${badgeColor}`}>
                               {statusLabel}
                             </span>
                           </div>
 
-                          <h4 className="text-base font-bold text-white mt-2">{c.name}</h4>
-                          <p className="text-[11px] text-zinc-500 font-medium">Tarif : {c.ratePerHour.toLocaleString('fr-FR')} FCFA/heure</p>
+                          {/* Stadium name + club logo */}
+                          <div className="flex items-center gap-3 mt-3">
+                            {club?.logo && (
+                              <div className="w-11 h-11 rounded-xl flex-shrink-0 bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden p-1 shadow-md">
+                                <img
+                                  src={club.logo}
+                                  alt={club.club}
+                                  className="w-9 h-9 object-contain"
+                                  onError={(e) => { e.target.style.display='none'; }}
+                                />
+                              </div>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-[13px] font-black text-white leading-tight uppercase tracking-wide truncate" title={c.name}>{c.name}</h4>
+                              {club && <p className="text-[10px] font-semibold mt-0.5" style={{ color: `${clubColor}cc` }}>{club.club}</p>}
+                            </div>
+                          </div>
+                          <p className="text-[10px] text-zinc-500 font-medium mt-1">Tarif : {c.ratePerHour.toLocaleString('fr-FR')} FCFA/heure</p>
                         </div>
 
                         {/* Middle detailed state */}
@@ -3181,7 +3234,10 @@ export default function App() {
                       </div>
                     );
                   })}
-                </div>
+                      </div>
+                    </div>
+                  );
+                })}
 
                   </>
                 )}
@@ -4307,149 +4363,182 @@ export default function App() {
                       </div>
 
                       {/* Live Counter Cards */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                        {/* 1. Fond d'ouverture */}
-                        <div className="glass-panel p-4 rounded-xl border border-zinc-800/40 relative overflow-hidden flex flex-col gap-1 shadow-md">
-                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Fond d'Ouverture</span>
-                          <span className="text-lg font-black text-zinc-300 font-mono">
-                            {activeCaisseSession.openingBalance.toLocaleString('fr-FR')} FCFA
-                          </span>
-                        </div>
+                      {(() => {
+                        const opening = activeCaisseSession.openingBalance;
+                        const jeux = activeCaisseSession.gamesRevenue;
+                        const snack = activeCaisseSession.snackRevenue;
+                        const encaissementsTotal = jeux + snack;
+                        
+                        const achats = activeCaisseSession.purchases;
+                        const depensesDiverses = activeCaisseSession.expensesDiverses;
+                        const maintenance = activeCaisseSession.expensesMaintenance;
+                        const remboursements = activeCaisseSession.refunds;
+                        const decaissementsTotal = achats + depensesDiverses + maintenance + remboursements;
+                        
+                        const netBenefit = encaissementsTotal - decaissementsTotal;
+                        const cashAvailable = opening + netBenefit;
 
-                        {/* 2. Recettes Jeux */}
-                        <div className="glass-panel p-4 rounded-xl border border-emerald-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
-                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">ENTRÉE</div>
-                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Recettes Jeux (Consoles)</span>
-                          <span className="text-lg font-black text-emerald-400 font-mono">
-                            +{activeCaisseSession.gamesRevenue.toLocaleString('fr-FR')} FCFA
-                          </span>
-                        </div>
+                        return (
+                          <div className="space-y-6">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                              {/* 1. Fond d'ouverture */}
+                              <div className="glass-panel p-4 rounded-xl border border-zinc-800/40 relative overflow-hidden flex flex-col gap-1 shadow-md">
+                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Fond d'Ouverture</span>
+                                <span className="text-lg font-black text-zinc-300 font-mono">
+                                  {opening.toLocaleString('fr-FR')} FCFA
+                                </span>
+                              </div>
 
-                        {/* 3. Recettes Snacks */}
-                        <div className="glass-panel p-4 rounded-xl border border-emerald-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
-                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">ENTRÉE</div>
-                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Recettes Snack Bar</span>
-                          <span className="text-lg font-black text-emerald-400 font-mono">
-                            +{activeCaisseSession.snackRevenue.toLocaleString('fr-FR')} FCFA
-                          </span>
-                        </div>
+                              {/* 2. Total Encaissements */}
+                              <div className="glass-panel p-4 rounded-xl border border-emerald-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
+                                <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-sans tracking-wider">ENTRÉE</div>
+                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Total Encaissements</span>
+                                <span className="text-lg font-black text-emerald-400 font-mono">
+                                  +{encaissementsTotal.toLocaleString('fr-FR')} FCFA
+                                </span>
+                              </div>
 
-                        {/* 4. Dépenses directes */}
-                        <div className="glass-panel p-4 rounded-xl border border-rose-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
-                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded">SORTIE</div>
-                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Dépenses (Charges Shift)</span>
-                          <span className="text-lg font-black text-rose-400 font-mono">
-                            -{activeCaisseSession.expenses.toLocaleString('fr-FR')} FCFA
-                          </span>
-                        </div>
+                              {/* 3. Total Décaissements */}
+                              <div className="glass-panel p-4 rounded-xl border border-rose-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
+                                <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded font-sans tracking-wider">SORTIE</div>
+                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Total Décaissements</span>
+                                <span className="text-lg font-black text-rose-400 font-mono">
+                                  -{decaissementsTotal.toLocaleString('fr-FR')} FCFA
+                                </span>
+                              </div>
 
-                        {/* 5. Achats Stocks */}
-                        <div className="glass-panel p-4 rounded-xl border border-rose-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
-                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded">SORTIE</div>
-                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Achats Stocks (Shift)</span>
-                          <span className="text-lg font-black text-rose-400 font-mono">
-                            -{activeCaisseSession.purchases.toLocaleString('fr-FR')} FCFA
-                          </span>
-                        </div>
+                              {/* 4. Caisse Disponible */}
+                              <div className="glass-panel p-4 rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/20 to-blue-950/10 relative overflow-hidden flex flex-col gap-1 shadow-lg">
+                                <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded font-sans uppercase tracking-widest">DISPONIBLE</div>
+                                <span className="text-[9px] text-zinc-400 font-black uppercase tracking-wider">Caisse Disponible</span>
+                                <span className="text-lg font-black text-cyan-300 font-mono">
+                                  {cashAvailable.toLocaleString('fr-FR')} FCFA
+                                </span>
+                              </div>
+                            </div>
 
-                        {/* 6. Solde Théorique attendu */}
-                        <div className="glass-panel p-4 rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/20 to-blue-950/10 relative overflow-hidden flex flex-col gap-1 shadow-lg">
-                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded font-sans uppercase tracking-widest">ATTENDU</div>
-                          <span className="text-[9px] text-zinc-400 font-black uppercase tracking-wider">Solde Théorique</span>
-                          <span className="text-lg font-black text-cyan-300 font-mono">
-                            {(activeCaisseSession.openingBalance 
-                              + activeCaisseSession.gamesRevenue 
-                              + activeCaisseSession.snackRevenue 
-                              - activeCaisseSession.expenses 
-                              - activeCaisseSession.purchases).toLocaleString('fr-FR')} FCFA
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Live Actions & Summary graph */}
-                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4 lg:col-span-2">
-                          <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                            <span>📊</span> Répartition des Flux Financiers
-                          </h4>
-                          {/* Live progression/ratio bars */}
-                          <div className="space-y-4 pt-2">
-                            {(() => {
-                              const totalSales = activeCaisseSession.gamesRevenue + activeCaisseSession.snackRevenue;
-                              const totalCosts = activeCaisseSession.expenses + activeCaisseSession.purchases;
-                              
-                              const pctGames = totalSales > 0 ? (activeCaisseSession.gamesRevenue / totalSales) * 100 : 0;
-                              const pctSnacks = totalSales > 0 ? (activeCaisseSession.snackRevenue / totalSales) * 100 : 0;
-                              const pctExpenses = totalCosts > 0 ? (activeCaisseSession.expenses / totalCosts) * 100 : 0;
-                              const pctPurchases = totalCosts > 0 ? (activeCaisseSession.purchases / totalCosts) * 100 : 0;
-
-                              return (
-                                <div className="space-y-4">
-                                  {/* Recettes */}
-                                  <div className="space-y-1.5">
-                                    <div className="flex justify-between text-xs font-semibold text-zinc-300">
-                                      <span>Total Recettes Entrantes</span>
-                                      <span className="text-emerald-400 font-bold font-mono">+{totalSales.toLocaleString('fr-FR')} FCFA</span>
+                            {/* Detailed Bilan Panel */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                              {/* Left/Middle: Bilan Table (2 cols) */}
+                              <div className="lg:col-span-2 space-y-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                  {/* Encaissements (Left side) */}
+                                  <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
+                                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                                      <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                                        <span className="text-emerald-400">📥</span> Bilan des Encaissements
+                                      </h4>
+                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-500/20 uppercase">Entrées</span>
                                     </div>
-                                    <div className="h-3 bg-zinc-950 rounded-full overflow-hidden flex border border-zinc-850 p-0.5">
-                                      <div style={{ width: `${pctGames}%` }} className="bg-gradient-to-r from-violet-600 to-indigo-500 rounded-l-full transition-all duration-500" title={`Jeux: ${pctGames.toFixed(0)}%`}></div>
-                                      <div style={{ width: `${pctSnacks}%` }} className="bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-500" title={`Snacks: ${pctSnacks.toFixed(0)}%`}></div>
-                                    </div>
-                                    <div className="flex gap-4 text-[10px] text-zinc-500 font-bold">
-                                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-violet-600"></span> Jeux ({pctGames.toFixed(0)}%)</span>
-                                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Snacks ({pctSnacks.toFixed(0)}%)</span>
+                                    <div className="space-y-3">
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="text-zinc-400 font-semibold">Jeux (revenus joueurs) :</span>
+                                        <span className="font-mono text-zinc-200 font-bold">+{jeux.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="text-zinc-400 font-semibold">Snack (ventes snack) :</span>
+                                        <span className="font-mono text-zinc-200 font-bold">+{snack.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
+                                      <div className="border-t border-zinc-900 pt-2 flex justify-between items-center text-xs font-bold">
+                                        <span className="text-zinc-300">Total Jeux :</span>
+                                        <span className="font-mono text-white">+{jeux.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-xs font-bold">
+                                        <span className="text-zinc-300">Total Snack :</span>
+                                        <span className="font-mono text-white">+{snack.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
+                                      <div className="border-t border-zinc-800 pt-3 flex justify-between items-center text-sm font-black text-emerald-400">
+                                        <span>TOTAL GÉNÉRAL :</span>
+                                        <span className="font-mono">+{encaissementsTotal.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
                                     </div>
                                   </div>
 
-                                  {/* Dépenses / Sorties */}
-                                  <div className="space-y-1.5 pt-2">
-                                    <div className="flex justify-between text-xs font-semibold text-zinc-300">
-                                      <span>Total Dépenses & Achats Sortants</span>
-                                      <span className="text-rose-400 font-bold font-mono">-{totalCosts.toLocaleString('fr-FR')} FCFA</span>
+                                  {/* Décaissements (Right side) */}
+                                  <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
+                                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+                                      <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                                        <span className="text-rose-400">📤</span> Bilan des Décaissements
+                                      </h4>
+                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-rose-950/60 text-rose-400 border border-rose-500/20 uppercase">Sorties</span>
                                     </div>
-                                    <div className="h-3 bg-zinc-950 rounded-full overflow-hidden flex border border-zinc-850 p-0.5">
-                                      <div style={{ width: `${pctExpenses}%` }} className="bg-gradient-to-r from-rose-600 to-pink-500 rounded-l-full transition-all duration-500" title={`Dépenses: ${pctExpenses.toFixed(0)}%`}></div>
-                                      <div style={{ width: `${pctPurchases}%` }} className="bg-gradient-to-r from-orange-600 to-red-500 transition-all duration-500" title={`Achats Stock: ${pctPurchases.toFixed(0)}%`}></div>
-                                    </div>
-                                    <div className="flex gap-4 text-[10px] text-zinc-500 font-bold">
-                                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span> Dépenses Directes ({pctExpenses.toFixed(0)}%)</span>
-                                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-600"></span> Achats Snacks ({pctPurchases.toFixed(0)}%)</span>
+                                    <div className="space-y-3">
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="text-zinc-400 font-semibold">Achats :</span>
+                                        <span className="font-mono text-zinc-200 font-bold">-{achats.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="text-zinc-400 font-semibold">Dépenses Diverses :</span>
+                                        <span className="font-mono text-zinc-200 font-bold">-{depensesDiverses.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="text-zinc-400 font-semibold">Maintenance :</span>
+                                        <span className="font-mono text-zinc-200 font-bold">-{maintenance.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
+                                      <div className="flex justify-between items-center text-xs">
+                                        <span className="text-zinc-400 font-semibold">Remboursements :</span>
+                                        <span className="font-mono text-zinc-200 font-bold">-{remboursements.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
+                                      <div className="border-t border-zinc-800 pt-3 flex justify-between items-center text-sm font-black text-rose-400">
+                                        <span>TOTAL DÉPENSES :</span>
+                                        <span className="font-mono">-{decaissementsTotal.toLocaleString('fr-FR')} FCFA</span>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-                              );
-                            })()}
-                          </div>
-                        </div>
 
-                        {/* Direct Shift quick info */}
-                        <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
-                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">📋 Renseignements Shift</h4>
-                          <ul className="space-y-3 text-xs text-zinc-400 font-medium">
-                            <li className="flex justify-between border-b border-zinc-900 pb-2">
-                              <span>Identifiant unique :</span>
-                              <span className="text-white font-mono font-bold">{activeCaisseSession.id}</span>
-                            </li>
-                            <li className="flex justify-between border-b border-zinc-900 pb-2">
-                              <span>Heure de Début :</span>
-                              <span className="text-white font-bold">{new Date(activeCaisseSession.dateOpen).toLocaleTimeString('fr-FR')}</span>
-                            </li>
-                            <li className="flex justify-between border-b border-zinc-900 pb-2">
-                              <span>Opérateur Shift :</span>
-                              <span className="text-white font-bold">{activeCaisseSession.openedBy}</span>
-                            </li>
-                          </ul>
-                          <div className="pt-2 text-center">
-                            <button
-                              onClick={() => handlePrintShiftReport(activeCaisseSession)}
-                              className="w-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-                            >
-                              <Printer className="w-4 h-4" />
-                              Imprimer Ticket d'État
-                            </button>
+                                {/* Summary bar */}
+                                <div className="p-5 bg-zinc-950/50 border border-zinc-850 rounded-2xl flex flex-wrap gap-6 items-center justify-between">
+                                  <div className="space-y-1">
+                                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Fond d'Ouverture</span>
+                                    <span className="text-sm font-bold text-zinc-300 font-mono">{opening.toLocaleString('fr-FR')} FCFA</span>
+                                  </div>
+                                  <div className="space-y-1">
+                                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Bénéfice Net Shift</span>
+                                    <span className={`text-base font-extrabold font-mono ${netBenefit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                      {netBenefit > 0 ? '+' : ''}{netBenefit.toLocaleString('fr-FR')} FCFA
+                                    </span>
+                                  </div>
+                                  <div className="space-y-1 text-right">
+                                    <span className="text-[10px] text-cyan-400 font-black uppercase tracking-wider block">Solde Caisse Disponible</span>
+                                    <span className="text-xl font-black text-cyan-300 font-mono tracking-tight">{cashAvailable.toLocaleString('fr-FR')} FCFA</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Right: Shift Info (1 col) */}
+                              <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4 flex flex-col justify-between">
+                                <div className="space-y-4">
+                                  <h4 className="text-xs font-bold text-white uppercase tracking-wider">📋 Renseignements Shift</h4>
+                                  <ul className="space-y-3 text-xs text-zinc-400 font-medium">
+                                    <li className="flex justify-between border-b border-zinc-900 pb-2">
+                                      <span>Identifiant :</span>
+                                      <span className="text-white font-mono font-bold">{activeCaisseSession.id}</span>
+                                    </li>
+                                    <li className="flex justify-between border-b border-zinc-900 pb-2">
+                                      <span>Début Shift :</span>
+                                      <span className="text-white font-bold">{new Date(activeCaisseSession.dateOpen).toLocaleTimeString('fr-FR')}</span>
+                                    </li>
+                                    <li className="flex justify-between border-b border-zinc-900 pb-2">
+                                      <span>Opérateur :</span>
+                                      <span className="text-white font-bold">{activeCaisseSession.openedBy}</span>
+                                    </li>
+                                  </ul>
+                                </div>
+                                <div className="pt-4 text-center">
+                                  <button
+                                    onClick={() => handlePrintShiftReport(activeCaisseSession)}
+                                    className="w-full py-3 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                                  >
+                                    <Printer className="w-4.5 h-4.5" />
+                                    Imprimer Ticket d'État
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
                     </div>
                   )
                 ) : (
@@ -4659,28 +4748,38 @@ export default function App() {
                 <span className="font-mono text-zinc-300">{activeCaisseSession.openingBalance.toLocaleString('fr-FR')} FCFA</span>
               </div>
               <div className="flex justify-between text-emerald-400">
-                <span>(+) Recettes Jeux (Consoles) :</span>
+                <span>(+) Jeux (revenus joueurs) :</span>
                 <span className="font-mono">+{activeCaisseSession.gamesRevenue.toLocaleString('fr-FR')} FCFA</span>
               </div>
               <div className="flex justify-between text-emerald-400">
-                <span>(+) Recettes Snack Bar :</span>
+                <span>(+) Snack (ventes snack) :</span>
                 <span className="font-mono">+{activeCaisseSession.snackRevenue.toLocaleString('fr-FR')} FCFA</span>
               </div>
               <div className="flex justify-between text-rose-400">
-                <span>(-) Dépenses payées :</span>
-                <span className="font-mono">-{activeCaisseSession.expenses.toLocaleString('fr-FR')} FCFA</span>
+                <span>(-) Achats stocks :</span>
+                <span className="font-mono">-{activeCaisseSession.purchases.toLocaleString('fr-FR')} FCFA</span>
               </div>
               <div className="flex justify-between text-rose-400">
-                <span>(-) Achats stocks payés :</span>
-                <span className="font-mono">-{activeCaisseSession.purchases.toLocaleString('fr-FR')} FCFA</span>
+                <span>(-) Dépenses Diverses :</span>
+                <span className="font-mono">-{activeCaisseSession.expensesDiverses.toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              <div className="flex justify-between text-rose-400">
+                <span>(-) Maintenance :</span>
+                <span className="font-mono">-{activeCaisseSession.expensesMaintenance.toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              <div className="flex justify-between text-rose-400">
+                <span>(-) Remboursements :</span>
+                <span className="font-mono">-{activeCaisseSession.refunds.toLocaleString('fr-FR')} FCFA</span>
               </div>
               
               {(() => {
                 const expected = activeCaisseSession.openingBalance 
                   + activeCaisseSession.gamesRevenue 
                   + activeCaisseSession.snackRevenue 
-                  - activeCaisseSession.expenses 
-                  - activeCaisseSession.purchases;
+                  - activeCaisseSession.purchases
+                  - activeCaisseSession.expensesDiverses
+                  - activeCaisseSession.expensesMaintenance
+                  - activeCaisseSession.refunds;
                 
                 const real = parseFloat(closeCaisseRealBalance || 0);
                 const variance = real - expected;
