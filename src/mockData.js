@@ -201,3 +201,8 @@ export const initialExpenses = [
   { id: 2, date: new Date(Date.now() - 24 * 3600 * 1000).toISOString(), category: "internet", amount: 15000, description: "Abonnement fibre mensuel", responsible: "Zidane" },
   { id: 3, date: new Date(Date.now() - 48 * 3600 * 1000).toISOString(), category: "maintenance", amount: 8000, description: "Achat pâte thermique et nettoyage PC Station #1", responsible: "Gérant" }
 ];
+
+export const initialPurchases = [
+  { id: 1, date: new Date(Date.now() - 6 * 3600 * 1000).toISOString(), supplier: "Grossiste Boissons SARL", product: "Coca-Cola (Cannette)", quantity: 50, unitPrice: 500, totalAmount: 25000, paymentMethod: "espèces", responsible: "Sofiane" },
+  { id: 2, date: new Date(Date.now() - 30 * 3600 * 1000).toISOString(), supplier: "Tech Distribution", product: "Autre - Manette PS5 DualSense", quantity: 2, unitPrice: 45000, totalAmount: 90000, paymentMethod: "espèces", responsible: "Zidane" }
+];

@@ -25,6 +25,7 @@ import {
   UserPlus,
   ShieldCheck,
   ShoppingBag,
+  ShoppingCart,
   Calendar,
   FileText,
   ChevronRight,
@@ -46,7 +47,8 @@ import {
   initialActivityLog,
   initialStockMovements,
   defaultExpenseCategories,
-  initialExpenses
+  initialExpenses,
+  initialPurchases
 } from "./mockData";
 
 export default function App() {
@@ -132,6 +134,43 @@ export default function App() {
 
   // Expenses management states
   const [expenses, setExpenses] = useState(initialExpenses);
+
+  // Purchases management states
+  const [purchases, setPurchases] = useState(initialPurchases);
+  const [purchaseSearchQuery, setPurchaseSearchQuery] = useState("");
+  const [purchaseFilterPaymentMethod, setPurchaseFilterPaymentMethod] = useState("all");
+  const [showAddPurchaseModal, setShowAddPurchaseModal] = useState(false);
+  const [showEditPurchaseModal, setShowEditPurchaseModal] = useState(null); // stores purchase object to edit
+
+  // Add/Edit Purchase Form State
+  const [purchaseSupplier, setPurchaseSupplier] = useState("");
+  const [purchaseProduct, setPurchaseProduct] = useState("Autre"); // can be "Autre" or existing product name
+  const [purchaseCustomProductName, setPurchaseCustomProductName] = useState(""); // if "Autre"
+  const [purchaseQuantity, setPurchaseQuantity] = useState(1);
+  const [purchaseUnitPrice, setPurchaseUnitPrice] = useState("");
+  const [purchaseTotalAmount, setPurchaseTotalAmount] = useState("");
+  const [purchasePaymentMethod, setPurchasePaymentMethod] = useState("espèces");
+  const [purchaseResponsible, setPurchaseResponsible] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState("");
+
+  // Sync purchaseTotalAmount on quantity or price change
+  useEffect(() => {
+    const qty = Number(purchaseQuantity || 0);
+    const up = Number(purchaseUnitPrice || 0);
+    setPurchaseTotalAmount(qty * up);
+  }, [purchaseQuantity, purchaseUnitPrice]);
+
+  // Prefill price when selecting snack products
+  useEffect(() => {
+    if (purchaseProduct !== "Autre") {
+      const matched = products.find(p => p.name === purchaseProduct);
+      if (matched) {
+        setPurchaseUnitPrice(matched.purchasePrice);
+      }
+    } else {
+      setPurchaseUnitPrice("");
+    }
+  }, [purchaseProduct, products]);
   const [expenseCategories, setExpenseCategories] = useState(defaultExpenseCategories);
   const [expenseSearchQuery, setExpenseSearchQuery] = useState("");
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState("all");
@@ -310,6 +349,258 @@ export default function App() {
     addLog(
       "expense_delete", 
       `Dépense supprimée : ${target.amount.toLocaleString('fr-FR')} FCFA (${target.category}) - ${target.description.slice(0, 30)} (Remboursé à la caisse)`,
+      "console"
+    );
+  };
+
+  // Purchase operations helpers
+  const handleAddPurchase = (supplier, product, quantity, unitPrice, totalAmount, paymentMethod, responsible, dateStr) => {
+    const qty = parseInt(quantity) || 0;
+    const up = parseFloat(unitPrice) || 0;
+    const total = parseFloat(totalAmount) || (qty * up);
+    if (qty <= 0 || up <= 0 || total <= 0) return;
+
+    const date = dateStr ? new Date(dateStr).toISOString() : new Date().toISOString();
+    const cleanProduct = product === "Autre" ? purchaseCustomProductName.trim() : product.trim();
+    if (!cleanProduct) return;
+
+    const newPurchase = {
+      id: Date.now(),
+      date,
+      supplier: supplier.trim(),
+      product: cleanProduct,
+      quantity: qty,
+      unitPrice: up,
+      totalAmount: total,
+      paymentMethod,
+      responsible: responsible.trim() || (role === "admin" ? "Administrateur" : "Gérant")
+    };
+
+    setPurchases(prev => [newPurchase, ...prev]);
+
+    // deduct from stats.cashBalance
+    setStats(prev => ({
+      ...prev,
+      cashBalance: prev.cashBalance - total
+    }));
+
+    // If it's an existing snack product, increment its stock and record stock movement
+    const snackProd = products.find(p => p.name === cleanProduct);
+    if (snackProd) {
+      setProducts(prev => prev.map(p => {
+        if (p.id === snackProd.id) {
+          return {
+            ...p,
+            stock: p.stock + qty
+          };
+        }
+        return p;
+      }));
+
+      // record stock movement
+      setStockMovements(prev => [
+        {
+          id: Date.now(),
+          date,
+          productId: snackProd.id,
+          productName: snackProd.name,
+          type: "entrée",
+          quantity: qty,
+          reason: `Achat fournisseur (${supplier.trim()})`,
+          user: responsible.trim() || (role === "admin" ? "Administrateur" : "Gérant")
+        },
+        ...prev
+      ]);
+    }
+
+    addLog(
+      "purchase_add", 
+      `Achat enregistré : ${total.toLocaleString('fr-FR')} FCFA (${qty}x ${cleanProduct}) chez ${supplier}`,
+      "console"
+    );
+  };
+
+  const handleEditPurchase = (id, supplier, product, quantity, unitPrice, totalAmount, paymentMethod, responsible, dateStr) => {
+    if (role !== "admin") return;
+
+    const oldPurchase = purchases.find(p => p.id === id);
+    if (!oldPurchase) return;
+
+    const qty = parseInt(quantity) || 0;
+    const up = parseFloat(unitPrice) || 0;
+    const total = parseFloat(totalAmount) || (qty * up);
+    if (qty <= 0 || up <= 0 || total <= 0) return;
+
+    const date = dateStr ? new Date(dateStr).toISOString() : oldPurchase.date;
+    const cleanProduct = product === "Autre" ? purchaseCustomProductName.trim() : product.trim();
+    if (!cleanProduct) return;
+
+    // 1. Adjust cashBalance: add back old amount, subtract new amount
+    setStats(prev => ({
+      ...prev,
+      cashBalance: prev.cashBalance + oldPurchase.totalAmount - total
+    }));
+
+    // 2. Adjust stock if products or quantities changed
+    const oldSnackProd = products.find(p => p.name === oldPurchase.product);
+    const newSnackProd = products.find(p => p.name === cleanProduct);
+
+    if (oldPurchase.product === cleanProduct) {
+      // Product didn't change, adjust quantity if it changed
+      if (oldSnackProd && oldPurchase.quantity !== qty) {
+        const delta = qty - oldPurchase.quantity;
+        setProducts(prev => prev.map(p => {
+          if (p.id === oldSnackProd.id) {
+            return {
+              ...p,
+              stock: p.stock + delta
+            };
+          }
+          return p;
+        }));
+
+        // add a corrective stock movement
+        setStockMovements(prev => [
+          {
+            id: Date.now(),
+            date,
+            productId: oldSnackProd.id,
+            productName: oldSnackProd.name,
+            type: delta >= 0 ? "entrée" : "sortie",
+            quantity: Math.abs(delta),
+            reason: `Correction d'achat #${id} (${supplier.trim()})`,
+            user: responsible.trim() || (role === "admin" ? "Administrateur" : "Gérant")
+          },
+          ...prev
+        ]);
+      }
+    } else {
+      // Product changed!
+      // Decrement stock of old product
+      if (oldSnackProd) {
+        setProducts(prev => prev.map(p => {
+          if (p.id === oldSnackProd.id) {
+            return {
+              ...p,
+              stock: Math.max(0, p.stock - oldPurchase.quantity)
+            };
+          }
+          return p;
+        }));
+
+        setStockMovements(prev => [
+          {
+            id: Date.now(),
+            date,
+            productId: oldSnackProd.id,
+            productName: oldSnackProd.name,
+            type: "sortie",
+            quantity: oldPurchase.quantity,
+            reason: `Annulation achat suite à modif (vers ${cleanProduct})`,
+            user: responsible.trim() || (role === "admin" ? "Administrateur" : "Gérant")
+          },
+          ...prev
+        ]);
+      }
+
+      // Increment stock of new product
+      if (newSnackProd) {
+        setProducts(prev => prev.map(p => {
+          if (p.id === newSnackProd.id) {
+            return {
+              ...p,
+              stock: p.stock + qty
+            };
+          }
+          return p;
+        }));
+
+        setStockMovements(prev => [
+          {
+            id: Date.now(),
+            date,
+            productId: newSnackProd.id,
+            productName: newSnackProd.name,
+            type: "entrée",
+            quantity: qty,
+            reason: `Achat fournisseur suite à modif (depuis ${oldPurchase.product})`,
+            user: responsible.trim() || (role === "admin" ? "Administrateur" : "Gérant")
+          },
+          ...prev
+        ]);
+      }
+    }
+
+    // 3. Update purchases list
+    setPurchases(prev => prev.map(p => {
+      if (p.id === id) {
+        return {
+          ...p,
+          date,
+          supplier: supplier.trim(),
+          product: cleanProduct,
+          quantity: qty,
+          unitPrice: up,
+          totalAmount: total,
+          paymentMethod,
+          responsible: responsible.trim() || (role === "admin" ? "Administrateur" : "Gérant")
+        };
+      }
+      return p;
+    }));
+
+    addLog(
+      "purchase_edit", 
+      `Achat modifié #${id} : ${total.toLocaleString('fr-FR')} FCFA (${qty}x ${cleanProduct})`,
+      "console"
+    );
+  };
+
+  const handleDeletePurchase = (id) => {
+    if (role !== "admin") return;
+
+    const target = purchases.find(p => p.id === id);
+    if (!target) return;
+
+    setPurchases(prev => prev.filter(p => p.id !== id));
+
+    // refund cashBalance
+    setStats(prev => ({
+      ...prev,
+      cashBalance: prev.cashBalance + target.totalAmount
+    }));
+
+    // If it was a snack product, decrement its stock and record corrective stock movement
+    const snackProd = products.find(p => p.name === target.product);
+    if (snackProd) {
+      setProducts(prev => prev.map(p => {
+        if (p.id === snackProd.id) {
+          return {
+            ...p,
+            stock: Math.max(0, p.stock - target.quantity)
+          };
+        }
+        return p;
+      }));
+
+      setStockMovements(prev => [
+        {
+          id: Date.now(),
+          date: new Date().toISOString(),
+          productId: snackProd.id,
+          productName: snackProd.name,
+          type: "sortie",
+          quantity: target.quantity,
+          reason: `Suppression achat #${id} (Restauration stock)`,
+          user: role === "admin" ? "Administrateur" : "Gérant"
+        },
+        ...prev
+      ]);
+    }
+
+    addLog(
+      "purchase_delete", 
+      `Achat supprimé : ${target.totalAmount.toLocaleString('fr-FR')} FCFA (${target.quantity}x ${target.product}) chez ${target.supplier} (Remboursé à la caisse)`,
       "console"
     );
   };
@@ -1665,6 +1956,18 @@ export default function App() {
               <TrendingDown className="w-5 h-5 text-rose-500" />
               Gestion Dépenses
             </button>
+
+            <button
+              onClick={() => setActiveTab("purchases")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "purchases"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <ShoppingCart className="w-5 h-5 text-emerald-500" />
+              Gestion Achats
+            </button>
           </nav>
         </div>
 
@@ -1736,7 +2039,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : "Gestion des Dépenses"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : "Gestion des Achats"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -3235,6 +3538,221 @@ export default function App() {
               </div>
             )}
 
+
+            {/* ==================== VUE 6 : GESTION DES ACHATS ==================== */}
+            {activeTab === "purchases" && (
+              <div className="space-y-6 graffiti-spray-green">
+                <div>
+                  <span className="sticker-badge bg-emerald-950/60 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">Journal des Achats & Approvisionnements</span>
+                </div>
+                
+                {/* Stats & Actions Header */}
+                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 w-full lg:w-auto flex-1">
+                    {/* Stat: Cash Balance */}
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1.5 shadow-md border border-zinc-800/40 relative overflow-hidden">
+                      <div className="absolute -right-6 -bottom-6 w-16 h-16 rounded-full bg-emerald-500/5 blur-xl"></div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Solde de Caisse Actuel</span>
+                      <span className="text-xl font-extrabold text-emerald-400 font-mono">
+                        {stats.cashBalance.toLocaleString('fr-FR')} FCFA
+                      </span>
+                    </div>
+
+                    {/* Stat: Today's Purchases */}
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1.5 shadow-md border border-zinc-800/40 relative overflow-hidden">
+                      <div className="absolute -right-6 -bottom-6 w-16 h-16 rounded-full bg-cyan-500/5 blur-xl"></div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Achats du Jour</span>
+                      <span className="text-xl font-extrabold text-cyan-400 font-mono">
+                        {purchases
+                          .filter(p => new Date(p.date).toDateString() === new Date().toDateString())
+                          .reduce((sum, p) => sum + p.totalAmount, 0)
+                          .toLocaleString('fr-FR')} FCFA
+                      </span>
+                    </div>
+
+                    {/* Stat: Weekly Purchases */}
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1.5 shadow-md border border-zinc-800/40 relative overflow-hidden">
+                      <div className="absolute -right-6 -bottom-6 w-16 h-16 rounded-full bg-blue-500/5 blur-xl"></div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Achats de la Semaine</span>
+                      <span className="text-xl font-extrabold text-blue-300 font-mono">
+                        {purchases
+                          .filter(p => new Date(p.date).getTime() >= (Date.now() - 7 * 24 * 3600 * 1000))
+                          .reduce((sum, p) => sum + p.totalAmount, 0)
+                          .toLocaleString('fr-FR')} FCFA
+                      </span>
+                    </div>
+
+                    {/* Stat: Transaction Count */}
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1.5 shadow-md border border-zinc-800/40 relative overflow-hidden">
+                      <div className="absolute -right-6 -bottom-6 w-16 h-16 rounded-full bg-violet-500/5 blur-xl"></div>
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Transactions d'Achats</span>
+                      <span className="text-xl font-extrabold text-violet-400 font-mono">
+                        {purchases.length}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions buttons */}
+                  <div className="flex items-center gap-3 shrink-0 w-full lg:w-auto justify-end">
+                    <button 
+                      onClick={() => {
+                        setPurchaseSupplier("");
+                        setPurchaseProduct("Autre");
+                        setPurchaseCustomProductName("");
+                        setPurchaseQuantity(1);
+                        setPurchaseUnitPrice("");
+                        setPurchaseTotalAmount("");
+                        setPurchasePaymentMethod("espèces");
+                        setPurchaseResponsible("");
+                        setPurchaseDate(new Date().toISOString().substring(0, 16));
+                        setShowAddPurchaseModal(true);
+                      }}
+                      className="py-2.5 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Enregistrer un Achat
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filters & History Table Panel */}
+                <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
+                  {/* Search and Filters */}
+                  <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                    <div className="relative w-full md:w-80">
+                      <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input 
+                        type="text"
+                        placeholder="Rechercher fournisseur ou produit..."
+                        value={purchaseSearchQuery}
+                        onChange={(e) => setPurchaseSearchQuery(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-4 py-2 text-xs font-semibold text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                      <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Mode Paiement:</span>
+                      <select 
+                        value={purchaseFilterPaymentMethod}
+                        onChange={(e) => setPurchaseFilterPaymentMethod(e.target.value)}
+                        className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="all">Tous</option>
+                        <option value="espèces">Espèces</option>
+                        <option value="wave">Wave</option>
+                        <option value="mobile money">Mobile Money</option>
+                        <option value="carte bancaire">Carte Bancaire</option>
+                        <option value="virement">Virement</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Purchases History Table */}
+                  <div className="overflow-x-auto border border-zinc-855 rounded-xl">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-zinc-900/40 border-b border-zinc-850 text-zinc-400 font-bold uppercase tracking-wider">
+                          <th className="p-4">Date</th>
+                          <th className="p-4">Fournisseur</th>
+                          <th className="p-4">Produit</th>
+                          <th className="p-4 text-center">Qté</th>
+                          <th className="p-4 text-right">P.U.</th>
+                          <th className="p-4 text-right">Montant Total</th>
+                          <th className="p-4">Mode</th>
+                          <th className="p-4">Responsable</th>
+                          {role === "admin" && <th className="p-4 text-right">Actions</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-900/60">
+                        {purchases
+                          .filter(p => {
+                            const matchQuery = 
+                              p.supplier.toLowerCase().includes(purchaseSearchQuery.toLowerCase()) ||
+                              p.product.toLowerCase().includes(purchaseSearchQuery.toLowerCase());
+                            const matchMethod = purchaseFilterPaymentMethod === "all" || p.paymentMethod.toLowerCase() === purchaseFilterPaymentMethod;
+                            return matchQuery && matchMethod;
+                          })
+                          .map((p) => {
+                            const dateObj = new Date(p.date);
+                            const formattedDate = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + " " + dateObj.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                            return (
+                              <tr key={p.id} className="hover:bg-zinc-900/30 transition-all font-semibold text-zinc-100">
+                                <td className="p-4 font-mono text-zinc-400 font-medium">{formattedDate}</td>
+                                <td className="p-4">{p.supplier}</td>
+                                <td className="p-4 font-bold text-white flex items-center gap-1.5">
+                                  <span>📦</span> {p.product}
+                                </td>
+                                <td className="p-4 text-center font-mono text-cyan-400">{p.quantity}</td>
+                                <td className="p-4 text-right font-mono text-zinc-300">{p.unitPrice.toLocaleString('fr-FR')} FCFA</td>
+                                <td className="p-4 text-right font-mono font-extrabold text-emerald-400">{p.totalAmount.toLocaleString('fr-FR')} FCFA</td>
+                                <td className="p-4">
+                                  <span className="px-2 py-0.5 bg-emerald-950/20 text-emerald-400 rounded-lg border border-emerald-500/20 text-[9.5px] uppercase font-bold tracking-wider">{p.paymentMethod}</span>
+                                </td>
+                                <td className="p-4">
+                                  <span className="px-2 py-0.5 bg-zinc-950 text-zinc-400 rounded-lg border border-zinc-800 text-[10px] font-semibold">{p.responsible}</span>
+                                </td>
+                                {role === "admin" && (
+                                  <td className="p-4 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button 
+                                        onClick={() => {
+                                          setPurchaseSupplier(p.supplier);
+                                          const matched = products.find(x => x.name === p.product);
+                                          if (matched) {
+                                            setPurchaseProduct(p.product);
+                                            setPurchaseCustomProductName("");
+                                          } else {
+                                            setPurchaseProduct("Autre");
+                                            setPurchaseCustomProductName(p.product);
+                                          }
+                                          setPurchaseQuantity(p.quantity);
+                                          setPurchaseUnitPrice(p.unitPrice);
+                                          setPurchaseTotalAmount(p.totalAmount);
+                                          setPurchasePaymentMethod(p.paymentMethod);
+                                          setPurchaseResponsible(p.responsible);
+                                          setPurchaseDate(new Date(p.date).toISOString().substring(0, 16));
+                                          setShowEditPurchaseModal(p);
+                                        }}
+                                        className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
+                                        title="Modifier cet achat"
+                                      >
+                                        <Settings className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button 
+                                        onClick={() => {
+                                          if (confirm(`Voulez-vous vraiment supprimer cet achat de ${p.quantity}x "${p.product}" de chez "${p.supplier}" ?`)) {
+                                            handleDeletePurchase(p.id);
+                                          }
+                                        }}
+                                        className="p-1.5 rounded-lg bg-rose-950/20 border border-rose-500/20 hover:bg-rose-950/40 text-rose-400 hover:text-rose-300 transition-all"
+                                        title="Supprimer cet achat"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        {purchases.filter(p => {
+                          const matchQuery = 
+                            p.supplier.toLowerCase().includes(purchaseSearchQuery.toLowerCase()) ||
+                            p.product.toLowerCase().includes(purchaseSearchQuery.toLowerCase());
+                          const matchMethod = purchaseFilterPaymentMethod === "all" || p.paymentMethod.toLowerCase() === purchaseFilterPaymentMethod;
+                          return matchQuery && matchMethod;
+                        }).length === 0 && (
+                          <tr>
+                            <td colSpan={role === "admin" ? 9 : 8} className="p-8 text-center text-zinc-500 italic">Aucun achat enregistré.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
 
         </div>
@@ -3971,6 +4489,369 @@ export default function App() {
         </div>
       )}
 
+
+      {/* ===== PURCHASES MANAGEMENT MODALS ===== */}
+
+      {/* 5. Modal Enregistrer un Achat */}
+      {showAddPurchaseModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-5 animate-scale-up">
+            
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-4">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white font-sans">Enregistrer un Achat</h3>
+              </div>
+              <button 
+                onClick={() => setShowAddPurchaseModal(false)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
+              >
+                ✖
+              </button>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const finalProd = purchaseProduct === "Autre" ? purchaseCustomProductName : purchaseProduct;
+              handleAddPurchase(
+                purchaseSupplier,
+                finalProd,
+                purchaseQuantity,
+                purchaseUnitPrice,
+                purchaseTotalAmount,
+                purchasePaymentMethod,
+                purchaseResponsible,
+                purchaseDate
+              );
+              setShowAddPurchaseModal(false);
+            }} className="space-y-4 text-xs">
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Fournisseur</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ex: Grossiste Boissons"
+                    value={purchaseSupplier}
+                    onChange={(e) => setPurchaseSupplier(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Mode de Paiement</label>
+                  <select 
+                    value={purchasePaymentMethod}
+                    onChange={(e) => setPurchasePaymentMethod(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-300 focus:outline-none focus:border-emerald-500 font-semibold"
+                  >
+                    <option value="espèces">Espèces</option>
+                    <option value="wave">Wave</option>
+                    <option value="mobile money">Mobile Money</option>
+                    <option value="carte bancaire">Carte Bancaire</option>
+                    <option value="virement">Virement</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Produit</label>
+                <select 
+                  value={purchaseProduct}
+                  onChange={(e) => setPurchaseProduct(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-300 focus:outline-none focus:border-emerald-500 font-semibold"
+                >
+                  <option value="Autre">Autre / Achat Divers</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.name}>{p.name} (Achat: {p.purchasePrice} FCFA)</option>
+                  ))}
+                </select>
+              </div>
+
+              {purchaseProduct === "Autre" && (
+                <div className="animate-fade-in">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Nom du Produit / Matériel</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ex: Manette PS5 DualSense"
+                    value={purchaseCustomProductName}
+                    onChange={(e) => setPurchaseCustomProductName(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Quantité</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    required
+                    value={purchaseQuantity}
+                    onChange={(e) => setPurchaseQuantity(parseInt(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">P.U. (FCFA)</label>
+                  <input 
+                    type="number"
+                    min="0"
+                    required
+                    value={purchaseUnitPrice}
+                    onChange={(e) => setPurchaseUnitPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Montant Total</label>
+                  <input 
+                    type="number"
+                    min="0"
+                    required
+                    value={purchaseTotalAmount}
+                    onChange={(e) => setPurchaseTotalAmount(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Date d'achat</label>
+                  <input 
+                    type="datetime-local"
+                    required
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Responsable</label>
+                  <input 
+                    type="text"
+                    placeholder={role === "admin" ? "Administrateur" : "Gérant"}
+                    value={purchaseResponsible}
+                    onChange={(e) => setPurchaseResponsible(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+              </div>
+
+              {Number(purchaseTotalAmount || 0) > stats.cashBalance && (
+                <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl flex items-start gap-2 animate-pulse">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-amber-400 leading-normal font-semibold">
+                    Attention : Le montant de cet achat ({Number(purchaseTotalAmount).toLocaleString('fr-FR')} FCFA) dépasse le solde disponible en caisse ({stats.cashBalance.toLocaleString('fr-FR')} FCFA).
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-2">
+                <button 
+                  type="button"
+                  onClick={() => setShowAddPurchaseModal(false)}
+                  className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl font-bold shadow-lg shadow-emerald-950/20 transition-all"
+                >
+                  Enregistrer l'Achat
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
+
+      {/* 6. Modal Modifier un Achat */}
+      {showEditPurchaseModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-5 animate-scale-up">
+            
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-4">
+              <div className="flex items-center gap-2">
+                <Settings className="w-5 h-5 text-violet-400" />
+                <h3 className="text-base font-bold text-white font-sans">Modifier l'Achat</h3>
+              </div>
+              <button 
+                onClick={() => setShowEditPurchaseModal(null)}
+                className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
+              >
+                ✖
+              </button>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const finalProd = purchaseProduct === "Autre" ? purchaseCustomProductName : purchaseProduct;
+              handleEditPurchase(
+                showEditPurchaseModal.id,
+                purchaseSupplier,
+                finalProd,
+                purchaseQuantity,
+                purchaseUnitPrice,
+                purchaseTotalAmount,
+                purchasePaymentMethod,
+                purchaseResponsible,
+                purchaseDate
+              );
+              setShowEditPurchaseModal(null);
+            }} className="space-y-4 text-xs">
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Fournisseur</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ex: Grossiste Boissons"
+                    value={purchaseSupplier}
+                    onChange={(e) => setPurchaseSupplier(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Mode de Paiement</label>
+                  <select 
+                    value={purchasePaymentMethod}
+                    onChange={(e) => setPurchasePaymentMethod(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-300 focus:outline-none focus:border-emerald-500 font-semibold"
+                  >
+                    <option value="espèces">Espèces</option>
+                    <option value="wave">Wave</option>
+                    <option value="mobile money">Mobile Money</option>
+                    <option value="carte bancaire">Carte Bancaire</option>
+                    <option value="virement">Virement</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Produit</label>
+                <select 
+                  value={purchaseProduct}
+                  onChange={(e) => setPurchaseProduct(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-300 focus:outline-none focus:border-emerald-500 font-semibold"
+                >
+                  <option value="Autre">Autre / Achat Divers</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.name}>{p.name} (Achat: {p.purchasePrice} FCFA)</option>
+                  ))}
+                </select>
+              </div>
+
+              {purchaseProduct === "Autre" && (
+                <div className="animate-fade-in">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Nom du Produit / Matériel</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ex: Manette PS5 DualSense"
+                    value={purchaseCustomProductName}
+                    onChange={(e) => setPurchaseCustomProductName(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Quantité</label>
+                  <input 
+                    type="number"
+                    min="1"
+                    required
+                    value={purchaseQuantity}
+                    onChange={(e) => setPurchaseQuantity(parseInt(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">P.U. (FCFA)</label>
+                  <input 
+                    type="number"
+                    min="0"
+                    required
+                    value={purchaseUnitPrice}
+                    onChange={(e) => setPurchaseUnitPrice(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Montant Total</label>
+                  <input 
+                    type="number"
+                    min="0"
+                    required
+                    value={purchaseTotalAmount}
+                    onChange={(e) => setPurchaseTotalAmount(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-emerald-400 focus:outline-none focus:border-emerald-500 font-mono font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Date d'achat</label>
+                  <input 
+                    type="datetime-local"
+                    required
+                    value={purchaseDate}
+                    onChange={(e) => setPurchaseDate(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Responsable</label>
+                  <input 
+                    type="text"
+                    placeholder="Responsable"
+                    value={purchaseResponsible}
+                    onChange={(e) => setPurchaseResponsible(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+              </div>
+
+              {Number(purchaseTotalAmount || 0) - showEditPurchaseModal.totalAmount > stats.cashBalance && (
+                <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl flex items-start gap-2 animate-pulse">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-amber-400 leading-normal font-semibold">
+                    Attention : La hausse du montant de cet achat dépasse le solde disponible en caisse ({stats.cashBalance.toLocaleString('fr-FR')} FCFA).
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 pt-2">
+                <button 
+                  type="button"
+                  onClick={() => setShowEditPurchaseModal(null)}
+                  className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-violet-950/20 transition-all"
+                >
+                  Enregistrer les modifications
+                </button>
+              </div>
+
+            </form>
+
+          </div>
+        </div>
+      )}
 
       {/* ===== STOCK MANAGEMENT MODALS ===== */}
 
