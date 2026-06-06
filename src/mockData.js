@@ -23,6 +23,9 @@ export const initialConsoles = [
     type: "PS5",
     status: "occupée",
     ratePerHour: 1500.00,
+    totalSessions: 9,
+    totalRevenue: 120000,
+    totalTimeSeconds: 9 * 90 * 60,
     activeSession: {
       player: "Sofiane Zidane",
       firstName: "Sofiane",
@@ -42,6 +45,9 @@ export const initialConsoles = [
     type: "PS5",
     status: "libre",
     ratePerHour: 1500.00,
+    totalSessions: 6,
+    totalRevenue: 75000,
+    totalTimeSeconds: 6 * 75 * 60,
     activeSession: null
   },
   {
@@ -51,6 +57,9 @@ export const initialConsoles = [
     type: "PS5",
     status: "maintenance",
     ratePerHour: 1500.00,
+    totalSessions: 4,
+    totalRevenue: 42000,
+    totalTimeSeconds: 4 * 60 * 60,
     activeSession: null
   },
   // ─── Zone B ─────────────────────────────────────────────────────────────
@@ -61,6 +70,9 @@ export const initialConsoles = [
     type: "PS4",
     status: "occupée",
     ratePerHour: 1000.00,
+    totalSessions: 8,
+    totalRevenue: 45000,
+    totalTimeSeconds: 8 * 70 * 60,
     activeSession: {
       player: "Karim Belhadj",
       firstName: "Karim",
@@ -80,6 +92,9 @@ export const initialConsoles = [
     type: "PS4",
     status: "libre",
     ratePerHour: 1000.00,
+    totalSessions: 5,
+    totalRevenue: 28000,
+    totalTimeSeconds: 5 * 65 * 60,
     activeSession: null
   },
   // ─── Zone C ─────────────────────────────────────────────────────────────
@@ -90,6 +105,9 @@ export const initialConsoles = [
     type: "PC Gaming",
     status: "occupée",
     ratePerHour: 2000.00,
+    totalSessions: 12,
+    totalRevenue: 90000,
+    totalTimeSeconds: 12 * 55 * 60,
     activeSession: {
       player: "Lucas Martin",
       firstName: "Lucas",
@@ -109,6 +127,9 @@ export const initialConsoles = [
     type: "PC Gaming",
     status: "occupée",
     ratePerHour: 2000.00,
+    totalSessions: 4,
+    totalRevenue: 240000,
+    totalTimeSeconds: 4 * 3 * 3600,
     activeSession: {
       player: "Amine El Amrani",
       firstName: "Amine",
@@ -264,3 +285,46 @@ export const initialCaisseSessions = [
   }
 ];
 
+
+export const initialSuppliers = [
+  {
+    id: 1,
+    nom: "Grossiste Boissons SARL",
+    telephone: "+237 6 55 11 22 33",
+    email: "contact@grossisteboissons.cm",
+    adresse: "Rue du Commerce, Yaound\u00e9 Centre",
+    produitsFournis: ["Coca-Cola (Cannette)", "Fanta (Cannette)", "Malta (Cannette)", "Red Bull (Cannette)"],
+    dateAjout: new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString(),
+    notes: "Livraison 2x/semaine."
+  },
+  {
+    id: 2,
+    nom: "Tech Distribution CM",
+    telephone: "+237 6 77 88 99 00",
+    email: "sales@techdistr.cm",
+    adresse: "Quartier Hippodrome, Douala",
+    produitsFournis: ["Manette PS5 DualSense", "C\u00e2ble HDMI", "Casque Gaming"],
+    dateAjout: new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString(),
+    notes: "Garantie 6 mois."
+  },
+  {
+    id: 3,
+    nom: "Brasseries du Cameroun",
+    telephone: "+237 6 22 33 44 55",
+    email: "pro@brasseries-cm.cm",
+    adresse: "Zone Industrielle, Douala Port",
+    produitsFournis: ["Beaufort (Cannette)", "33 Export (Bouteille)", "Castel (Bouteille)"],
+    dateAjout: new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString(),
+    notes: "Paiement diff\u00e9r\u00e9 30 jours."
+  },
+  {
+    id: 4,
+    nom: "Chicha & Co Premium",
+    telephone: "+237 6 99 00 11 22",
+    email: "chicha.premium@gmail.com",
+    adresse: "Av. Kennedy, Yaound\u00e9",
+    produitsFournis: ["Chicha Double Pomme", "Chicha Menthe-Myrtille", "Chicha Love 66"],
+    dateAjout: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+    notes: "Contact: Serge."
+  }
+];

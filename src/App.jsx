@@ -39,7 +39,16 @@ import {
   ArrowDownLeft,
   Lock,
   Unlock,
-  Key
+  Key,
+  Building2,
+  Phone,
+  Mail,
+  MapPin,
+  Users,
+  Edit3,
+  Activity,
+  Timer,
+  Trophy
 } from "lucide-react";
 import { 
   initialConsoles,
@@ -53,7 +62,8 @@ import {
   defaultExpenseCategories,
   initialExpenses,
   initialPurchases,
-  initialCaisseSessions
+  initialCaisseSessions,
+  initialSuppliers
 } from "./mockData";
 
 export default function App() {
@@ -149,6 +159,8 @@ export default function App() {
 
   // Add/Edit Purchase Form State
   const [purchaseSupplier, setPurchaseSupplier] = useState("");
+  const [purchaseIsCustomSupplier, setPurchaseIsCustomSupplier] = useState(false);
+  const [purchaseCustomSupplierName, setPurchaseCustomSupplierName] = useState("");
   const [purchaseProduct, setPurchaseProduct] = useState("Autre"); // can be "Autre" or existing product name
   const [purchaseCustomProductName, setPurchaseCustomProductName] = useState(""); // if "Autre"
   const [purchaseQuantity, setPurchaseQuantity] = useState(1);
@@ -190,6 +202,21 @@ export default function App() {
   const [closeCaisseRealBalance, setCloseCaisseRealBalance] = useState("");
   const [closeCaisseNotes, setCloseCaisseNotes] = useState("");
   const [closeCaisseOperator, setCloseCaisseOperator] = useState("");
+
+  // ─── Fournisseurs (Suppliers) ──────────────────────────────────────────
+  const [suppliers, setSuppliers] = useState(initialSuppliers);
+  const [supplierSearch, setSupplierSearch] = useState("");
+  const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
+  const [showEditSupplierModal, setShowEditSupplierModal] = useState(null); // stores supplier obj
+  const [showSupplierDetailModal, setShowSupplierDetailModal] = useState(null); // for detail view
+
+  // Add/Edit Supplier Form State
+  const [suppNom, setSuppNom] = useState("");
+  const [suppTel, setSuppTel] = useState("");
+  const [suppEmail, setSuppEmail] = useState("");
+  const [suppAdresse, setSuppAdresse] = useState("");
+  const [suppProduits, setSuppProduits] = useState(""); // comma-separated string
+  const [suppNotes, setSuppNotes] = useState("");
 
   // Prefill price when selecting snack products
   useEffect(() => {
@@ -941,6 +968,55 @@ export default function App() {
     printWindow.document.close();
   };
 
+  // ─── Supplier CRUD Handlers ────────────────────────────────────────────
+  const resetSupplierForm = () => {
+    setSuppNom(""); setSuppTel(""); setSuppEmail("");
+    setSuppAdresse(""); setSuppProduits(""); setSuppNotes("");
+  };
+
+  const handleAddSupplier = () => {
+    if (!suppNom.trim()) return;
+    const newSupplier = {
+      id: Date.now(),
+      nom: suppNom.trim(),
+      telephone: suppTel.trim(),
+      email: suppEmail.trim(),
+      adresse: suppAdresse.trim(),
+      produitsFournis: suppProduits.split(",").map(s => s.trim()).filter(Boolean),
+      dateAjout: new Date().toISOString(),
+      notes: suppNotes.trim()
+    };
+    setSuppliers(prev => [newSupplier, ...prev]);
+    resetSupplierForm();
+    setShowAddSupplierModal(false);
+    addLog("supplier_add", `Fournisseur ajouté : ${newSupplier.nom}`, "console");
+  };
+
+  const handleEditSupplier = (id) => {
+    if (!suppNom.trim()) return;
+    setSuppliers(prev => prev.map(s => s.id === id ? {
+      ...s,
+      nom: suppNom.trim(),
+      telephone: suppTel.trim(),
+      email: suppEmail.trim(),
+      adresse: suppAdresse.trim(),
+      produitsFournis: suppProduits.split(",").map(p => p.trim()).filter(Boolean),
+      notes: suppNotes.trim()
+    } : s));
+    resetSupplierForm();
+    setShowEditSupplierModal(null);
+    addLog("supplier_edit", `Fournisseur modifié : ${suppNom.trim()}`, "console");
+  };
+
+  const handleDeleteSupplier = (id) => {
+    if (role !== "admin") return;
+    const target = suppliers.find(s => s.id === id);
+    if (!target) return;
+    if (!window.confirm(`Supprimer le fournisseur "${target.nom}" ?`)) return;
+    setSuppliers(prev => prev.filter(s => s.id !== id));
+    addLog("supplier_delete", `Fournisseur supprimé : ${target.nom}`, "console");
+  };
+
   const renderCaisseFermeeLock = (sectionName) => (
     <div className="glass-panel p-8 rounded-2xl border border-zinc-850 text-center space-y-6 max-w-xl mx-auto my-12 relative overflow-hidden">
       <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl"></div>
@@ -1147,6 +1223,8 @@ export default function App() {
         return {
           ...c,
           status: "occupée",
+          totalSessions: (c.totalSessions || 0) + 1,
+          totalRevenue: (c.totalRevenue || 0) + gameCost,
           activeSession: {
             player: fullName,
             firstName: newPlayerFirstName.trim(),
@@ -1265,7 +1343,9 @@ export default function App() {
         return {
           ...c,
           status: "libre",
-          activeSession: null
+          activeSession: null,
+          totalSessions: Math.max(0, (c.totalSessions || 0) - 1),
+          totalRevenue: Math.max(0, (c.totalRevenue || 0) - prepaidAmount)
         };
       }
       return c;
@@ -1378,7 +1458,9 @@ export default function App() {
         return {
           ...c,
           status: "libre",
-          activeSession: null
+          activeSession: null,
+          totalTimeSeconds: (c.totalTimeSeconds || 0) + elapsedSeconds,
+          totalRevenue: (c.totalRevenue || 0) + gameAdjustment
         };
       }
       return c;
@@ -1507,12 +1589,14 @@ export default function App() {
       });
     }
 
-    // Reset console status
+    // Reset console status & accumulate totalTimeSeconds
     setConsoles(prev => prev.map(c => {
       if (c.id === consoleId) {
+        const sessionElapsed = c.activeSession?.timeElapsedSeconds || 0;
         return {
           ...c,
           status: "libre",
+          totalTimeSeconds: (c.totalTimeSeconds || 0) + sessionElapsed,
           activeSession: null
         };
       }
@@ -2374,6 +2458,21 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab("fournisseurs")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "fournisseurs"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <Building2 className="w-5 h-5 text-teal-400" />
+              Fournisseurs
+              <span className="ml-auto bg-teal-900/60 text-teal-400 border border-teal-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                {suppliers.length}
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("caisse")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "caisse"
@@ -2460,7 +2559,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -3227,6 +3326,26 @@ export default function App() {
                               Maintenance en cours
                             </div>
                           )}
+                        </div>
+
+                        {/* ─── Console Statistics Strip ─── */}
+                        <div className="absolute bottom-0 left-0 right-0 border-t border-zinc-900/60 px-5 py-2 flex items-center justify-between gap-2 bg-black/10">
+                          <div className="flex items-center gap-1 text-[9px] text-zinc-500">
+                            <Activity className="w-3 h-3 text-emerald-500/70" />
+                            <span className="font-bold text-zinc-400">{c.totalSessions || 0}</span>
+                            <span>session{(c.totalSessions || 0) !== 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-[9px] text-zinc-500">
+                            <Trophy className="w-3 h-3 text-amber-500/70" />
+                            <span className="font-bold text-amber-400 font-mono">{((c.totalRevenue || 0) / 1000).toFixed(0)}k</span>
+                            <span>FCFA</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-[9px] text-zinc-500">
+                            <Timer className="w-3 h-3 text-cyan-500/70" />
+                            <span className="font-bold text-cyan-400 font-mono">
+                              {Math.floor((c.totalTimeSeconds || 0) / 3600)}h{Math.floor(((c.totalTimeSeconds || 0) % 3600) / 60).toString().padStart(2, '0')}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Status Ambient Glow */}
@@ -4094,6 +4213,8 @@ export default function App() {
                     <button 
                       onClick={() => {
                         setPurchaseSupplier("");
+                        setPurchaseIsCustomSupplier(false);
+                        setPurchaseCustomSupplierName("");
                         setPurchaseProduct("Autre");
                         setPurchaseCustomProductName("");
                         setPurchaseQuantity(1);
@@ -4193,7 +4314,16 @@ export default function App() {
                                     <div className="flex items-center justify-end gap-2">
                                       <button 
                                         onClick={() => {
-                                          setPurchaseSupplier(p.supplier);
+                                          const supplierExists = suppliers.some(s => s.nom === p.supplier);
+                                          if (supplierExists) {
+                                            setPurchaseSupplier(p.supplier);
+                                            setPurchaseIsCustomSupplier(false);
+                                            setPurchaseCustomSupplierName("");
+                                          } else {
+                                            setPurchaseSupplier("NEW_SUPPLIER");
+                                            setPurchaseIsCustomSupplier(true);
+                                            setPurchaseCustomSupplierName(p.supplier);
+                                          }
                                           const matched = products.find(x => x.name === p.product);
                                           if (matched) {
                                             setPurchaseProduct(p.product);
@@ -4252,6 +4382,153 @@ export default function App() {
                 )}
               </div>
             )}
+
+            {/* ==================== VUE : GESTION FOURNISSEURS ==================== */}
+            {activeTab === "fournisseurs" && (() => {
+              const filteredSuppliers = suppliers.filter(s =>
+                s.nom.toLowerCase().includes(supplierSearch.toLowerCase()) ||
+                s.telephone.toLowerCase().includes(supplierSearch.toLowerCase()) ||
+                s.email.toLowerCase().includes(supplierSearch.toLowerCase()) ||
+                (s.produitsFournis || []).join(" ").toLowerCase().includes(supplierSearch.toLowerCase())
+              );
+              return (
+              <div className="space-y-6 graffiti-spray-blue">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div>
+                    <span className="sticker-badge bg-teal-950/80 text-teal-300 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block border border-teal-500/20">
+                      Répertoire Fournisseurs
+                    </span>
+                    <p className="text-xs text-zinc-500 mt-1.5 font-medium">{suppliers.length} fournisseur(s) enregistré(s)</p>
+                  </div>
+                  <button
+                    onClick={() => { resetSupplierForm(); setShowAddSupplierModal(true); }}
+                    className="flex items-center gap-2 py-2.5 px-5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow-lg shadow-teal-950/20 active:scale-95 transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Ajouter Fournisseur
+                  </button>
+                </div>
+
+                {/* Search bar */}
+                <div className="relative">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                  <input
+                    type="text"
+                    placeholder="Rechercher par nom, tél, email ou produit…"
+                    value={supplierSearch}
+                    onChange={e => setSupplierSearch(e.target.value)}
+                    className="w-full bg-zinc-900/60 border border-zinc-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500 font-medium placeholder-zinc-600 transition-colors"
+                  />
+                </div>
+
+                {/* Supplier Cards Grid */}
+                {filteredSuppliers.length === 0 ? (
+                  <div className="glass-panel p-12 rounded-2xl border border-zinc-850 text-center space-y-3">
+                    <Building2 className="w-10 h-10 text-zinc-700 mx-auto" />
+                    <p className="text-sm text-zinc-500 font-semibold">Aucun fournisseur trouvé</p>
+                    <p className="text-xs text-zinc-600">{supplierSearch ? "Modifiez votre recherche." : "Ajoutez votre premier fournisseur."}</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                    {filteredSuppliers.map((supp) => (
+                      <div key={supp.id} className="glass-panel rounded-2xl border border-zinc-800/60 p-5 space-y-4 relative overflow-hidden hover:border-teal-500/20 transition-all duration-200 group">
+                        {/* Top accent */}
+                        <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-teal-500/50 to-transparent rounded-t-2xl" />
+
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-teal-950/50 border border-teal-500/20 flex items-center justify-center flex-shrink-0">
+                              <Building2 className="w-5 h-5 text-teal-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-sm font-black text-white truncate" title={supp.nom}>{supp.nom}</h4>
+                              <p className="text-[10px] text-zinc-500 font-medium">
+                                Ajouté le {new Date(supp.dateAjout).toLocaleDateString('fr-FR')}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => {
+                                setSuppNom(supp.nom); setSuppTel(supp.telephone);
+                                setSuppEmail(supp.email); setSuppAdresse(supp.adresse);
+                                setSuppProduits((supp.produitsFournis || []).join(", "));
+                                setSuppNotes(supp.notes || "");
+                                setShowEditSupplierModal(supp);
+                              }}
+                              className="p-1.5 rounded-lg bg-zinc-800 hover:bg-blue-900/40 hover:text-blue-400 text-zinc-400 transition-all"
+                              title="Modifier"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            {role === "admin" && (
+                              <button
+                                onClick={() => handleDeleteSupplier(supp.id)}
+                                className="p-1.5 rounded-lg bg-zinc-800 hover:bg-rose-900/40 hover:text-rose-400 text-zinc-400 transition-all"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Contact details */}
+                        <div className="space-y-2">
+                          {supp.telephone && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <Phone className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+                              <span className="text-zinc-300 font-mono">{supp.telephone}</span>
+                            </div>
+                          )}
+                          {supp.email && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <Mail className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+                              <span className="text-zinc-400 truncate">{supp.email}</span>
+                            </div>
+                          )}
+                          {supp.adresse && (
+                            <div className="flex items-center gap-2 text-xs">
+                              <MapPin className="w-3.5 h-3.5 text-zinc-500 flex-shrink-0" />
+                              <span className="text-zinc-400">{supp.adresse}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Produits fournis */}
+                        {supp.produitsFournis && supp.produitsFournis.length > 0 && (
+                          <div className="space-y-1.5">
+                            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider">Produits fournis :</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {supp.produitsFournis.slice(0, 4).map((p, i) => (
+                                <span key={i} className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-0.5 rounded-md font-medium">
+                                  {p}
+                                </span>
+                              ))}
+                              {supp.produitsFournis.length > 4 && (
+                                <span className="text-[10px] bg-teal-950/50 border border-teal-500/20 text-teal-400 px-2 py-0.5 rounded-md font-bold">
+                                  +{supp.produitsFournis.length - 4} autres
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Notes */}
+                        {supp.notes && (
+                          <div className="bg-zinc-900/40 border border-zinc-800/60 rounded-lg p-2.5">
+                            <p className="text-[10px] text-zinc-500 italic leading-relaxed">{supp.notes}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              );
+            })()}
 
             {activeTab === "caisse" && (
               <div className="space-y-6 graffiti-spray-purple">
@@ -5599,6 +5876,218 @@ export default function App() {
       )}
 
 
+      {/* ===== FOURNISSEURS MODALS ===== */}
+
+      {/* Modal : Ajouter Fournisseur */}
+      {showAddSupplierModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-lg rounded-2xl border border-teal-900/40 shadow-2xl shadow-teal-950/20 p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-teal-950/50 border border-teal-500/20 flex items-center justify-center">
+                  <Building2 className="w-4 h-4 text-teal-400" />
+                </div>
+                <h3 className="text-base font-black text-white">Ajouter un Fournisseur</h3>
+              </div>
+              <button onClick={() => setShowAddSupplierModal(false)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Nom */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Nom du fournisseur *</label>
+                <input
+                  type="text" required autoFocus
+                  placeholder="Ex: Grossiste Boissons SARL"
+                  value={suppNom} onChange={e => setSuppNom(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500 font-semibold"
+                />
+              </div>
+
+              {/* Téléphone + Email */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1 flex items-center gap-1">
+                    <Phone className="w-3 h-3" /> Téléphone
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="+237 6 00 00 00 00"
+                    value={suppTel} onChange={e => setSuppTel(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1 flex items-center gap-1">
+                    <Mail className="w-3 h-3" /> Email
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="fournisseur@mail.com"
+                    value={suppEmail} onChange={e => setSuppEmail(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              </div>
+
+              {/* Adresse */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1 flex items-center gap-1">
+                  <MapPin className="w-3 h-3" /> Adresse
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Rue du Commerce, Yaoundé Centre"
+                  value={suppAdresse} onChange={e => setSuppAdresse(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                />
+              </div>
+
+              {/* Produits fournis */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Produits fournis (séparés par des virgules)</label>
+                <textarea
+                  rows={2}
+                  placeholder="Ex: Coca-Cola, Fanta, Malta, Red Bull…"
+                  value={suppProduits} onChange={e => setSuppProduits(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500 resize-none"
+                />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Notes</label>
+                <textarea
+                  rows={2}
+                  placeholder="Informations complémentaires, conditions de livraison…"
+                  value={suppNotes} onChange={e => setSuppNotes(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-teal-500 resize-none"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddSupplierModal(false)}
+                  className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddSupplier}
+                  disabled={!suppNom.trim()}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-teal-950/20 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Ajouter Fournisseur
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal : Modifier Fournisseur */}
+      {showEditSupplierModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-lg rounded-2xl border border-blue-900/40 shadow-2xl shadow-blue-950/20 p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-950/50 border border-blue-500/20 flex items-center justify-center">
+                  <Edit3 className="w-4 h-4 text-blue-400" />
+                </div>
+                <h3 className="text-base font-black text-white">Modifier Fournisseur</h3>
+              </div>
+              <button onClick={() => { setShowEditSupplierModal(null); resetSupplierForm(); }} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Nom du fournisseur *</label>
+                <input
+                  type="text" required autoFocus
+                  value={suppNom} onChange={e => setSuppNom(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1 flex items-center gap-1">
+                    <Phone className="w-3 h-3" /> Téléphone
+                  </label>
+                  <input
+                    type="tel"
+                    value={suppTel} onChange={e => setSuppTel(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1 flex items-center gap-1">
+                    <Mail className="w-3 h-3" /> Email
+                  </label>
+                  <input
+                    type="email"
+                    value={suppEmail} onChange={e => setSuppEmail(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1 flex items-center gap-1">
+                  <MapPin className="w-3 h-3" /> Adresse
+                </label>
+                <input
+                  type="text"
+                  value={suppAdresse} onChange={e => setSuppAdresse(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Produits fournis (séparés par des virgules)</label>
+                <textarea
+                  rows={2}
+                  value={suppProduits} onChange={e => setSuppProduits(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Notes</label>
+                <textarea
+                  rows={2}
+                  value={suppNotes} onChange={e => setSuppNotes(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowEditSupplierModal(null); resetSupplierForm(); }}
+                  className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleEditSupplier(showEditSupplierModal.id)}
+                  disabled={!suppNom.trim()}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-extrabold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Sauvegarder
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== PURCHASES MANAGEMENT MODALS ===== */}
 
       {/* 5. Modal Enregistrer un Achat */}
@@ -5622,8 +6111,9 @@ export default function App() {
             <form onSubmit={(e) => {
               e.preventDefault();
               const finalProd = purchaseProduct === "Autre" ? purchaseCustomProductName : purchaseProduct;
+              const finalSupplier = purchaseIsCustomSupplier ? purchaseCustomSupplierName : purchaseSupplier;
               handleAddPurchase(
-                purchaseSupplier,
+                finalSupplier,
                 finalProd,
                 purchaseQuantity,
                 purchaseUnitPrice,
@@ -5638,14 +6128,26 @@ export default function App() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Fournisseur</label>
-                  <input 
-                    type="text"
-                    required
-                    placeholder="Ex: Grossiste Boissons"
+                  <select 
                     value={purchaseSupplier}
-                    onChange={(e) => setPurchaseSupplier(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
-                  />
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPurchaseSupplier(val);
+                      if (val === "NEW_SUPPLIER") {
+                        setPurchaseIsCustomSupplier(true);
+                      } else {
+                        setPurchaseIsCustomSupplier(false);
+                      }
+                    }}
+                    required
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-350 focus:outline-none focus:border-emerald-500 font-semibold"
+                  >
+                    <option value="">Sélectionner</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.nom}>{s.nom}</option>
+                    ))}
+                    <option value="NEW_SUPPLIER">➕ Autre / Nouveau</option>
+                  </select>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Mode de Paiement</label>
@@ -5662,6 +6164,20 @@ export default function App() {
                   </select>
                 </div>
               </div>
+
+              {purchaseIsCustomSupplier && (
+                <div className="animate-fade-in">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Nom du Nouveau Fournisseur</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ex: Grossiste Boissons"
+                    value={purchaseCustomSupplierName}
+                    onChange={(e) => setPurchaseCustomSupplierName(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Produit</label>
@@ -5807,9 +6323,10 @@ export default function App() {
             <form onSubmit={(e) => {
               e.preventDefault();
               const finalProd = purchaseProduct === "Autre" ? purchaseCustomProductName : purchaseProduct;
+              const finalSupplier = purchaseIsCustomSupplier ? purchaseCustomSupplierName : purchaseSupplier;
               handleEditPurchase(
                 showEditPurchaseModal.id,
-                purchaseSupplier,
+                finalSupplier,
                 finalProd,
                 purchaseQuantity,
                 purchaseUnitPrice,
@@ -5824,14 +6341,26 @@ export default function App() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Fournisseur</label>
-                  <input 
-                    type="text"
-                    required
-                    placeholder="Ex: Grossiste Boissons"
+                  <select 
                     value={purchaseSupplier}
-                    onChange={(e) => setPurchaseSupplier(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
-                  />
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setPurchaseSupplier(val);
+                      if (val === "NEW_SUPPLIER") {
+                        setPurchaseIsCustomSupplier(true);
+                      } else {
+                        setPurchaseIsCustomSupplier(false);
+                      }
+                    }}
+                    required
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-350 focus:outline-none focus:border-emerald-500 font-semibold"
+                  >
+                    <option value="">Sélectionner</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.nom}>{s.nom}</option>
+                    ))}
+                    <option value="NEW_SUPPLIER">➕ Autre / Nouveau</option>
+                  </select>
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Mode de Paiement</label>
@@ -5848,6 +6377,20 @@ export default function App() {
                   </select>
                 </div>
               </div>
+
+              {purchaseIsCustomSupplier && (
+                <div className="animate-fade-in">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Nom du Nouveau Fournisseur</label>
+                  <input 
+                    type="text"
+                    required
+                    placeholder="Ex: Grossiste Boissons"
+                    value={purchaseCustomSupplierName}
+                    onChange={(e) => setPurchaseCustomSupplierName(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-semibold"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Produit</label>
