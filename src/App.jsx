@@ -19,6 +19,7 @@ import {
   Trash2, 
   Sparkles, 
   AlertTriangle, 
+  AlertCircle,
   Search, 
   Check, 
   Receipt,
@@ -1162,19 +1163,43 @@ export default function App() {
     ];
   });
   const [activeTicketId, setActiveTicketId] = useState("default");
+  const [selectedTicketIds, setSelectedTicketIds] = useState(["default"]);
 
   // Sync tickets to localStorage
   useEffect(() => {
     localStorage.setItem("system_pos_tickets", JSON.stringify(tickets));
   }, [tickets]);
 
+  const isMultiBilling = selectedTicketIds.length > 1;
+  const selectedTickets = tickets.filter(t => selectedTicketIds.includes(t.id));
+
   // Expose active ticket details as standard state variables for compatibility
   const activeTicket = tickets.find(t => t.id === activeTicketId) || tickets[0] || { id: "default", name: "Ticket 1", cart: [], posCustomer: "", posAssociateConsoleId: "" };
-  const cart = activeTicket.cart;
-  const posCustomer = activeTicket.posCustomer;
-  const posAssociateConsoleId = activeTicket.posAssociateConsoleId;
+  
+  const cart = (() => {
+    if (!isMultiBilling) return activeTicket.cart;
+    const merged = [];
+    selectedTickets.forEach(ticket => {
+      ticket.cart.forEach(cartItem => {
+        const existing = merged.find(item => item.product.id === cartItem.product.id);
+        if (existing) {
+          existing.quantity += cartItem.quantity;
+        } else {
+          merged.push({ ...cartItem });
+        }
+      });
+    });
+    return merged;
+  })();
+
+  const posCustomer = isMultiBilling 
+    ? `Facture Groupée : ${selectedTickets.map(t => t.name).join(", ")}`
+    : activeTicket.posCustomer;
+
+  const posAssociateConsoleId = isMultiBilling ? "" : activeTicket.posAssociateConsoleId;
 
   const setCart = (newCartVal) => {
+    if (isMultiBilling) return;
     setTickets(prev => prev.map(t => {
       if (t.id === activeTicketId) {
         return {
@@ -1187,6 +1212,7 @@ export default function App() {
   };
 
   const setPosCustomer = (newCustomerVal) => {
+    if (isMultiBilling) return;
     setTickets(prev => prev.map(t => {
       if (t.id === activeTicketId) {
         return {
@@ -1199,6 +1225,7 @@ export default function App() {
   };
 
   const setPosAssociateConsoleId = (newConsoleVal) => {
+    if (isMultiBilling) return;
     setTickets(prev => prev.map(t => {
       if (t.id === activeTicketId) {
         return {
@@ -1216,6 +1243,7 @@ export default function App() {
     const newTicket = { id, name: ticketName, cart: [], posCustomer: "", posAssociateConsoleId: "" };
     setTickets(prev => [...prev, newTicket]);
     setActiveTicketId(id);
+    setSelectedTicketIds([id]);
   };
 
   const handleRenameTicket = (id, newName) => {
@@ -1229,6 +1257,7 @@ export default function App() {
         { id: "default", name: "Ticket 1", cart: [], posCustomer: "", posAssociateConsoleId: "" }
       ]);
       setActiveTicketId("default");
+      setSelectedTicketIds(["default"]);
       return;
     }
     const index = tickets.findIndex(t => t.id === id);
@@ -1236,6 +1265,27 @@ export default function App() {
     setTickets(newTickets);
     const nextActive = newTickets[Math.max(0, index - 1)];
     setActiveTicketId(nextActive.id);
+    setSelectedTicketIds(prev => {
+      const filtered = prev.filter(x => x !== id);
+      return filtered.length > 0 ? filtered : [nextActive.id];
+    });
+  };
+
+  const handleToggleTicketSelection = (id) => {
+    setSelectedTicketIds(prev => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) return prev;
+        const next = prev.filter(x => x !== id);
+        if (activeTicketId === id) {
+          setActiveTicketId(next[0]);
+        }
+        return next;
+      } else {
+        const next = [...prev, id];
+        setActiveTicketId(id);
+        return next;
+      }
+    });
   };
 
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -2112,15 +2162,16 @@ export default function App() {
 
   // Checkout POS cart
   const handlePOSCheckout = () => {
-    if (cart.length === 0) return;
+    const activeCart = isMultiBilling ? cart : cart; // both are combined or single thanks to our getter override
+    if (activeCart.length === 0) return;
 
-    // Option 1: Associate with active console session
-    if (posAssociateConsoleId) {
+    // Option 1: Associate with active console session (disabled in multi-billing)
+    if (posAssociateConsoleId && !isMultiBilling) {
       const consoleId = Number(posAssociateConsoleId);
       setConsoles(prev => prev.map(c => {
         if (c.id === consoleId && c.status === "occupée" && c.activeSession) {
           const extraList = [...(c.activeSession.extraSnacksList || [])];
-          cart.forEach(cartItem => {
+          activeCart.forEach(cartItem => {
             const existing = extraList.find(x => x.product.id === cartItem.product.id);
             if (existing) {
               existing.quantity += cartItem.quantity;
@@ -2146,7 +2197,7 @@ export default function App() {
       // Update product stocks
       setProducts(prev => {
         return prev.map(p => {
-          const sold = cart.find(x => x.product.id === p.id);
+          const sold = activeCart.find(x => x.product.id === p.id);
           if (sold) {
             return { ...p, stock: Math.max(0, p.stock - sold.quantity) };
           }
@@ -2157,7 +2208,7 @@ export default function App() {
       // Record stock movements
       const activeConsole = consoles.find(c => c.id === consoleId);
       setStockMovements(prev => {
-        const newMovements = cart.map((cartItem, idx) => ({
+        const newMovements = activeCart.map((cartItem, idx) => ({
           id: Date.now() + idx,
           date: new Date().toISOString(),
           productId: cartItem.product.id,
@@ -2173,7 +2224,7 @@ export default function App() {
       const activeConsoleObj = consoles.find(c => c.id === consoleId);
       addLog(
         "pos_session_bill",
-        `Ajout de ${cart.length} article(s) à la facture de ${activeConsoleObj?.activeSession?.player || 'Joueur'} sur ${activeConsoleObj?.name} (Total snack: +${cartTotal.toLocaleString('fr-FR')} FCFA)`,
+        `Ajout de ${activeCart.length} article(s) à la facture de ${activeConsoleObj?.activeSession?.player || 'Joueur'} sur ${activeConsoleObj?.name} (Total snack: +${formatPrice(cartTotal)})`,
         "snack"
       );
 
@@ -2208,7 +2259,7 @@ export default function App() {
     // Update product stocks
     setProducts(prev => {
       return prev.map(p => {
-        const sold = cart.find(x => x.product.id === p.id);
+        const sold = activeCart.find(x => x.product.id === p.id);
         if (sold) {
           return { ...p, stock: Math.max(0, p.stock - sold.quantity) };
         }
@@ -2219,7 +2270,7 @@ export default function App() {
     // Record stock movements
     const clientRef = posCustomer.trim() || "Client Comptant";
     setStockMovements(prev => {
-      const newMovements = cart.map((cartItem, idx) => ({
+      const newMovements = activeCart.map((cartItem, idx) => ({
         id: Date.now() + idx,
         date: new Date().toISOString(),
         productId: cartItem.product.id,
@@ -2235,7 +2286,7 @@ export default function App() {
     // Update Top Snack items metrics
     setTopProductsState(prev => {
       let updated = [...prev];
-      cart.forEach(cartItem => {
+      activeCart.forEach(cartItem => {
         const index = updated.findIndex(x => x.name === cartItem.product.name);
         if (index > -1) {
           updated[index] = {
@@ -2258,7 +2309,7 @@ export default function App() {
     // Update detailed daily products stats
     setDailyProductsRevenue(prev => {
       return prev.map(item => {
-        const sold = cart.find(x => x.product.name === item.name);
+        const sold = activeCart.find(x => x.product.name === item.name);
         if (sold) {
           return {
             ...item,
@@ -2272,7 +2323,7 @@ export default function App() {
 
     addLog(
       "pos_sale", 
-      `Vente Snack Bar validée pour ${clientRef}. Total : ${cartTotal.toLocaleString('fr-FR')} FCFA`, 
+      `Vente Snack Bar validée pour ${clientRef}. Total : ${formatPrice(cartTotal)}`, 
       "snack"
     );
 
@@ -2280,18 +2331,30 @@ export default function App() {
     setShowReceiptModal({
       id: `REC-${Date.now().toString().slice(-6)}`,
       customer: clientRef,
-      itemsList: [...cart],
+      itemsList: [...activeCart],
       gameCost: 0,
       snackCost: cartTotal,
       total: cartTotal,
       date: new Date().toLocaleTimeString(),
-      type: "Vente Directe Snack"
+      type: isMultiBilling ? "Facture Groupée" : "Vente Directe Snack"
     });
 
-    // Reset Cart
-    setCart([]);
-    setPosCustomer("");
-    setPosAssociateConsoleId("");
+    // Reset Cart or checked tickets
+    if (isMultiBilling) {
+      setTickets(prev => {
+        const remaining = prev.filter(t => !selectedTicketIds.includes(t.id));
+        if (remaining.length === 0) {
+          return [{ id: "default", name: "Ticket 1", cart: [], posCustomer: "", posAssociateConsoleId: "" }];
+        }
+        return remaining;
+      });
+      setSelectedTicketIds(["default"]);
+      setActiveTicketId("default");
+    } else {
+      setCart([]);
+      setPosCustomer("");
+      setPosAssociateConsoleId("");
+    }
   };
 
   // Traffic Simulator - extremely visual for client demo
@@ -2895,6 +2958,93 @@ export default function App() {
                         <Wallet className="w-6 h-6 text-purple-400" />
                       </div>
                     )}
+                  </div>
+                </div>
+
+                {/* Alert Panels: Out of Stock & Low Stock */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Panel: Rupture de Stock */}
+                  <div className="glass-panel p-6 rounded-2xl border border-red-900/20 shadow-lg space-y-4">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-red-950/40 border border-red-500/20 flex items-center justify-center">
+                          <AlertCircle className="w-4.5 h-4.5 text-red-400" />
+                        </div>
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                          Rupture de Stock
+                        </h4>
+                      </div>
+                      <span className="text-[10px] bg-red-950/60 border border-red-500/30 text-red-400 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
+                        {products.filter(p => p.stock === 0).length} produit(s)
+                      </span>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
+                      {products.filter(p => p.stock === 0).map(p => (
+                        <div key={p.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xl">{p.image}</span>
+                            <div>
+                              <span className="text-xs font-extrabold text-white block">{p.name}</span>
+                              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{p.category}</span>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black uppercase tracking-wider text-red-400 bg-red-950/30 border border-red-500/10 px-2 py-0.5 rounded">
+                            Rupture
+                          </span>
+                        </div>
+                      ))}
+
+                      {products.filter(p => p.stock === 0).length === 0 && (
+                        <div className="py-8 text-center text-zinc-500 text-xs italic flex flex-col items-center justify-center gap-1.5">
+                          <span className="text-xl">✅</span>
+                          <span>Aucun produit en rupture. Inventaire impeccable !</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Panel: Seuil Bas */}
+                  <div className="glass-panel p-6 rounded-2xl border border-amber-900/20 shadow-lg space-y-4">
+                    <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-amber-950/40 border border-amber-500/20 flex items-center justify-center">
+                          <AlertTriangle className="w-4.5 h-4.5 text-amber-400" />
+                        </div>
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                          Seuil Bas (Alerte Stock)
+                        </h4>
+                      </div>
+                      <span className="text-[10px] bg-amber-950/60 border border-amber-500/30 text-amber-400 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
+                        {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length} produit(s)
+                      </span>
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
+                      {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).map(p => (
+                        <div key={p.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-xl">{p.image}</span>
+                            <div>
+                              <span className="text-xs font-extrabold text-white block">{p.name}</span>
+                              <span className="text-[9px] text-zinc-500 font-semibold">
+                                Stock actuel : <strong className="text-white font-mono">{p.stock}</strong> &bull; Seuil min : <span className="font-mono">{p.minThreshold}</span>
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/30 border border-amber-500/10 px-2 py-0.5 rounded">
+                            Seuil Bas
+                          </span>
+                        </div>
+                      ))}
+
+                      {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length === 0 && (
+                        <div className="py-8 text-center text-zinc-500 text-xs italic flex flex-col items-center justify-center gap-1.5">
+                          <span className="text-xl">👍</span>
+                          <span>Aucun produit sous le seuil d'alerte.</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -3583,9 +3733,20 @@ export default function App() {
                                 : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:bg-zinc-800"
                             }`}
                           >
+                            <input 
+                              type="checkbox"
+                              checked={selectedTicketIds.includes(ticket.id)}
+                              onChange={() => handleToggleTicketSelection(ticket.id)}
+                              className={`w-3 h-3 rounded bg-zinc-950/60 border-zinc-800 focus:ring-0 cursor-pointer ${isActive ? "text-black accent-black" : "text-violet-500 accent-violet-600"}`}
+                              onClick={(e) => e.stopPropagation()}
+                              title="Sélectionner pour facture groupée"
+                            />
                             <button 
                               type="button"
-                              onClick={() => setActiveTicketId(ticket.id)}
+                              onClick={() => {
+                                setActiveTicketId(ticket.id);
+                                setSelectedTicketIds([ticket.id]);
+                              }}
                               className="text-left select-none focus:outline-none flex items-center gap-1.5"
                             >
                               <span>{ticket.name}</span>
@@ -3771,6 +3932,16 @@ export default function App() {
 
                   {/* Cart Items List */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {isMultiBilling && (
+                      <div className="p-3 bg-violet-950/40 border border-violet-500/20 text-violet-300 rounded-xl text-[10px] font-semibold leading-relaxed flex items-start gap-2 animate-fade-in">
+                        <span className="text-xs">⚠️</span>
+                        <div>
+                          <p className="font-bold text-white mb-0.5">Mode Facture Cumulative</p>
+                          <p>Vous facturez {selectedTicketIds.length} tickets ensemble. Pour modifier les articles ou associer à une console, décochez les autres tickets.</p>
+                        </div>
+                      </div>
+                    )}
+
                     {cart.map((item, index) => (
                       <div key={index} className="flex items-center justify-between p-3 bg-zinc-900/40 border border-zinc-850/60 rounded-xl text-xs">
                         <div className="flex-1 min-w-0 pr-2">
@@ -3778,7 +3949,7 @@ export default function App() {
                             <span className="text-lg">{item.product.image}</span>
                             <span className="font-bold text-white truncate block">{item.product.name}</span>
                           </div>
-                          <span className="text-[10px] text-zinc-500 block mt-0.5">{item.product.price.toLocaleString('fr-FR')} FCFA / u</span>
+                          <span className="text-[10px] text-zinc-500 block mt-0.5">{formatPrice(item.product.price)} / u</span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -3786,14 +3957,16 @@ export default function App() {
                           <div className="flex items-center gap-1 bg-zinc-950 rounded-lg p-0.5 border border-zinc-850">
                             <button 
                               onClick={() => handleUpdateCartQty(item.product.id, -1)}
-                              className="w-5 h-5 rounded flex items-center justify-center text-zinc-400 hover:text-white transition-all"
+                              disabled={isMultiBilling}
+                              className="w-5 h-5 rounded flex items-center justify-center text-zinc-400 hover:text-white transition-all disabled:opacity-40 disabled:hover:text-zinc-400"
                             >
                               <Minus className="w-3 h-3" />
                             </button>
                             <span className="w-6 text-center text-[11px] font-extrabold text-white">{item.quantity}</span>
                             <button 
                               onClick={() => handleUpdateCartQty(item.product.id, 1)}
-                              className="w-5 h-5 rounded flex items-center justify-center text-zinc-400 hover:text-white transition-all"
+                              disabled={isMultiBilling}
+                              className="w-5 h-5 rounded flex items-center justify-center text-zinc-400 hover:text-white transition-all disabled:opacity-40 disabled:hover:text-zinc-400"
                             >
                               <Plus className="w-3 h-3" />
                             </button>
@@ -3802,7 +3975,8 @@ export default function App() {
                           {/* Delete */}
                           <button 
                             onClick={() => handleRemoveFromCart(item.product.id)}
-                            className="p-1.5 text-zinc-500 hover:text-rose-400 rounded-lg transition-all"
+                            disabled={isMultiBilling}
+                            className="p-1.5 text-zinc-500 hover:text-rose-400 rounded-lg transition-all disabled:opacity-40 disabled:hover:text-zinc-500"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -3824,16 +3998,16 @@ export default function App() {
                     <div className="space-y-1.5 text-xs text-zinc-400">
                       <div className="flex justify-between">
                         <span>Sous-total HT</span>
-                        <span>{Math.round(cartTotal * 0.9).toLocaleString('fr-FR')} FCFA</span>
+                        <span>{formatPrice(cartTotal * 0.9)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>TVA (10%)</span>
-                        <span>{Math.round(cartTotal * 0.1).toLocaleString('fr-FR')} FCFA</span>
+                        <span>{formatPrice(cartTotal * 0.1)}</span>
                       </div>
                       <div className="h-px bg-zinc-850 my-1"></div>
                       <div className="flex justify-between text-base font-extrabold text-white">
                         <span>Montant Total</span>
-                        <span className="text-violet-400">{cartTotal.toLocaleString('fr-FR')} FCFA</span>
+                        <span className="text-violet-400">{formatPrice(cartTotal)}</span>
                       </div>
                     </div>
 
@@ -3843,7 +4017,7 @@ export default function App() {
                       className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-extrabold shadow-lg shadow-violet-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                     >
                       <Check className="w-4.5 h-4.5" />
-                      {posAssociateConsoleId ? "Associer la facture à la Console" : "Encaisser & Imprimer"}
+                      {isMultiBilling ? `Encaisser la Facture Totale (${selectedTicketIds.length} tickets)` : posAssociateConsoleId ? "Associer la facture à la Console" : "Encaisser & Imprimer"}
                     </button>
                   </div>
 
