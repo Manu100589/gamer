@@ -108,28 +108,43 @@ export const initialConsoles = [
 ];
 
 export const snackProducts = [
-  // Boissons
-  { id: 101, name: "Coca-Cola 33cl", price: 1000.00, purchasePrice: 550.00, category: "boissons", image: "🥤", stock: 45, minThreshold: 15 },
-  { id: 102, name: "Red Bull 250ml", price: 2000.00, purchasePrice: 1200.00, category: "boissons", image: "⚡", stock: 30, minThreshold: 10 },
-  { id: 103, name: "Orangina 33cl", price: 1000.00, purchasePrice: 550.00, category: "boissons", image: "🍊", stock: 24, minThreshold: 8 },
-  { id: 104, name: "Fanta Orange 33cl", price: 1000.00, purchasePrice: 550.00, category: "boissons", image: "🥤", stock: 32, minThreshold: 10 },
-  { id: 105, name: "Ice Tea Pêche 33cl", price: 1000.00, purchasePrice: 550.00, category: "boissons", image: "🍑", stock: 18, minThreshold: 8 },
-  
-  // Eau
-  { id: 106, name: "Eau Minérale Evian 50cl", price: 500.00, purchasePrice: 200.00, category: "eau", image: "💧", stock: 60, minThreshold: 20 },
-  { id: 107, name: "Eau Pétillante San Pellegrino 50cl", price: 1000.00, purchasePrice: 450.00, category: "eau", image: "🫧", stock: 20, minThreshold: 5 },
-  
-  // Chicha
-  { id: 108, name: "Chicha Double Pomme", price: 10000.00, purchasePrice: 2500.00, category: "chicha", image: "💨", stock: 99, minThreshold: 5 },
-  { id: 109, name: "Chicha Menthe-Myrtille", price: 10000.00, purchasePrice: 2500.00, category: "chicha", image: "🫐", stock: 99, minThreshold: 5 },
-  { id: 110, name: "Chicha Love 66", price: 12000.00, purchasePrice: 3000.00, category: "chicha", image: "❤️", stock: 99, minThreshold: 5 },
-  { id: 111, name: "Chicha Hawai", price: 12000.00, purchasePrice: 3000.00, category: "chicha", image: "🍍", stock: 99, minThreshold: 5 },
-  
-  // Whisky / Alcool
-  { id: 112, name: "Verre Jack Daniel's", price: 5000.00, purchasePrice: 2200.00, category: "whisky", image: "🥃", stock: 12, minThreshold: 5 },
-  { id: 113, name: "Verre Chivas 12 ans", price: 6000.00, purchasePrice: 2800.00, category: "whisky", image: "🥃", stock: 10, minThreshold: 4 },
-  { id: 114, name: "Bouteille Jack Daniel's 70cl", price: 60000.00, purchasePrice: 28000.00, category: "whisky", image: "🍾", stock: 6, minThreshold: 2 },
-  { id: 115, name: "Bouteille Ruinart Champagne", price: 80000.00, purchasePrice: 42000.00, category: "whisky", image: "🍾", stock: 4, minThreshold: 2 }
+  // Cannettes (Boissons)
+  { id: 101, name: "Beaufort (Cannette)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 56, minThreshold: 10 },
+  { id: 102, name: "Chill (Cannette)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍋", stock: 14, minThreshold: 5 },
+  { id: 103, name: "Heineken (Cannette)", price: 1500.00, purchasePrice: 900.00, category: "boissons", image: "🍺", stock: 15, minThreshold: 5 },
+  { id: 104, name: "Malta (Cannette)", price: 1000.00, purchasePrice: 500.00, category: "boissons", image: "🥤", stock: 52, minThreshold: 10 },
+  { id: 105, name: "33 Export (Cannette)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 32, minThreshold: 10 },
+  { id: 106, name: "Fanta (Cannette)", price: 1000.00, purchasePrice: 500.00, category: "boissons", image: "🍊", stock: 18, minThreshold: 5 },
+  { id: 107, name: "Red Bull (Cannette)", price: 2000.00, purchasePrice: 1200.00, category: "boissons", image: "⚡", stock: 49, minThreshold: 10 },
+  { id: 108, name: "Castel (Cannette)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 16, minThreshold: 5 },
+  { id: 109, name: "Booster (Cannette)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "⚡", stock: 13, minThreshold: 5 },
+  { id: 110, name: "Coca-Cola (Cannette)", price: 1000.00, purchasePrice: 500.00, category: "boissons", image: "🥤", stock: 22, minThreshold: 5 },
+  { id: 111, name: "Eau Minérale (Cannette)", price: 500.00, purchasePrice: 200.00, category: "eau", image: "💧", stock: 5, minThreshold: 2 },
+
+  // Bouteilles (Boissons)
+  { id: 112, name: "Castel (Bouteille)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 2, minThreshold: 2 },
+  { id: 113, name: "33 Export (Bouteille)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 70, minThreshold: 15 },
+  { id: 114, name: "Doppel (Bouteille)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 9, minThreshold: 3 },
+  { id: 115, name: "Beaufort Ordinaire (Bouteille)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 48, minThreshold: 10 },
+  { id: 116, name: "Kadji (Bouteille)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 25, minThreshold: 5 },
+  { id: 117, name: "Booster (Bouteille)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "⚡", stock: 26, minThreshold: 5 },
+  { id: 118, name: "Beaufort Light (Bouteille)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 8, minThreshold: 3 },
+  { id: 119, name: "Mutzig (Bouteille)", price: 1000.00, purchasePrice: 600.00, category: "boissons", image: "🍺", stock: 16, minThreshold: 5 },
+  { id: 120, name: "Guinness PG (Bouteille)", price: 1500.00, purchasePrice: 900.00, category: "boissons", image: "🍺", stock: 80, minThreshold: 15 },
+  { id: 121, name: "Guinness GG (Bouteille)", price: 2000.00, purchasePrice: 1200.00, category: "boissons", image: "🍺", stock: 2, minThreshold: 2 },
+  { id: 122, name: "Jus de fruits (Bouteille)", price: 1000.00, purchasePrice: 500.00, category: "boissons", image: "🧃", stock: 13, minThreshold: 5 },
+
+  // Whisky (Whisky / Alcool)
+  { id: 123, name: "Bouteille Black Label", price: 50000.00, purchasePrice: 25000.00, category: "whisky", image: "🍾", stock: 7, minThreshold: 2 },
+  { id: 124, name: "Bouteille Chivas", price: 60000.00, purchasePrice: 30000.00, category: "whisky", image: "🍾", stock: 6, minThreshold: 2 },
+  { id: 125, name: "Bouteille Monkey Shoulder", price: 55000.00, purchasePrice: 28000.00, category: "whisky", image: "🍾", stock: 1, minThreshold: 1 },
+  { id: 126, name: "Bouteille Havana Club", price: 40000.00, purchasePrice: 20000.00, category: "whisky", image: "🍾", stock: 4, minThreshold: 1 },
+
+  // Chichas
+  { id: 127, name: "Chicha Double Pomme", price: 10000.00, purchasePrice: 2500.00, category: "chicha", image: "💨", stock: 99, minThreshold: 5 },
+  { id: 128, name: "Chicha Menthe-Myrtille", price: 10000.00, purchasePrice: 2500.00, category: "chicha", image: "🫐", stock: 99, minThreshold: 5 },
+  { id: 129, name: "Chicha Love 66", price: 12000.00, purchasePrice: 3000.00, category: "chicha", image: "❤️", stock: 99, minThreshold: 5 },
+  { id: 130, name: "Chicha Hawai", price: 12000.00, purchasePrice: 3000.00, category: "chicha", image: "🍍", stock: 99, minThreshold: 5 }
 ];
 
 export const initialStats = {
@@ -149,9 +164,9 @@ export const initialTopConsoles = [
 
 export const initialTopProducts = [
   { name: "Chicha Double Pomme", quantity: 18, revenue: 180000, category: "chicha" },
-  { name: "Red Bull 250ml", quantity: 34, revenue: 68000, category: "boissons" },
-  { name: "Coca-Cola 33cl", quantity: 48, revenue: 48000, category: "boissons" },
-  { name: "Verre Jack Daniel's", quantity: 10, revenue: 50000, category: "whisky" },
+  { name: "Red Bull (Cannette)", quantity: 34, revenue: 68000, category: "boissons" },
+  { name: "Coca-Cola (Cannette)", quantity: 48, revenue: 48000, category: "boissons" },
+  { name: "Bouteille Black Label", quantity: 2, revenue: 100000, category: "whisky" },
   { name: "Chicha Love 66", quantity: 5, revenue: 60000, category: "chicha" }
 ];
 
