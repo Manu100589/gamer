@@ -1553,16 +1553,19 @@ export default function App() {
       <aside className="w-72 h-full glass-panel flex flex-col justify-between border-r border-zinc-800/60 z-20">
         <div>
           {/* Logo Brand */}
-          <div className="p-6 flex items-center gap-3 border-b border-zinc-800/40">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-violet-600 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-900/30 ring-2 ring-violet-500/20">
-              <Gamepad2 className="w-6 h-6 text-white" />
+          <div className="p-4 flex flex-col items-center justify-center border-b border-zinc-800/40 gap-2">
+            <div className="w-24 h-24 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl relative group">
+              <img src="/logo.jpg" alt="Housepub PS Lounge Logo" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-1.5">
+                <span className="text-[8px] text-zinc-300 font-extrabold uppercase tracking-widest text-center">HousePub</span>
+              </div>
             </div>
-            <div>
-              <h1 className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 via-fuchsia-400 to-pink-400 bg-clip-text text-transparent">
-                GAMEZONE
+            <div className="text-center">
+              <h1 className="font-extrabold text-base tracking-tight bg-gradient-to-r from-blue-400 via-purple-400 to-rose-400 bg-clip-text text-transparent">
+                HOUSEPUB
               </h1>
-              <p className="text-[10px] text-zinc-500 font-medium tracking-widest uppercase">
-                Salle & Snack Bar
+              <p className="text-[9px] text-zinc-500 font-extrabold tracking-widest uppercase">
+                PS Lounge • La Maison du Bonheur
               </p>
             </div>
           </div>
@@ -1573,7 +1576,7 @@ export default function App() {
               onClick={() => setActiveTab("dashboard")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "dashboard"
-                  ? "bg-gradient-to-r from-violet-900/40 to-fuchsia-900/20 text-violet-300 border-l-2 border-violet-500 shadow-inner"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
@@ -1585,7 +1588,7 @@ export default function App() {
               onClick={() => setActiveTab("consoles")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "consoles"
-                  ? "bg-gradient-to-r from-violet-900/40 to-fuchsia-900/20 text-violet-300 border-l-2 border-violet-500 shadow-inner"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
@@ -1602,7 +1605,7 @@ export default function App() {
               onClick={() => setActiveTab("snack")}
               className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "snack"
-                  ? "bg-gradient-to-r from-violet-900/40 to-fuchsia-900/20 text-violet-300 border-l-2 border-violet-500 shadow-inner"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
@@ -1621,7 +1624,7 @@ export default function App() {
               onClick={() => setActiveTab("stocks")}
               className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "stocks"
-                  ? "bg-gradient-to-r from-violet-900/40 to-fuchsia-900/20 text-violet-300 border-l-2 border-violet-500 shadow-inner"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
@@ -1640,7 +1643,7 @@ export default function App() {
               onClick={() => setActiveTab("expenses")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "expenses"
-                  ? "bg-gradient-to-r from-violet-900/40 to-fuchsia-900/20 text-violet-300 border-l-2 border-violet-500 shadow-inner"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
@@ -1698,6 +1701,11 @@ export default function App() {
         
         {/* Background Decorative Gradient Grid */}
         <div className="absolute inset-0 pointer-events-none opacity-20 bg-[linear-gradient(to_right,#1f2937_1px,transparent_1px),linear-gradient(to_bottom,#1f2937_1px,transparent_1px)] bg-[size:4rem_4rem]"></div>
+
+        {/* Ambient Neon Spray Paint / Graffiti Background Blobs */}
+        <div className="absolute top-20 left-10 w-96 h-96 rounded-full bg-blue-600/10 blur-[130px] pointer-events-none z-0 animate-pulse-slow"></div>
+        <div className="absolute bottom-20 right-10 w-[550px] h-[550px] rounded-full bg-rose-600/10 blur-[160px] pointer-events-none z-0 animate-pulse-slow"></div>
+        <div className="absolute top-1/2 left-1/3 w-80 h-80 rounded-full bg-purple-600/5 blur-[110px] pointer-events-none z-0"></div>
 
         {/* HEADER */}
         <header className="h-20 w-full glass-panel border-b border-zinc-800/60 flex items-center justify-between px-8 relative z-20">
