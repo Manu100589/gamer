@@ -48,7 +48,12 @@ import {
   Edit3,
   Activity,
   Timer,
-  Trophy
+  Trophy,
+  Coins,
+  Sliders,
+  RotateCcw,
+  CreditCard,
+  Tag
 } from "lucide-react";
 import { 
   initialConsoles,
@@ -70,8 +75,76 @@ export default function App() {
   // App states
   const [activeTab, setActiveTab] = useState("dashboard");
   const [role, setRole] = useState("admin"); // 'admin' or 'gerant'
-  const [consoles, setConsoles] = useState(initialConsoles);
-  const [products, setProducts] = useState(snackProducts);
+  const [consoles, setConsoles] = useState(() => {
+    const saved = localStorage.getItem("system_consoles");
+    return saved ? JSON.parse(saved) : initialConsoles;
+  });
+  const [products, setProducts] = useState(() => {
+    const saved = localStorage.getItem("system_products");
+    return saved ? JSON.parse(saved) : snackProducts;
+  });
+
+  // --- Global System Settings States ---
+  const [systemSettings, setSystemSettings] = useState(() => {
+    const saved = localStorage.getItem("system_settings");
+    return saved ? JSON.parse(saved) : {
+      companyName: "HOUSEPUB",
+      companySubtitle: "PS LOUNGE",
+      companySlogan: "\"La Maison du Bonheur\"",
+      logoUrl: "/logo.jpg",
+      currency: "FCFA",
+      currencyLocale: "fr-FR",
+      phone: "+237 6 55 11 22 33",
+      email: "contact@housepub.cm",
+      address: "Rue du Commerce, Yaoundé Centre",
+      defaultStockThreshold: 5,
+    };
+  });
+
+  const [productCategories, setProductCategories] = useState(() => {
+    const saved = localStorage.getItem("system_product_categories");
+    return saved ? JSON.parse(saved) : [
+      { id: "boissons", label: "Boissons", emoji: "🥤" },
+      { id: "eau", label: "Eaux", emoji: "💧" },
+      { id: "chicha", label: "Chichas", emoji: "💨" },
+      { id: "whisky", label: "Whisky & Alcool", emoji: "🥃" }
+    ];
+  });
+
+  const [paymentMethods, setPaymentMethods] = useState(() => {
+    const saved = localStorage.getItem("system_payment_methods");
+    return saved ? JSON.parse(saved) : ["espèces", "wave", "mobile money", "carte bancaire", "virement"];
+  });
+
+  // --- Sync States to localStorage ---
+  useEffect(() => {
+    localStorage.setItem("system_consoles", JSON.stringify(consoles));
+  }, [consoles]);
+
+  useEffect(() => {
+    localStorage.setItem("system_products", JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem("system_settings", JSON.stringify(systemSettings));
+  }, [systemSettings]);
+
+  useEffect(() => {
+    localStorage.setItem("system_product_categories", JSON.stringify(productCategories));
+  }, [productCategories]);
+
+  useEffect(() => {
+    localStorage.setItem("system_payment_methods", JSON.stringify(paymentMethods));
+  }, [paymentMethods]);
+
+  // Global helper for formatting prices/currency dynamically
+  const formatPrice = (amount) => {
+    const amt = Number(amount || 0);
+    const locale = systemSettings.currencyLocale || "fr-FR";
+    const symbol = systemSettings.currency || "FCFA";
+    return `${amt.toLocaleString(locale)} ${symbol}`;
+  };
+
   const [stats, setStats] = useState(initialStats);
   const [topConsolesState, setTopConsolesState] = useState(initialTopConsoles);
   const [topProductsState, setTopProductsState] = useState(initialTopProducts);
@@ -137,6 +210,7 @@ export default function App() {
   const [editProdPurchasePrice, setEditProdPurchasePrice] = useState(0);
   const [editProdPrice, setEditProdPrice] = useState(0);
   const [editProdMinThreshold, setEditProdMinThreshold] = useState(5);
+  const [editProdImage, setEditProdImage] = useState("🥤");
 
   // Add Product Form State
   const [addProdName, setAddProdName] = useState("");
@@ -282,7 +356,7 @@ export default function App() {
     addLog("stock_adjust", `Stock ajusté pour ${productName} (${type.toUpperCase()} : ${quantity} unités. Motif : ${reason})`, "snack");
   };
 
-  const handleUpdateProductSettings = (productId, name, category, purchasePrice, price, minThreshold) => {
+  const handleUpdateProductSettings = (productId, name, category, purchasePrice, price, minThreshold, image) => {
     setProducts(prev => prev.map(p => {
       if (p.id === productId) {
         return {
@@ -291,7 +365,8 @@ export default function App() {
           category,
           purchasePrice: Number(purchasePrice),
           price: Number(price),
-          minThreshold: Number(minThreshold)
+          minThreshold: Number(minThreshold),
+          image
         };
       }
       return p;
@@ -349,6 +424,7 @@ export default function App() {
     setEditProdPurchasePrice(product.purchasePrice || 0);
     setEditProdPrice(product.price);
     setEditProdMinThreshold(product.minThreshold || 5);
+    setEditProdImage(product.image || "🥤");
   };
 
   const openAddProductModal = () => {
@@ -794,9 +870,9 @@ export default function App() {
       return;
     }
 
-    const dateStr = new Date(session.dateOpen).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-    const timeOpen = new Date(session.dateOpen).toLocaleTimeString('fr-FR');
-    const timeClose = session.dateClose ? new Date(session.dateClose).toLocaleTimeString('fr-FR') : "En cours";
+    const dateStr = new Date(session.dateOpen).toLocaleDateString(systemSettings.currencyLocale || 'fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const timeOpen = new Date(session.dateOpen).toLocaleTimeString(systemSettings.currencyLocale || 'fr-FR');
+    const timeClose = session.dateClose ? new Date(session.dateClose).toLocaleTimeString(systemSettings.currencyLocale || 'fr-FR') : "En cours";
 
     const totalRevenue = session.gamesRevenue + session.snackRevenue;
     const totalExpenses = session.expenses + session.purchases;
@@ -873,9 +949,11 @@ export default function App() {
       </head>
       <body>
         <div class="header">
-          <h1 class="title">GameZone & Snack Bar</h1>
-          <p class="subtitle">RAPPORT Z - CLÔTURE DE SHIFT</p>
-          <p style="font-size: 12px; color: #18181b; font-weight: 600;">Session ID: ${session.id}</p>
+          ${systemSettings.logoUrl ? `<img src="${systemSettings.logoUrl}" style="max-height: 70px; margin-bottom: 10px; border-radius: 8px;" />` : ''}
+          <h1 class="title">${systemSettings.companyName || "GameZone"}</h1>
+          <p class="subtitle">${systemSettings.companySubtitle || "PS Lounge"}</p>
+          <p style="font-size: 12px; color: #18181b; font-weight: 600;">RAPPORT Z - CLÔTURE DE SHIFT</p>
+          <p style="font-size: 10px; color: #71717a;">Session ID: ${session.id}</p>
         </div>
 
         <table class="details-table">
@@ -889,7 +967,7 @@ export default function App() {
           </tr>
           <tr>
             <td>Date de fermeture</td>
-            <td>${session.dateClose ? new Date(session.dateClose).toLocaleDateString('fr-FR') + ' à ' + timeClose : 'En cours'}</td>
+            <td>${session.dateClose ? new Date(session.dateClose).toLocaleDateString(systemSettings.currencyLocale || 'fr-FR') + ' à ' + timeClose : 'En cours'}</td>
           </tr>
           <tr>
             <td>Ouvert par</td>
@@ -902,26 +980,27 @@ export default function App() {
         </table>
 
         <h3 style="margin-top: 30px; border-bottom: 1px solid #e4e4e7; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">Flux de Caisse</h3>
+        
         <table class="details-table">
           <tr>
             <td>Fond d'ouverture</td>
-            <td style="text-align: right; font-weight: 600;">${session.openingBalance.toLocaleString('fr-FR')} FCFA</td>
+            <td style="text-align: right; font-weight: 600;">${formatPrice(session.openingBalance)}</td>
           </tr>
           <tr>
             <td>(+) Recettes Jeux (Consoles)</td>
-            <td style="text-align: right; color: #16a34a;">+${session.gamesRevenue.toLocaleString('fr-FR')} FCFA</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(session.gamesRevenue)}</td>
           </tr>
           <tr>
             <td>(+) Recettes Snack Bar</td>
-            <td style="text-align: right; color: #16a34a;">+${session.snackRevenue.toLocaleString('fr-FR')} FCFA</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(session.snackRevenue)}</td>
           </tr>
           <tr>
             <td>(-) Dépenses directes (Shift)</td>
-            <td style="text-align: right; color: #dc2626;">-${session.expenses.toLocaleString('fr-FR')} FCFA</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(session.expenses)}</td>
           </tr>
           <tr>
             <td>(-) Achats Stocks (Shift)</td>
-            <td style="text-align: right; color: #dc2626;">-${session.purchases.toLocaleString('fr-FR')} FCFA</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(session.purchases)}</td>
           </tr>
         </table>
 
@@ -929,17 +1008,17 @@ export default function App() {
           <table style="width: 100%; font-size: 14px;">
             <tr style="font-weight: 600;">
               <td>Solde Théorique Attendu :</td>
-              <td style="text-align: right;">${(session.openingBalance + totalRevenue - totalExpenses).toLocaleString('fr-FR')} FCFA</td>
+              <td style="text-align: right;">${formatPrice(session.openingBalance + totalRevenue - totalExpenses)}</td>
             </tr>
             <tr style="font-weight: 800; font-size: 16px; border-top: 1px solid #e4e4e7;">
               <td style="padding-top: 10px;">Fond de Caisse Réel Compté :</td>
-              <td style="text-align: right; padding-top: 10px;">${session.realBalance?.toLocaleString('fr-FR') || 'En cours'} FCFA</td>
+              <td style="text-align: right; padding-top: 10px;">${session.realBalance ? formatPrice(session.realBalance) : 'En cours'}</td>
             </tr>
             ${session.dateClose ? `
             <tr style="font-size: 14px; border-top: 1px dashed #e4e4e7;">
               <td style="padding-top: 10px;">Écart de Caisse :</td>
               <td style="text-align: right; padding-top: 10px; color: ${session.variance < 0 ? '#dc2626' : (session.variance > 0 ? '#d97706' : '#16a34a')};" class="variance-alert">
-                ${session.variance > 0 ? '+' : ''}${session.variance.toLocaleString('fr-FR')} FCFA
+                ${session.variance > 0 ? '+' : ''}${formatPrice(session.variance)}
                 (${session.variance === 0 ? 'Conforme' : (session.variance < 0 ? 'Déficit' : 'Surplus')})
               </td>
             </tr>
@@ -955,8 +1034,8 @@ export default function App() {
         ` : ''}
 
         <div class="footer">
-          <p>Imprimé le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}</p>
-          <p>GameZone - Système de Gestion Pro &bull; Version Graffiti Premium</p>
+          <p>Imprimé le ${new Date().toLocaleDateString(systemSettings.currencyLocale || 'fr-FR')} à ${new Date().toLocaleTimeString(systemSettings.currencyLocale || 'fr-FR')}</p>
+          <p>${systemSettings.companyName || "GameZone"} - Système de Gestion &bull; ${systemSettings.companySlogan || ""}</p>
         </div>
 
         <script>
@@ -1062,12 +1141,105 @@ export default function App() {
     addLog("expense_category_delete", `Catégorie de dépenses supprimée : ${name}`, "console");
   };
 
-  // Snack POS State
-  const [cart, setCart] = useState([]);
+  const handleResetSystemSettings = () => {
+    if (role !== "admin") return;
+    if (confirm("Voulez-vous vraiment réinitialiser TOUS les paramètres système, tarifs consoles, catégories, modes de paiement et données produits aux valeurs d'origine ? Cette action est irréversible.")) {
+      localStorage.removeItem("system_settings");
+      localStorage.removeItem("system_product_categories");
+      localStorage.removeItem("system_payment_methods");
+      localStorage.removeItem("system_consoles");
+      localStorage.removeItem("system_products");
+      localStorage.removeItem("system_pos_tickets");
+      window.location.reload();
+    }
+  };
+
+  // Snack POS Multi-Ticket State
+  const [tickets, setTickets] = useState(() => {
+    const saved = localStorage.getItem("system_pos_tickets");
+    return saved ? JSON.parse(saved) : [
+      { id: "default", name: "Ticket 1", cart: [], posCustomer: "", posAssociateConsoleId: "" }
+    ];
+  });
+  const [activeTicketId, setActiveTicketId] = useState("default");
+
+  // Sync tickets to localStorage
+  useEffect(() => {
+    localStorage.setItem("system_pos_tickets", JSON.stringify(tickets));
+  }, [tickets]);
+
+  // Expose active ticket details as standard state variables for compatibility
+  const activeTicket = tickets.find(t => t.id === activeTicketId) || tickets[0] || { id: "default", name: "Ticket 1", cart: [], posCustomer: "", posAssociateConsoleId: "" };
+  const cart = activeTicket.cart;
+  const posCustomer = activeTicket.posCustomer;
+  const posAssociateConsoleId = activeTicket.posAssociateConsoleId;
+
+  const setCart = (newCartVal) => {
+    setTickets(prev => prev.map(t => {
+      if (t.id === activeTicketId) {
+        return {
+          ...t,
+          cart: typeof newCartVal === "function" ? newCartVal(t.cart) : newCartVal
+        };
+      }
+      return t;
+    }));
+  };
+
+  const setPosCustomer = (newCustomerVal) => {
+    setTickets(prev => prev.map(t => {
+      if (t.id === activeTicketId) {
+        return {
+          ...t,
+          posCustomer: typeof newCustomerVal === "function" ? newCustomerVal(t.posCustomer) : newCustomerVal
+        };
+      }
+      return t;
+    }));
+  };
+
+  const setPosAssociateConsoleId = (newConsoleVal) => {
+    setTickets(prev => prev.map(t => {
+      if (t.id === activeTicketId) {
+        return {
+          ...t,
+          posAssociateConsoleId: typeof newConsoleVal === "function" ? newConsoleVal(t.posAssociateConsoleId) : newConsoleVal
+        };
+      }
+      return t;
+    }));
+  };
+
+  const handleCreateTicket = (name = "") => {
+    const id = Date.now().toString();
+    const ticketName = name.trim() || `Ticket ${tickets.length + 1}`;
+    const newTicket = { id, name: ticketName, cart: [], posCustomer: "", posAssociateConsoleId: "" };
+    setTickets(prev => [...prev, newTicket]);
+    setActiveTicketId(id);
+  };
+
+  const handleRenameTicket = (id, newName) => {
+    if (!newName.trim()) return;
+    setTickets(prev => prev.map(t => t.id === id ? { ...t, name: newName.trim() } : t));
+  };
+
+  const handleDeleteTicket = (id) => {
+    if (tickets.length <= 1) {
+      setTickets([
+        { id: "default", name: "Ticket 1", cart: [], posCustomer: "", posAssociateConsoleId: "" }
+      ]);
+      setActiveTicketId("default");
+      return;
+    }
+    const index = tickets.findIndex(t => t.id === id);
+    const newTickets = tickets.filter(t => t.id !== id);
+    setTickets(newTickets);
+    const nextActive = newTickets[Math.max(0, index - 1)];
+    setActiveTicketId(nextActive.id);
+  };
+
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [posCustomer, setPosCustomer] = useState("");
-  const [posAssociateConsoleId, setPosAssociateConsoleId] = useState("");
 
   // Modals state
   const [showStartModal, setShowStartModal] = useState(null); // stores console object to start
@@ -1632,8 +1804,8 @@ export default function App() {
       return;
     }
 
-    const dateStr = currentDateTime.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-    const timeStr = currentDateTime.toLocaleTimeString('fr-FR');
+    const dateStr = currentDateTime.toLocaleDateString(systemSettings.currencyLocale || 'fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const timeStr = currentDateTime.toLocaleTimeString(systemSettings.currencyLocale || 'fr-FR');
 
     const totalGames = stats.gamesRevenue;
     const totalSnacks = stats.snackRevenue;
@@ -1646,7 +1818,7 @@ export default function App() {
           <td style="padding: 12px; font-weight: 600; color: #18181b;">${c.name}</td>
           <td style="padding: 12px; color: #71717a; text-transform: uppercase; font-size: 11px; font-weight: 700;">${c.type}</td>
           <td style="padding: 12px; text-align: center; color: #18181b;">${c.sessions}</td>
-          <td style="padding: 12px; text-align: right; font-weight: 700; font-family: monospace; color: #18181b;">${c.revenue.toLocaleString('fr-FR')} FCFA</td>
+          <td style="padding: 12px; text-align: right; font-weight: 700; font-family: monospace; color: #18181b;">${formatPrice(c.revenue)}</td>
         </tr>
       `).join("");
 
@@ -1657,7 +1829,7 @@ export default function App() {
           <td style="padding: 12px; font-weight: 600; color: #18181b;">${p.name}</td>
           <td style="padding: 12px; color: #71717a; text-transform: capitalize; font-size: 11px; font-weight: 700;">${p.category}</td>
           <td style="padding: 12px; text-align: center; color: #18181b;">${p.quantity}</td>
-          <td style="padding: 12px; text-align: right; font-weight: 700; font-family: monospace; color: #18181b;">${p.revenue.toLocaleString('fr-FR')} FCFA</td>
+          <td style="padding: 12px; text-align: right; font-weight: 700; font-family: monospace; color: #18181b;">${formatPrice(p.revenue)}</td>
         </tr>
       `).join("") || `
         <tr>
@@ -1669,7 +1841,7 @@ export default function App() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Bilan Journalier - GameZone</title>
+        <title>Bilan Journalier - ${systemSettings.companyName || "GameZone"}</title>
         <meta charset="utf-8">
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
         <style>
@@ -1779,9 +1951,12 @@ export default function App() {
       </head>
       <body>
         <div class="header">
-          <div>
-            <h1 class="brand-title">GAMEZONE</h1>
-            <p class="brand-subtitle">Rapport Journalier d'Activité</p>
+          <div style="display: flex; align-items: center; gap: 15px;">
+            ${systemSettings.logoUrl ? `<img src="${systemSettings.logoUrl}" style="max-height: 55px; border-radius: 6px;" />` : ''}
+            <div>
+              <h1 class="brand-title">${systemSettings.companyName || "GAMEZONE"}</h1>
+              <p class="brand-subtitle">${systemSettings.companySubtitle || "Rapport Journalier d'Activité"}</p>
+            </div>
           </div>
           <div class="report-meta">
             <div><strong>Date :</strong> ${dateStr}</div>
@@ -1793,19 +1968,19 @@ export default function App() {
         <div class="grid-stats">
           <div class="card-stat">
             <div class="card-label">Revenus Jeux</div>
-            <div class="card-value" style="color: #0891b2;">${totalGames.toLocaleString('fr-FR')} FCFA</div>
+            <div class="card-value" style="color: #0891b2;">${formatPrice(totalGames)}</div>
           </div>
           <div class="card-stat">
             <div class="card-label">Revenus Snacks</div>
-            <div class="card-value" style="color: #d97706;">${totalSnacks.toLocaleString('fr-FR')} FCFA</div>
+            <div class="card-value" style="color: #d97706;">${formatPrice(totalSnacks)}</div>
           </div>
           <div class="card-stat" style="background-color: #faf5ff; border-color: #e9d5ff;">
             <div class="card-label" style="color: #7c3aed;">Total du Jour</div>
-            <div class="card-value" style="color: #7c3aed;">${grandTotal.toLocaleString('fr-FR')} FCFA</div>
+            <div class="card-value" style="color: #7c3aed;">${formatPrice(grandTotal)}</div>
           </div>
           <div class="card-stat" style="background-color: #ecfdf5; border-color: #a7f3d0;">
             <div class="card-label" style="color: #059669;">Solde de Caisse</div>
-            <div class="card-value" style="color: #059669;">${cash.toLocaleString('fr-FR')} FCFA</div>
+            <div class="card-value" style="color: #059669;">${formatPrice(cash)}</div>
           </div>
         </div>
 
@@ -2346,20 +2521,20 @@ export default function App() {
           {/* Logo Brand */}
           <div className="p-4 flex flex-col items-center justify-center border-b border-zinc-800/40 gap-2">
             <div className="w-24 h-24 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl relative group">
-              <img src="/logo.jpg" alt="Housepub PS Lounge Logo" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+              <img src={systemSettings.logoUrl || "/logo.jpg"} alt={`${systemSettings.companyName || "HOUSEPUB"} Logo`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-1.5">
-                <span className="text-[8px] text-zinc-300 font-extrabold uppercase tracking-widest text-center">HousePub</span>
+                <span className="text-[8px] text-zinc-300 font-extrabold uppercase tracking-widest text-center">{systemSettings.companyName || "HOUSEPUB"}</span>
               </div>
             </div>
             <div className="text-center space-y-0.5">
               <h1 className="text-xl font-black tracking-tight graffiti-tag italic">
-                HOUSEPUB
+                {systemSettings.companyName || "HOUSEPUB"}
               </h1>
               <p className="text-[9px] text-zinc-400 font-extrabold tracking-widest uppercase">
-                PS LOUNGE
+                {systemSettings.companySubtitle || "PS LOUNGE"}
               </p>
               <p className="text-[8px] text-zinc-500 font-bold italic tracking-normal">
-                "La Maison du Bonheur"
+                {systemSettings.companySlogan || "\"La Maison du Bonheur\""}
               </p>
             </div>
           </div>
@@ -2488,6 +2663,20 @@ export default function App() {
                 {caisseStatus === "ouverte" ? "Ouverte" : "Fermée"}
               </span>
             </button>
+
+            {role === "admin" && (
+              <button
+                onClick={() => setActiveTab("settings")}
+                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                  activeTab === "settings"
+                    ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+                }`}
+              >
+                <Sliders className="w-5 h-5 text-violet-400" />
+                Paramètres Système
+              </button>
+            )}
           </nav>
         </div>
 
@@ -2540,7 +2729,7 @@ export default function App() {
         {/* Background Logo Watermark (Filigrane) */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0 overflow-hidden select-none">
           <img 
-            src="/logo.jpg" 
+            src={systemSettings.logoUrl || "/logo.jpg"} 
             alt="Watermark Logo" 
             className="w-[45%] max-w-[550px] aspect-square opacity-[0.03] filter blur-[0.5px] transform rotate-[-8deg] pointer-events-none" 
           />
@@ -2559,7 +2748,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -2874,10 +3063,10 @@ export default function App() {
                   {/* Summary grid */}
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                     {[
-                      { label: "Revenus Jeux", value: `${stats.gamesRevenue.toLocaleString('fr-FR')} FCFA`, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20", icon: "🎮" },
-                      { label: "Revenus Snack", value: `${stats.snackRevenue.toLocaleString('fr-FR')} FCFA`, color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: "🥤" },
-                      { label: "Total du Jour", value: `${(stats.gamesRevenue + stats.snackRevenue).toLocaleString('fr-FR')} FCFA`, color: "text-violet-300", bg: "bg-violet-500/10", border: "border-violet-500/20", icon: "💰" },
-                      { label: "Solde Caisse", value: role === "admin" ? `${stats.cashBalance.toLocaleString('fr-FR')} FCFA` : "Admin requis", color: role === "admin" ? "text-emerald-400" : "text-zinc-500", bg: "bg-emerald-500/10", border: "border-emerald-500/20", icon: "🏦" }
+                      { label: "Revenus Jeux", value: formatPrice(stats.gamesRevenue), color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20", icon: "🎮" },
+                      { label: "Revenus Snack", value: formatPrice(stats.snackRevenue), color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", icon: "🥤" },
+                      { label: "Total du Jour", value: formatPrice(stats.gamesRevenue + stats.snackRevenue), color: "text-violet-300", bg: "bg-violet-500/10", border: "border-violet-500/20", icon: "💰" },
+                      { label: "Solde Caisse", value: role === "admin" ? formatPrice(stats.cashBalance) : "Admin requis", color: role === "admin" ? "text-emerald-400" : "text-zinc-500", bg: "bg-emerald-500/10", border: "border-emerald-500/20", icon: "🏦" }
                     ].map((item, i) => (
                       <div key={i} className={`${item.bg} border ${item.border} rounded-xl p-4 flex flex-col gap-1.5`}>
                         <div className="flex items-center justify-between">
@@ -3377,9 +3566,81 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                
-                {/* Left: Product List (8 columns) */}
-                <div className="xl:col-span-8 space-y-6">
+                  
+                  {/* Tickets/Commandes Selector Strip */}
+                  <div className="xl:col-span-12 space-y-4 mb-2">
+                    <div className="flex flex-wrap items-center gap-2 p-3 bg-zinc-950/40 rounded-2xl border border-zinc-900 shadow-inner">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider px-2">Commandes actives :</div>
+                      
+                      {tickets.map(ticket => {
+                        const isActive = ticket.id === activeTicketId;
+                        return (
+                          <div 
+                            key={ticket.id}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                              isActive 
+                                ? "bg-gradient-to-r from-amber-600 to-yellow-600 text-black border-amber-400 shadow-md scale-[1.02]" 
+                                : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:bg-zinc-800"
+                            }`}
+                          >
+                            <button 
+                              type="button"
+                              onClick={() => setActiveTicketId(ticket.id)}
+                              className="text-left select-none focus:outline-none flex items-center gap-1.5"
+                            >
+                              <span>{ticket.name}</span>
+                              {ticket.cart.length > 0 && (
+                                <span className={`px-1.5 py-0.5 rounded-full text-[8.5px] ${isActive ? "bg-black text-amber-500" : "bg-zinc-800 text-zinc-400"}`}>
+                                  {ticket.cart.reduce((sum, it) => sum + it.quantity, 0)}
+                                </span>
+                              )}
+                            </button>
+                            
+                            {/* Rename button */}
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newName = prompt("Modifier le nom de la commande :", ticket.name);
+                                if (newName) handleRenameTicket(ticket.id, newName);
+                              }}
+                              className={`p-0.5 rounded hover:bg-black/10 transition-colors ${isActive ? "text-black/60 hover:text-black" : "text-zinc-500 hover:text-zinc-300"}`}
+                              title="Renommer"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                            </button>
+
+                            {/* Close/Delete button */}
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (ticket.cart.length === 0 || confirm("Supprimer cette commande et vider son panier ?")) {
+                                  handleDeleteTicket(ticket.id);
+                                }
+                              }}
+                              className={`p-0.5 rounded hover:bg-black/10 transition-colors ${isActive ? "text-black/60 hover:text-black" : "text-zinc-500 hover:text-zinc-300"}`}
+                              title="Fermer"
+                            >
+                              ✖
+                            </button>
+                          </div>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        onClick={() => handleCreateTicket()}
+                        className="py-1.5 px-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-xl text-xs font-bold border border-dashed border-zinc-700 hover:border-zinc-500 transition-all flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Nouvelle commande</span>
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Left: Product List (8 columns) */}
+                  <div className="xl:col-span-8 space-y-6">
                   
                   {/* Category Filter Capsules & Search */}
                   <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-zinc-900 p-4 rounded-2xl border border-zinc-800/80">
@@ -3388,10 +3649,7 @@ export default function App() {
                     <div className="flex flex-wrap gap-2 w-full md:w-auto">
                       {[
                         { id: "all", label: "Tous", emoji: "🍽️" },
-                        { id: "boissons", label: "Boissons", emoji: "🥤" },
-                        { id: "eau", label: "Eaux", emoji: "💧" },
-                        { id: "chicha", label: "Chichas", emoji: "💨" },
-                        { id: "whisky", label: "Whisky & Alcool", emoji: "🥃" }
+                        ...productCategories
                       ].map(cat => (
                         <button
                           key={cat.id}
@@ -3679,10 +3937,9 @@ export default function App() {
                         className="bg-zinc-950 border border-zinc-850 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-300 focus:outline-none focus:border-violet-500"
                       >
                         <option value="all">Toutes catégories</option>
-                        <option value="boissons">Boissons</option>
-                        <option value="eau">Eaux</option>
-                        <option value="chicha">Chichas</option>
-                        <option value="whisky">Whisky / Alcool</option>
+                        {productCategories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.label}</option>
+                        ))}
                       </select>
                       {role === "admin" && (
                         <button
@@ -4256,11 +4513,9 @@ export default function App() {
                         className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs font-semibold focus:outline-none focus:border-emerald-500"
                       >
                         <option value="all">Tous</option>
-                        <option value="espèces">Espèces</option>
-                        <option value="wave">Wave</option>
-                        <option value="mobile money">Mobile Money</option>
-                        <option value="carte bancaire">Carte Bancaire</option>
-                        <option value="virement">Virement</option>
+                        {paymentMethods.map(method => (
+                          <option key={method} value={method}>{method.charAt(0).toUpperCase() + method.slice(1)}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -4529,6 +4784,374 @@ export default function App() {
               </div>
               );
             })()}
+
+            {/* ==================== VUE : PARAMÈTRES SYSTÈME ==================== */}
+            {activeTab === "settings" && role === "admin" && (
+              <div className="space-y-8 animate-fade-in pb-12">
+                <div>
+                  <span className="sticker-badge bg-zinc-900 text-violet-400 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">
+                    Panneau de Configuration Admin
+                  </span>
+                </div>
+
+                {/* 2x2 Grid for general configurations */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  
+                  {/* Card 1: Informations Entreprise */}
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
+                      <Building2 className="w-5 h-5 text-violet-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Informations Entreprise</h3>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Nom de l'entreprise :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.companyName}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, companyName: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Sous-titre / En-tête :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.companySubtitle}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, companySubtitle: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Slogan :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.companySlogan}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, companySlogan: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">URL du Logo (Image) :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.logoUrl}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, logoUrl: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Téléphone :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.phone}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, phone: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold font-mono"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Email :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.email}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, email: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Adresse :</label>
+                      <input 
+                        type="text" 
+                        value={systemSettings.address}
+                        onChange={(e) => setSystemSettings(prev => ({ ...prev, address: e.target.value }))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Card 2: Devise & Paramètres Métiers */}
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-5">
+                    <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
+                      <Coins className="w-5 h-5 text-amber-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Devise & Seuils</h3>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Symbole Devise (ex: FCFA) :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.currency}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, currency: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-bold"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Format Locale (ex: fr-FR) :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.currencyLocale}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, currencyLocale: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase">Seuil d'alerte stock par défaut :</label>
+                      <input 
+                        type="number" 
+                        min="0"
+                        value={systemSettings.defaultStockThreshold}
+                        onChange={(e) => setSystemSettings(prev => ({ ...prev, defaultStockThreshold: Math.max(0, Number(e.target.value)) }))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-bold font-mono"
+                      />
+                      <p className="text-[10px] text-zinc-500 italic">Ce seuil sera appliqué automatiquement lors de la création de nouvelles fiches produits.</p>
+                    </div>
+
+                    <div className="pt-2 border-t border-zinc-900 flex justify-between gap-4">
+                      <button
+                        type="button"
+                        onClick={handleResetSystemSettings}
+                        className="py-2.5 px-4 bg-rose-950/40 hover:bg-rose-950/80 text-rose-400 hover:text-white rounded-xl text-xs font-bold border border-rose-900/30 flex items-center gap-1.5 transition-all"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Réinitialiser aux valeurs d'origine</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          alert("Paramètres système sauvegardés et appliqués avec succès !");
+                        }}
+                        className="py-2.5 px-5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-950/20 active:scale-95 transition-all flex items-center gap-1.5"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Enregistrer les paramètres</span>
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Section 2: Tarifs Consoles */}
+                <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
+                    <Gamepad2 className="w-5 h-5 text-blue-400" />
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Tarification Horaire des Stations / Consoles</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {consoles.map(consoleObj => (
+                      <div key={consoleObj.id} className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 space-y-3 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-8 h-8 opacity-[0.03] text-white">
+                          <Gamepad2 className="w-full h-full" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <h4 className="text-xs font-extrabold text-white">{consoleObj.name}</h4>
+                          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{consoleObj.type}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-500 uppercase">Tarif horaire ({systemSettings.currency}) :</label>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="number"
+                              min="0"
+                              step="100"
+                              value={consoleObj.ratePerHour}
+                              onChange={(e) => {
+                                const val = Math.max(0, Number(e.target.value));
+                                setConsoles(prev => prev.map(c => c.id === consoleObj.id ? { ...c, ratePerHour: val } : c));
+                              }}
+                              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-blue-500"
+                            />
+                            <span className="text-[10px] text-zinc-500 font-semibold">/h</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Section 3: Catégories & Modes de Paiement editors */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  
+                  {/* Category editor */}
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
+                      <Tag className="w-5 h-5 text-teal-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Catégories de Produits Snack</h3>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* List */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        {productCategories.map(cat => (
+                          <div key={cat.id} className="flex items-center justify-between p-2.5 bg-zinc-950 border border-zinc-900 rounded-xl">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">{cat.emoji}</span>
+                              <span className="text-xs font-bold text-zinc-300 capitalize">{cat.label}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextName = prompt("Nouveau nom pour la catégorie :", cat.label);
+                                  if (nextName && nextName.trim()) {
+                                    setProductCategories(prev => prev.map(c => c.id === cat.id ? { ...c, label: nextName.trim() } : c));
+                                    addLog("category_rename", `Catégorie ${cat.label} renommée en ${nextName.trim()}`, "snack");
+                                  }
+                                }}
+                                className="p-1 text-zinc-500 hover:text-zinc-300 rounded hover:bg-zinc-900"
+                                title="Modifier"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm(`Supprimer la catégorie "${cat.label}" ?`)) {
+                                    setProductCategories(prev => prev.filter(c => c.id !== cat.id));
+                                    addLog("category_delete", `Catégorie ${cat.label} supprimée`, "snack");
+                                  }
+                                }}
+                                className="p-1 text-zinc-500 hover:text-rose-400 rounded hover:bg-zinc-900"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Add category form */}
+                      <form 
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const label = e.target.label.value.trim();
+                          const emoji = e.target.emoji.value.trim() || "📦";
+                          if (!label) return;
+                          const id = label.toLowerCase().replace(/[^a-z0-9]/g, "-");
+                          if (productCategories.find(c => c.id === id)) {
+                            alert("Cette catégorie existe déjà !");
+                            return;
+                          }
+                          setProductCategories(prev => [...prev, { id, label, emoji }]);
+                          addLog("category_add", `Nouvelle catégorie ajoutée : ${label}`, "snack");
+                          e.target.reset();
+                        }}
+                        className="bg-zinc-950 p-3.5 rounded-xl border border-zinc-900 flex gap-2.5 items-end"
+                      >
+                        <div className="w-16 space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-500 uppercase block">Emoji :</label>
+                          <input 
+                            name="emoji" 
+                            type="text" 
+                            placeholder="🍿" 
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-center focus:outline-none focus:border-teal-500"
+                          />
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-500 uppercase block">Nom Catégorie :</label>
+                          <input 
+                            name="label" 
+                            type="text" 
+                            placeholder="Ex: Chocolats" 
+                            required
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-teal-500"
+                          />
+                        </div>
+                        <button 
+                          type="submit" 
+                          className="bg-teal-600 hover:bg-teal-500 text-white rounded-lg p-2 font-bold transition-all shadow-md active:scale-95"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </form>
+
+                    </div>
+                  </div>
+
+                  {/* Payment method editor */}
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
+                      <CreditCard className="w-5 h-5 text-cyan-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Modes de Paiement</h3>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* List */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        {paymentMethods.map(method => (
+                          <div key={method} className="flex items-center justify-between p-2.5 bg-zinc-950 border border-zinc-900 rounded-xl">
+                            <span className="text-xs font-bold text-zinc-300 capitalize">{method}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Supprimer le mode de paiement "${method}" ?`)) {
+                                  setPaymentMethods(prev => prev.filter(m => m !== method));
+                                  addLog("payment_method_delete", `Mode de paiement supprimé : ${method}`, "snack");
+                                }
+                              }}
+                              className="p-1 text-zinc-500 hover:text-rose-400 rounded hover:bg-zinc-900"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Add payment method form */}
+                      <form 
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const val = e.target.methodName.value.trim().toLowerCase();
+                          if (!val) return;
+                          if (paymentMethods.includes(val)) {
+                            alert("Ce mode de paiement existe déjà !");
+                            return;
+                          }
+                          setPaymentMethods(prev => [...prev, val]);
+                          addLog("payment_method_add", `Nouveau mode de paiement ajouté : ${val}`, "snack");
+                          e.target.reset();
+                        }}
+                        className="bg-zinc-950 p-3.5 rounded-xl border border-zinc-900 flex gap-2.5 items-end"
+                      >
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[9px] font-bold text-zinc-500 uppercase block">Mode de paiement :</label>
+                          <input 
+                            name="methodName" 
+                            type="text" 
+                            placeholder="Ex: Orange Money" 
+                            required
+                            className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500"
+                          />
+                        </div>
+                        <button 
+                          type="submit" 
+                          className="bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg p-2 font-bold transition-all shadow-md active:scale-95"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </button>
+                      </form>
+
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            )}
 
             {activeTab === "caisse" && (
               <div className="space-y-6 graffiti-spray-purple">
@@ -5757,9 +6380,10 @@ export default function App() {
             <div className="w-12 h-1.5 bg-zinc-300 rounded-full mb-2"></div>
             
             <div className="text-center space-y-1">
-              <h3 className="font-extrabold text-lg tracking-tight uppercase">GAMEZONE HUB</h3>
-              <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">12 Rue des Gamers, 75000 Paris</p>
-              <p className="text-[9px] text-zinc-400">Tél : 01.23.45.67.89</p>
+              {systemSettings.logoUrl && <img src={systemSettings.logoUrl} className="max-h-12 mx-auto mb-1 rounded" alt="Logo" />}
+              <h3 className="font-extrabold text-lg tracking-tight uppercase">{systemSettings.companyName || "GAMEZONE HUB"}</h3>
+              <p className="text-[9px] text-zinc-500 uppercase tracking-widest font-semibold">{systemSettings.address || "12 Rue des Gamers, Yaoundé"}</p>
+              <p className="text-[9px] text-zinc-400">Tél : {systemSettings.phone || "+237 6 55 11 22 33"} | Email : {systemSettings.email || ""}</p>
             </div>
 
             <div className="w-full border-t border-dashed border-zinc-300 my-2"></div>
@@ -5772,7 +6396,7 @@ export default function App() {
               </div>
               <div className="flex justify-between">
                 <span>DATE :</span>
-                <span>{currentDateTime.toLocaleDateString('fr-FR')} {showReceiptModal.date}</span>
+                <span>{currentDateTime.toLocaleDateString(systemSettings.currencyLocale || 'fr-FR')} {showReceiptModal.date}</span>
               </div>
               <div className="flex justify-between">
                 <span>CLIENT :</span>
@@ -5800,7 +6424,7 @@ export default function App() {
                     <span className="font-bold">{showReceiptModal.item}</span>
                     <span className="text-[9px] text-zinc-500 block">Session Temps de Jeu</span>
                   </div>
-                  <span className="font-bold font-mono">{showReceiptModal.gameCost.toLocaleString('fr-FR')} FCFA</span>
+                  <span className="font-bold font-mono">{formatPrice(showReceiptModal.gameCost)}</span>
                 </div>
               )}
 
@@ -5811,13 +6435,13 @@ export default function App() {
                     <div>
                       <span>{item.quantity}x {item.product.name}</span>
                     </div>
-                    <span className="font-bold font-mono">{(item.product.price * item.quantity).toLocaleString('fr-FR')} FCFA</span>
+                    <span className="font-bold font-mono">{formatPrice(item.product.price * item.quantity)}</span>
                   </div>
                 ))
               ) : showReceiptModal.snackCost > 0 ? (
                 <div className="flex justify-between py-1">
                   <span>Consommations Snack Bar</span>
-                  <span className="font-bold font-mono">{showReceiptModal.snackCost.toLocaleString('fr-FR')} FCFA</span>
+                  <span className="font-bold font-mono">{formatPrice(showReceiptModal.snackCost)}</span>
                 </div>
               ) : null}
             </div>
@@ -5829,16 +6453,16 @@ export default function App() {
               {showReceiptModal.prepaid > 0 && (
                 <div className="flex justify-between text-xs text-zinc-600">
                   <span>Prépayé au démarrage :</span>
-                  <span>{showReceiptModal.prepaid.toLocaleString('fr-FR')} FCFA</span>
+                  <span>{formatPrice(showReceiptModal.prepaid)}</span>
                 </div>
               )}
               <div className="flex justify-between text-xs text-zinc-600">
                 <span>Total Prestations :</span>
-                <span>{showReceiptModal.total.toLocaleString('fr-FR')} FCFA</span>
+                <span>{formatPrice(showReceiptModal.total)}</span>
               </div>
               <div className="flex justify-between text-xs text-zinc-600">
                 <span>TVA (10%) :</span>
-                <span>{Math.round(showReceiptModal.total * 0.10).toLocaleString('fr-FR')} FCFA</span>
+                <span>{formatPrice(Math.round(showReceiptModal.total * 0.10))}</span>
               </div>
               <div className="flex justify-between text-base font-black text-zinc-950 pt-2 border-t border-zinc-200">
                 <span>
@@ -5848,8 +6472,8 @@ export default function App() {
                 </span>
                 <span className="font-mono text-lg">
                   {showReceiptModal.prepaid > 0 
-                    ? Math.abs(showReceiptModal.total - showReceiptModal.prepaid).toLocaleString('fr-FR')
-                    : showReceiptModal.total.toLocaleString('fr-FR')} FCFA
+                    ? formatPrice(Math.abs(showReceiptModal.total - showReceiptModal.prepaid))
+                    : formatPrice(showReceiptModal.total)}
                 </span>
               </div>
             </div>
@@ -6156,11 +6780,9 @@ export default function App() {
                     onChange={(e) => setPurchasePaymentMethod(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-300 focus:outline-none focus:border-emerald-500 font-semibold"
                   >
-                    <option value="espèces">Espèces</option>
-                    <option value="wave">Wave</option>
-                    <option value="mobile money">Mobile Money</option>
-                    <option value="carte bancaire">Carte Bancaire</option>
-                    <option value="virement">Virement</option>
+                    {paymentMethods.map(method => (
+                      <option key={method} value={method}>{method.charAt(0).toUpperCase() + method.slice(1)}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -6369,11 +6991,9 @@ export default function App() {
                     onChange={(e) => setPurchasePaymentMethod(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-300 focus:outline-none focus:border-emerald-500 font-semibold"
                   >
-                    <option value="espèces">Espèces</option>
-                    <option value="wave">Wave</option>
-                    <option value="mobile money">Mobile Money</option>
-                    <option value="carte bancaire">Carte Bancaire</option>
-                    <option value="virement">Virement</option>
+                    {paymentMethods.map(method => (
+                      <option key={method} value={method}>{method.charAt(0).toUpperCase() + method.slice(1)}</option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -6622,14 +7242,25 @@ export default function App() {
             </div>
 
             <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom du produit :</label>
-                <input
-                  type="text"
-                  value={editProdName}
-                  onChange={(e) => setEditProdName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-violet-500"
-                />
+              <div className="grid grid-cols-4 gap-3 items-end">
+                <div className="col-span-3 space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom du produit :</label>
+                  <input
+                    type="text"
+                    value={editProdName}
+                    onChange={(e) => setEditProdName(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block text-center">Icône :</label>
+                  <input
+                    type="text"
+                    value={editProdImage}
+                    onChange={(e) => setEditProdImage(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-center text-white focus:outline-none focus:border-violet-500 font-bold"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -6640,10 +7271,9 @@ export default function App() {
                     onChange={(e) => setEditProdCategory(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-violet-500"
                   >
-                    <option value="boissons">Boissons</option>
-                    <option value="eau">Eaux</option>
-                    <option value="chicha">Chichas</option>
-                    <option value="whisky">Whisky / Alcool</option>
+                    {productCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -6697,7 +7327,8 @@ export default function App() {
                     editProdCategory, 
                     editProdPurchasePrice, 
                     editProdPrice, 
-                    editProdMinThreshold
+                    editProdMinThreshold,
+                    editProdImage
                   );
                   setShowEditProductModal(null);
                 }}
@@ -6761,10 +7392,9 @@ export default function App() {
                     onChange={(e) => setAddProdCategory(e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-violet-500"
                   >
-                    <option value="boissons">Boissons</option>
-                    <option value="eau">Eaux</option>
-                    <option value="chicha">Chichas</option>
-                    <option value="whisky">Whisky / Alcool</option>
+                    {productCategories.map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.label}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-2">
