@@ -358,6 +358,14 @@ export default function App() {
   const [newPlayerPhone, setNewPlayerPhone] = useState("");
   const [newDurationType, setNewDurationType] = useState("unlimited"); // 'unlimited' or 'limited'
   const [newDurationHours, setNewDurationHours] = useState(1);
+  const [newPrepaidAmount, setNewPrepaidAmount] = useState(0);
+
+  // Initialize newPrepaidAmount when opening the start modal
+  useEffect(() => {
+    if (showStartModal) {
+      setNewPrepaidAmount(showStartModal.ratePerHour);
+    }
+  }, [showStartModal]);
   const [closeSessionHours, setCloseSessionHours] = useState(1);
   const [dailySessionsCount, setDailySessionsCount] = useState(3);
   const [dailySalesCount, setDailySalesCount] = useState(5);
@@ -402,9 +410,8 @@ export default function App() {
           const prepaid = c.activeSession.prepaidAmount || 0;
           let nextAmount = 0;
           if (c.activeSession.durationType === "unlimited") {
-            const hours = newElapsed / 3600;
-            const actualCost = Math.round(hours * c.ratePerHour);
-            nextAmount = Math.max(0, actualCost - prepaid);
+            // No hourly billing for unlimited sessions
+            nextAmount = 0;
           } else {
             // For limited, they prepaid full forfait, so additional due is 0
             nextAmount = 0;
@@ -460,7 +467,9 @@ export default function App() {
 
     const durationMinutes = newDurationType === "limited" ? newDurationHours * 60 : 0;
     const fullName = `${newPlayerFirstName.trim()} ${newPlayerLastName.trim().toUpperCase()}`;
-    const gameCost = consoleObj.ratePerHour * (newDurationType === "limited" ? newDurationHours : 1);
+    const gameCost = newDurationType === "limited"
+      ? consoleObj.ratePerHour * newDurationHours
+      : Number(newPrepaidAmount || 0);
     
     // Update daily revenue stats immediately since payment is made BEFORE playing
     setStats(prev => ({
@@ -601,9 +610,11 @@ export default function App() {
   };
 
   // Interrupt and charge prorata (adjust upfront payment)
-  const handleInterruptProrata = (consoleId, elapsedSeconds, finalSnackAmount, playerRef, consoleName, ratePerHour, prepaidAmount) => {
+  const handleInterruptProrata = (consoleId, elapsedSeconds, finalSnackAmount, playerRef, consoleName, ratePerHour, prepaidAmount, durationType = "unlimited") => {
     const elapsedHours = elapsedSeconds / 3600;
-    const finalGameAmount = Math.round(elapsedHours * ratePerHour);
+    const finalGameAmount = durationType === "limited"
+      ? Math.round(elapsedHours * ratePerHour)
+      : prepaidAmount; // No hourly prorata refund for unlimited sessions since pricing is arbitrary
     
     // Adjust stats since prepaidAmount was already added at the start.
     const gameAdjustment = finalGameAmount - prepaidAmount;
@@ -3336,7 +3347,23 @@ export default function App() {
                 </div>
               </div>
 
-              {newDurationType === "limited" && (
+              {newDurationType === "unlimited" ? (
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Montant Prépayé Libre (FCFA)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="100"
+                    placeholder="Saisir le montant paid d'avance"
+                    value={newPrepaidAmount}
+                    onChange={(e) => setNewPrepaidAmount(Math.max(0, Number(e.target.value)))}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-xs font-bold text-emerald-400 focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                  <p className="text-[9px] text-zinc-500 mt-1 italic">
+                    Saisissez le montant arbitraire payé d'avance par le client pour cette session libre.
+                  </p>
+                </div>
+              ) : (
                 <div>
                   <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Durée (Heures)</label>
                   <select
@@ -3355,7 +3382,9 @@ export default function App() {
 
             {/* CTAs */}
             {(() => {
-              const amountToPay = showStartModal.ratePerHour * (newDurationType === "limited" ? newDurationHours : 1);
+              const amountToPay = newDurationType === "limited"
+                ? showStartModal.ratePerHour * newDurationHours
+                : Number(newPrepaidAmount || 0);
               return (
                 <div className="flex items-center gap-3 pt-2">
                   <button 
@@ -3443,10 +3472,11 @@ export default function App() {
                 
                 {/* Cost breakdown */}
                 {(() => {
+                  const isUnlimited = showInterruptModal.activeSession?.durationType === "unlimited";
                   const elapsedSeconds = showInterruptModal.activeSession?.timeElapsedSeconds || 0;
                   const elapsedHours = elapsedSeconds / 3600;
-                  const prorataGameCost = Math.round(elapsedHours * showInterruptModal.ratePerHour);
                   const prepaid = showInterruptModal.activeSession?.prepaidAmount || 0;
+                  const prorataGameCost = isUnlimited ? prepaid : Math.round(elapsedHours * showInterruptModal.ratePerHour);
                   const snackCost = showInterruptModal.activeSession?.extraSnacksBill || 0;
                   const cashAdjustment = (prorataGameCost - prepaid) + snackCost;
 
@@ -3458,7 +3488,7 @@ export default function App() {
                           <span className="text-white font-bold font-mono">{prepaid.toLocaleString('fr-FR')} FCFA</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-zinc-500 font-medium">Jeu réel ({formatTime(elapsedSeconds)}) :</span>
+                          <span className="text-zinc-500 font-medium">{isUnlimited ? "Jeu réel (Temps libre) :" : `Jeu réel (${formatTime(elapsedSeconds)}) :`}</span>
                           <span className="text-white font-bold font-mono">{prorataGameCost.toLocaleString('fr-FR')} FCFA</span>
                         </div>
                         <div className="flex justify-between">
@@ -3486,7 +3516,8 @@ export default function App() {
                           showInterruptModal.activeSession?.player || "Joueur",
                           showInterruptModal.name,
                           showInterruptModal.ratePerHour,
-                          prepaid
+                          prepaid,
+                          showInterruptModal.activeSession?.durationType || "unlimited"
                         )}
                         className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-950/20"
                       >
@@ -3533,9 +3564,9 @@ export default function App() {
             {/* Session Summary */}
             {(() => {
               const prepaid = showCloseModal.activeSession?.prepaidAmount || 0;
-              const gameCost = Math.round((showCloseModal.activeSession?.durationType === "limited" 
-                ? (showCloseModal.activeSession.durationMinutes / 60) 
-                : closeSessionHours) * showCloseModal.ratePerHour);
+              const gameCost = showCloseModal.activeSession?.durationType === "limited" 
+                ? Math.round((showCloseModal.activeSession.durationMinutes / 60) * showCloseModal.ratePerHour)
+                : prepaid; // For unlimited, the game cost is exactly the prepaid amount (no hourly billing)
               const gameCostDue = Math.max(0, gameCost - prepaid);
               const snackCost = showCloseModal.activeSession?.extraSnacksBill || 0;
               const totalCost = gameCostDue + snackCost;
@@ -3575,29 +3606,15 @@ export default function App() {
                     )}
                   </div>
 
-                  {/* Duration input for unlimited */}
+                  {/* Info block for unlimited prepaid session */}
                   {showCloseModal.activeSession?.durationType === "unlimited" && (
-                    <div className="p-4 bg-zinc-900/40 border border-zinc-855 rounded-xl space-y-2">
-                      <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">
-                        Spécifier la durée de jeu :
-                      </label>
-                      <div className="flex items-center gap-3">
-                        <button 
-                          type="button"
-                          onClick={() => setCloseSessionHours(h => Math.max(1, h - 1))}
-                          className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 hover:bg-zinc-850 flex items-center justify-center font-bold text-zinc-300"
-                        >
-                          -
-                        </button>
-                        <span className="text-sm font-extrabold text-white w-12 text-center">{closeSessionHours} h</span>
-                        <button 
-                          type="button"
-                          onClick={() => setCloseSessionHours(h => h + 1)}
-                          className="w-8 h-8 rounded-lg bg-zinc-950 border border-zinc-800 hover:bg-zinc-850 flex items-center justify-center font-bold text-zinc-300"
-                        >
-                          +
-                        </button>
-                        <span className="text-[10px] text-zinc-500 italic">({(closeSessionHours * showCloseModal.ratePerHour).toLocaleString('fr-FR')} FCFA)</span>
+                    <div className="p-3 bg-zinc-900/40 border border-zinc-855 rounded-xl flex items-start gap-2.5">
+                      <Clock className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <p className="text-[11px] font-bold text-cyan-400 uppercase tracking-wider">Session Temps Libre</p>
+                        <p className="text-[10px] text-zinc-400 leading-normal">
+                          Cette session a été prépayée pour un montant libre de <span className="text-white font-bold">{prepaid.toLocaleString('fr-FR')} FCFA</span>. Aucun frais horaire supplémentaire n'est appliqué pour le jeu.
+                        </p>
                       </div>
                     </div>
                   )}
