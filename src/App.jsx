@@ -36,7 +36,10 @@ import {
   Package,
   History,
   ArrowUpRight,
-  ArrowDownLeft
+  ArrowDownLeft,
+  Lock,
+  Unlock,
+  Key
 } from "lucide-react";
 import { 
   initialConsoles, 
@@ -48,7 +51,8 @@ import {
   initialStockMovements,
   defaultExpenseCategories,
   initialExpenses,
-  initialPurchases
+  initialPurchases,
+  initialCaisseSessions
 } from "./mockData";
 
 export default function App() {
@@ -159,6 +163,30 @@ export default function App() {
     const up = Number(purchaseUnitPrice || 0);
     setPurchaseTotalAmount(qty * up);
   }, [purchaseQuantity, purchaseUnitPrice]);
+
+  // Caisse (Cash register) management states
+  const [caisseStatus, setCaisseStatus] = useState("ouverte");
+  const [caisseSessions, setCaisseSessions] = useState(initialCaisseSessions);
+  const [activeCaisseSession, setActiveCaisseSession] = useState({
+    id: "shift-initial",
+    dateOpen: new Date(Date.now() - 4 * 3600 * 1000).toISOString(), // 4 hours ago
+    openedBy: "Sofiane",
+    openingBalance: 250000.00,
+    gamesRevenue: 120000.00,
+    snackRevenue: 180000.00,
+    expenses: 25000.00,
+    purchases: 25000.00
+  });
+  const [caisseSubTab, setCaisseSubTab] = useState("suivi"); // 'suivi' or 'historique'
+  const [showOpenCaisseModal, setShowOpenCaisseModal] = useState(false);
+  const [showCloseCaisseModal, setShowCloseCaisseModal] = useState(false);
+
+  // Form states for open/close caisse
+  const [openCaisseBalance, setOpenCaisseBalance] = useState("");
+  const [openCaisseOperator, setOpenCaisseOperator] = useState("");
+  const [closeCaisseRealBalance, setCloseCaisseRealBalance] = useState("");
+  const [closeCaisseNotes, setCloseCaisseNotes] = useState("");
+  const [closeCaisseOperator, setCloseCaisseOperator] = useState("");
 
   // Prefill price when selecting snack products
   useEffect(() => {
@@ -325,6 +353,13 @@ export default function App() {
       cashBalance: prev.cashBalance - amt
     }));
 
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        expenses: prev.expenses + amt
+      }));
+    }
+
     addLog(
       "expense_add", 
       `Dépense enregistrée : ${amt.toLocaleString('fr-FR')} FCFA (${category}) - ${description.slice(0, 30)}`,
@@ -345,6 +380,13 @@ export default function App() {
       ...prev,
       cashBalance: prev.cashBalance + target.amount
     }));
+
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        expenses: Math.max(0, prev.expenses - target.amount)
+      }));
+    }
 
     addLog(
       "expense_delete", 
@@ -383,6 +425,13 @@ export default function App() {
       ...prev,
       cashBalance: prev.cashBalance - total
     }));
+
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        purchases: prev.purchases + total
+      }));
+    }
 
     // If it's an existing snack product, increment its stock and record stock movement
     const snackProd = products.find(p => p.name === cleanProduct);
@@ -440,6 +489,13 @@ export default function App() {
       ...prev,
       cashBalance: prev.cashBalance + oldPurchase.totalAmount - total
     }));
+
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        purchases: Math.max(0, prev.purchases - oldPurchase.totalAmount + total)
+      }));
+    }
 
     // 2. Adjust stock if products or quantities changed
     const oldSnackProd = products.find(p => p.name === oldPurchase.product);
@@ -570,6 +626,13 @@ export default function App() {
       cashBalance: prev.cashBalance + target.totalAmount
     }));
 
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        purchases: Math.max(0, prev.purchases - target.totalAmount)
+      }));
+    }
+
     // If it was a snack product, decrement its stock and record corrective stock movement
     const snackProd = products.find(p => p.name === target.product);
     if (snackProd) {
@@ -604,6 +667,302 @@ export default function App() {
       "console"
     );
   };
+
+  // Caisse (Cash register) operation helpers
+  const handleOpenCaisse = (balance, operator) => {
+    const openingBal = parseFloat(balance) || 0;
+    const openedBy = operator.trim() || (role === "admin" ? "Administrateur" : "Gérant");
+    
+    const newSession = {
+      id: `shift-${Date.now()}`,
+      dateOpen: new Date().toISOString(),
+      openedBy,
+      openingBalance: openingBal,
+      gamesRevenue: 0,
+      snackRevenue: 0,
+      expenses: 0,
+      purchases: 0
+    };
+
+    setActiveCaisseSession(newSession);
+    setCaisseStatus("ouverte");
+
+    // Sync stats.cashBalance with opening balance
+    setStats(prev => ({
+      ...prev,
+      cashBalance: openingBal
+    }));
+
+    addLog(
+      "caisse_open",
+      `Caisse ouverte par ${openedBy} avec un fond de ${openingBal.toLocaleString('fr-FR')} FCFA.`,
+      "console"
+    );
+
+    // Reset open form states
+    setOpenCaisseBalance("");
+    setOpenCaisseOperator("");
+    setShowOpenCaisseModal(false);
+  };
+
+  const handleCloseCaisse = (realBalance, notes, operator) => {
+    if (!activeCaisseSession) return;
+
+    const realBal = parseFloat(realBalance) || 0;
+    const closedBy = operator.trim() || (role === "admin" ? "Administrateur" : "Gérant");
+    
+    const expectedBal = activeCaisseSession.openingBalance 
+      + activeCaisseSession.gamesRevenue 
+      + activeCaisseSession.snackRevenue 
+      - activeCaisseSession.expenses 
+      - activeCaisseSession.purchases;
+    
+    const variance = realBal - expectedBal;
+
+    const closedSession = {
+      ...activeCaisseSession,
+      dateClose: new Date().toISOString(),
+      closedBy,
+      expectedBalance: expectedBal,
+      realBalance: realBal,
+      variance,
+      notes: notes.trim() || "Clôture de shift sans remarques.",
+      status: "fermée"
+    };
+
+    setCaisseSessions(prev => [closedSession, ...prev]);
+    setActiveCaisseSession(null);
+    setCaisseStatus("fermée");
+
+    // Sync stats.cashBalance to the counted real balance
+    setStats(prev => ({
+      ...prev,
+      cashBalance: realBal
+    }));
+
+    addLog(
+      "caisse_close",
+      `Caisse fermée par ${closedBy}. Réel: ${realBal.toLocaleString('fr-FR')} FCFA, Attendu: ${expectedBal.toLocaleString('fr-FR')} FCFA, Écart: ${variance.toLocaleString('fr-FR')} FCFA.`,
+      "console"
+    );
+
+    // Reset close form states
+    setCloseCaisseRealBalance("");
+    setCloseCaisseNotes("");
+    setCloseCaisseOperator("");
+    setShowCloseCaisseModal(false);
+  };
+
+  const handlePrintShiftReport = (session) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Le bloqueur de fenêtres pop-up empêche l'exportation. Veuillez autoriser les pop-ups.");
+      return;
+    }
+
+    const dateStr = new Date(session.dateOpen).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const timeOpen = new Date(session.dateOpen).toLocaleTimeString('fr-FR');
+    const timeClose = session.dateClose ? new Date(session.dateClose).toLocaleTimeString('fr-FR') : "En cours";
+
+    const totalRevenue = session.gamesRevenue + session.snackRevenue;
+    const totalExpenses = session.expenses + session.purchases;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Rapport Z - Clôture de Caisse</title>
+        <meta charset="utf-8">
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          body {
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 40px;
+            background-color: #ffffff;
+            color: #18181b;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 2px dashed #e4e4e7;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+          }
+          .title {
+            font-size: 24px;
+            font-weight: 800;
+            text-transform: uppercase;
+            margin: 0;
+            letter-spacing: 1px;
+          }
+          .subtitle {
+            font-size: 14px;
+            color: #71717a;
+            margin-top: 5px;
+          }
+          .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+          }
+          .details-table th, .details-table td {
+            padding: 10px;
+            border-bottom: 1px solid #e4e4e7;
+            text-align: left;
+          }
+          .details-table th {
+            color: #71717a;
+            font-size: 11px;
+            text-transform: uppercase;
+          }
+          .amount-row {
+            font-weight: bold;
+          }
+          .total-box {
+            background-color: #f4f4f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+          }
+          .variance-alert {
+            font-weight: 800;
+          }
+          .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 11px;
+            color: #a1a1aa;
+            border-top: 1px dashed #e4e4e7;
+            padding-top: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1 class="title">GameZone & Snack Bar</h1>
+          <p class="subtitle">RAPPORT Z - CLÔTURE DE SHIFT</p>
+          <p style="font-size: 12px; color: #18181b; font-weight: 600;">Session ID: ${session.id}</p>
+        </div>
+
+        <table class="details-table">
+          <tr>
+            <th>Paramètre</th>
+            <th>Valeur</th>
+          </tr>
+          <tr>
+            <td>Date d'ouverture</td>
+            <td>${dateStr} à ${timeOpen}</td>
+          </tr>
+          <tr>
+            <td>Date de fermeture</td>
+            <td>${session.dateClose ? new Date(session.dateClose).toLocaleDateString('fr-FR') + ' à ' + timeClose : 'En cours'}</td>
+          </tr>
+          <tr>
+            <td>Ouvert par</td>
+            <td>${session.openedBy}</td>
+          </tr>
+          <tr>
+            <td>Fermé par</td>
+            <td>${session.closedBy || 'N/A'}</td>
+          </tr>
+        </table>
+
+        <h3 style="margin-top: 30px; border-bottom: 1px solid #e4e4e7; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">Flux de Caisse</h3>
+        <table class="details-table">
+          <tr>
+            <td>Fond d'ouverture</td>
+            <td style="text-align: right; font-weight: 600;">${session.openingBalance.toLocaleString('fr-FR')} FCFA</td>
+          </tr>
+          <tr>
+            <td>(+) Recettes Jeux (Consoles)</td>
+            <td style="text-align: right; color: #16a34a;">+${session.gamesRevenue.toLocaleString('fr-FR')} FCFA</td>
+          </tr>
+          <tr>
+            <td>(+) Recettes Snack Bar</td>
+            <td style="text-align: right; color: #16a34a;">+${session.snackRevenue.toLocaleString('fr-FR')} FCFA</td>
+          </tr>
+          <tr>
+            <td>(-) Dépenses directes (Shift)</td>
+            <td style="text-align: right; color: #dc2626;">-${session.expenses.toLocaleString('fr-FR')} FCFA</td>
+          </tr>
+          <tr>
+            <td>(-) Achats Stocks (Shift)</td>
+            <td style="text-align: right; color: #dc2626;">-${session.purchases.toLocaleString('fr-FR')} FCFA</td>
+          </tr>
+        </table>
+
+        <div class="total-box">
+          <table style="width: 100%; font-size: 14px;">
+            <tr style="font-weight: 600;">
+              <td>Solde Théorique Attendu :</td>
+              <td style="text-align: right;">${(session.openingBalance + totalRevenue - totalExpenses).toLocaleString('fr-FR')} FCFA</td>
+            </tr>
+            <tr style="font-weight: 800; font-size: 16px; border-top: 1px solid #e4e4e7;">
+              <td style="padding-top: 10px;">Fond de Caisse Réel Compté :</td>
+              <td style="text-align: right; padding-top: 10px;">${session.realBalance?.toLocaleString('fr-FR') || 'En cours'} FCFA</td>
+            </tr>
+            ${session.dateClose ? `
+            <tr style="font-size: 14px; border-top: 1px dashed #e4e4e7;">
+              <td style="padding-top: 10px;">Écart de Caisse :</td>
+              <td style="text-align: right; padding-top: 10px; color: ${session.variance < 0 ? '#dc2626' : (session.variance > 0 ? '#d97706' : '#16a34a')};" class="variance-alert">
+                ${session.variance > 0 ? '+' : ''}${session.variance.toLocaleString('fr-FR')} FCFA
+                (${session.variance === 0 ? 'Conforme' : (session.variance < 0 ? 'Déficit' : 'Surplus')})
+              </td>
+            </tr>
+            ` : ''}
+          </table>
+        </div>
+
+        ${session.notes ? `
+          <div style="margin-top: 20px; border: 1px solid #e4e4e7; padding: 12px; border-radius: 6px; font-size: 12px; background-color: #fafafa;">
+            <strong>Notes & Remarques :</strong><br/>
+            <p style="margin: 5px 0 0 0; color: #52525b;">${session.notes}</p>
+          </div>
+        ` : ''}
+
+        <div class="footer">
+          <p>Imprimé le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}</p>
+          <p>GameZone - Système de Gestion Pro &bull; Version Graffiti Premium</p>
+        </div>
+
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const renderCaisseFermeeLock = (sectionName) => (
+    <div className="glass-panel p-8 rounded-2xl border border-zinc-850 text-center space-y-6 max-w-xl mx-auto my-12 relative overflow-hidden">
+      <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl"></div>
+      <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto text-2xl shadow-lg shadow-rose-950/20 animate-pulse">
+        <Lock className="w-8 h-8" />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-lg font-black text-rose-400 uppercase tracking-wide">Accès Suspendu (Caisse Fermée)</h3>
+        <p className="text-xs text-zinc-400 leading-relaxed">
+          Toutes les opérations de {sectionName} sont bloquées lorsque la caisse est fermée. Veuillez d'abord procéder à l'ouverture de la caisse.
+        </p>
+      </div>
+      <div className="pt-2">
+        <button
+          onClick={() => {
+            const lastClosed = caisseSessions[0];
+            setOpenCaisseBalance(lastClosed ? lastClosed.realBalance : "250000");
+            setOpenCaisseOperator("");
+            setShowOpenCaisseModal(true);
+            setActiveTab("caisse");
+          }}
+          className="py-3 px-6 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-sans rounded-xl text-xs font-extrabold tracking-wider uppercase shadow-lg shadow-orange-950/20 transition-all active:scale-95 flex items-center justify-center mx-auto gap-2"
+        >
+          <Unlock className="w-4 h-4" />
+          Aller ouvrir la Caisse
+        </button>
+      </div>
+    </div>
+  );
 
   const handleAddExpenseCategory = (name) => {
     if (role !== "admin") return;
@@ -769,6 +1128,13 @@ export default function App() {
       cashBalance: prev.cashBalance + gameCost
     }));
 
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        gamesRevenue: prev.gamesRevenue + gameCost
+      }));
+    }
+
     setConsoles(prev => prev.map(c => {
       if (c.id === consoleObj.id) {
         return {
@@ -857,6 +1223,13 @@ export default function App() {
       cashBalance: prev.cashBalance - prepaidAmount
     }));
 
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        gamesRevenue: Math.max(0, prev.gamesRevenue - prepaidAmount)
+      }));
+    }
+
     setDailyConsolesRevenue(prev => prev.map(item => {
       if (item.name === consoleName) {
         return {
@@ -917,6 +1290,14 @@ export default function App() {
       snackRevenue: prev.snackRevenue + finalSnackAmount,
       cashBalance: prev.cashBalance + cashAdjustment
     }));
+
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        gamesRevenue: prev.gamesRevenue + gameAdjustment,
+        snackRevenue: prev.snackRevenue + finalSnackAmount
+      }));
+    }
 
     setDailySessionsCount(prev => prev + 1);
 
@@ -1042,6 +1423,14 @@ export default function App() {
         cashBalance: newCash
       };
     });
+
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        gamesRevenue: prev.gamesRevenue + finalGameAmount,
+        snackRevenue: prev.snackRevenue + finalSnackAmount
+      }));
+    }
 
     // Update Top Consoles revenue chart (sessions count is already incremented at start)
     setTopConsolesState(prev => {
@@ -1542,6 +1931,13 @@ export default function App() {
       };
     });
 
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        snackRevenue: prev.snackRevenue + cartTotal
+      }));
+    }
+
     // Update product stocks
     setProducts(prev => {
       return prev.map(p => {
@@ -1968,6 +2364,23 @@ export default function App() {
               <ShoppingCart className="w-5 h-5 text-emerald-500" />
               Gestion Achats
             </button>
+
+            <button
+              onClick={() => setActiveTab("caisse")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "caisse"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <Wallet className="w-5 h-5 text-amber-500" />
+              Gestion Caisse
+              <span className={`ml-auto text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 ${
+                caisseStatus === "ouverte" ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30" : "bg-rose-950/60 text-rose-400 border border-rose-500/30"
+              }`}>
+                {caisseStatus === "ouverte" ? "Ouverte" : "Fermée"}
+              </span>
+            </button>
           </nav>
         </div>
 
@@ -2039,7 +2452,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : "Gestion des Achats"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -2521,6 +2934,11 @@ export default function App() {
                 <div>
                   <span className="sticker-badge-red bg-rose-600 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Live Stations PS</span>
                 </div>
+
+                {caisseStatus === "fermée" ? (
+                  renderCaisseFermeeLock("Gestion des Consoles")
+                ) : (
+                  <>
                 
                 {/* Rates & Actions panel for Admins */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 p-4 rounded-xl bg-zinc-900 border border-zinc-800">
@@ -2765,6 +3183,8 @@ export default function App() {
                   })}
                 </div>
 
+                  </>
+                )}
               </div>
             )}
 
@@ -2775,6 +3195,13 @@ export default function App() {
                 <div className="xl:col-span-12">
                   <span className="sticker-badge bg-zinc-900 text-amber-400 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Comptoir POS Bar</span>
                 </div>
+
+                {caisseStatus === "fermée" ? (
+                  <div className="xl:col-span-12">
+                    {renderCaisseFermeeLock("Point de Vente POS")}
+                  </div>
+                ) : (
+                  <>
                 
                 {/* Left: Product List (8 columns) */}
                 <div className="xl:col-span-8 space-y-6">
@@ -2989,6 +3416,8 @@ export default function App() {
 
                 </div>
 
+                  </>
+                )}
               </div>
             )}
 
@@ -3272,6 +3701,11 @@ export default function App() {
                 <div>
                   <span className="sticker-badge-red bg-rose-950/60 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Journal des Débits & Dépenses</span>
                 </div>
+
+                {caisseStatus === "fermée" ? (
+                  renderCaisseFermeeLock("Gestion des Dépenses")
+                ) : (
+                  <>
                 
                 {/* Stats & Actions Header */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -3535,6 +3969,8 @@ export default function App() {
 
                 </div>
 
+                  </>
+                )}
               </div>
             )}
 
@@ -3545,6 +3981,11 @@ export default function App() {
                 <div>
                   <span className="sticker-badge bg-emerald-950/60 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">Journal des Achats & Approvisionnements</span>
                 </div>
+
+                {caisseStatus === "fermée" ? (
+                  renderCaisseFermeeLock("Gestion des Achats")
+                ) : (
+                  <>
                 
                 {/* Stats & Actions Header */}
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
@@ -3750,6 +4191,369 @@ export default function App() {
                     </table>
                   </div>
                 </div>
+
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeTab === "caisse" && (
+              <div className="space-y-6 graffiti-spray-purple">
+                <div>
+                  <span className="sticker-badge bg-amber-950/60 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">
+                    Gestion de Caisse & Shifts
+                  </span>
+                </div>
+
+                {/* Sub-tabs toggle bar */}
+                <div className="flex gap-2 border-b border-zinc-800 pb-px">
+                  <button
+                    onClick={() => setCaisseSubTab("suivi")}
+                    className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all duration-200 border-b-2 ${
+                      caisseSubTab === "suivi" ? "border-amber-500 text-amber-400" : "border-transparent text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    Suivi Caisse Direct
+                  </button>
+                  <button
+                    onClick={() => setCaisseSubTab("historique")}
+                    className={`px-4 py-2.5 text-xs font-bold uppercase tracking-wider transition-all duration-200 border-b-2 ${
+                      caisseSubTab === "historique" ? "border-amber-500 text-amber-400" : "border-transparent text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    Historique des Shifts
+                  </button>
+                </div>
+
+                {/* Content based on sub-tab */}
+                {caisseSubTab === "suivi" ? (
+                  caisseStatus === "fermée" ? (
+                    /* Cash Register CLOSED state view */
+                    <div className="glass-panel p-8 rounded-2xl border border-zinc-850 text-center space-y-6 max-w-xl mx-auto my-8 relative overflow-hidden">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl"></div>
+                      <div className="w-16 h-16 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto text-2xl shadow-lg shadow-rose-950/20 animate-bounce">
+                        <Lock className="w-8 h-8" />
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-lg font-black text-rose-400 uppercase tracking-wide">La Caisse est Fermée</h3>
+                        <p className="text-xs text-zinc-400 leading-relaxed">
+                          Toutes les transactions (lancements de consoles, ventes de snacks, enregistrement de dépenses ou d'achats) sont suspendues tant que la caisse n'est pas ouverte.
+                        </p>
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            // Pre-fill opening balance with the last closed session's real balance
+                            const lastClosed = caisseSessions[0];
+                            setOpenCaisseBalance(lastClosed ? lastClosed.realBalance : "250000");
+                            setOpenCaisseOperator("");
+                            setShowOpenCaisseModal(true);
+                          }}
+                          className="py-3 px-6 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black rounded-xl text-xs font-extrabold tracking-wider uppercase shadow-lg shadow-orange-950/20 active:scale-95 transition-all inline-flex items-center gap-2"
+                        >
+                          <Unlock className="w-4 h-4" />
+                          Ouvrir la Caisse (Nouveau Shift)
+                        </button>
+                      </div>
+
+                      {caisseSessions.length > 0 && (
+                        <div className="border-t border-zinc-900 pt-4 text-left">
+                          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2">Dernière clôture enregistrée :</span>
+                          <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 flex justify-between items-center text-xs">
+                            <div>
+                              <p className="text-zinc-400 font-semibold">Par : <span className="text-white font-bold">{caisseSessions[0].closedBy}</span></p>
+                              <p className="text-[10px] text-zinc-500">{new Date(caisseSessions[0].dateClose).toLocaleDateString('fr-FR')} à {new Date(caisseSessions[0].dateClose).toLocaleTimeString('fr-FR')}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-zinc-500 font-medium">Solde réel clôturé</p>
+                              <p className="font-bold text-emerald-400 font-mono text-sm">{caisseSessions[0].realBalance.toLocaleString('fr-FR')} FCFA</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Cash Register OPEN state view */
+                    <div className="space-y-6">
+                      {/* Active Shift Header Metrics */}
+                      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/40 p-4 border border-zinc-850 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center text-xl">
+                            <Unlock className="w-5 h-5 animate-pulse" />
+                          </div>
+                          <div>
+                            <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                              Session Active
+                              <span className="bg-emerald-500/20 text-emerald-400 text-[8px] font-extrabold px-1.5 py-0.5 rounded-full border border-emerald-500/30">En Cours</span>
+                            </h3>
+                            <p className="text-[10px] text-zinc-500">
+                              Ouverte par <span className="text-zinc-300 font-bold">{activeCaisseSession.openedBy}</span> depuis le {new Date(activeCaisseSession.dateOpen).toLocaleDateString('fr-FR')} à {new Date(activeCaisseSession.dateOpen).toLocaleTimeString('fr-FR')}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setCloseCaisseRealBalance("");
+                            setCloseCaisseNotes("");
+                            setCloseCaisseOperator("");
+                            setShowCloseCaisseModal(true);
+                          }}
+                          className="w-full lg:w-auto py-2.5 px-4 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Lock className="w-4 h-4" />
+                          Fermer la Caisse (Z-Clôture)
+                        </button>
+                      </div>
+
+                      {/* Live Counter Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                        {/* 1. Fond d'ouverture */}
+                        <div className="glass-panel p-4 rounded-xl border border-zinc-800/40 relative overflow-hidden flex flex-col gap-1 shadow-md">
+                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Fond d'Ouverture</span>
+                          <span className="text-lg font-black text-zinc-300 font-mono">
+                            {activeCaisseSession.openingBalance.toLocaleString('fr-FR')} FCFA
+                          </span>
+                        </div>
+
+                        {/* 2. Recettes Jeux */}
+                        <div className="glass-panel p-4 rounded-xl border border-emerald-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
+                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">ENTRÉE</div>
+                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Recettes Jeux (Consoles)</span>
+                          <span className="text-lg font-black text-emerald-400 font-mono">
+                            +{activeCaisseSession.gamesRevenue.toLocaleString('fr-FR')} FCFA
+                          </span>
+                        </div>
+
+                        {/* 3. Recettes Snacks */}
+                        <div className="glass-panel p-4 rounded-xl border border-emerald-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
+                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">ENTRÉE</div>
+                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Recettes Snack Bar</span>
+                          <span className="text-lg font-black text-emerald-400 font-mono">
+                            +{activeCaisseSession.snackRevenue.toLocaleString('fr-FR')} FCFA
+                          </span>
+                        </div>
+
+                        {/* 4. Dépenses directes */}
+                        <div className="glass-panel p-4 rounded-xl border border-rose-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
+                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded">SORTIE</div>
+                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Dépenses (Charges Shift)</span>
+                          <span className="text-lg font-black text-rose-400 font-mono">
+                            -{activeCaisseSession.expenses.toLocaleString('fr-FR')} FCFA
+                          </span>
+                        </div>
+
+                        {/* 5. Achats Stocks */}
+                        <div className="glass-panel p-4 rounded-xl border border-rose-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
+                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded">SORTIE</div>
+                          <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Achats Stocks (Shift)</span>
+                          <span className="text-lg font-black text-rose-400 font-mono">
+                            -{activeCaisseSession.purchases.toLocaleString('fr-FR')} FCFA
+                          </span>
+                        </div>
+
+                        {/* 6. Solde Théorique attendu */}
+                        <div className="glass-panel p-4 rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/20 to-blue-950/10 relative overflow-hidden flex flex-col gap-1 shadow-lg">
+                          <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded font-sans uppercase tracking-widest">ATTENDU</div>
+                          <span className="text-[9px] text-zinc-400 font-black uppercase tracking-wider">Solde Théorique</span>
+                          <span className="text-lg font-black text-cyan-300 font-mono">
+                            {(activeCaisseSession.openingBalance 
+                              + activeCaisseSession.gamesRevenue 
+                              + activeCaisseSession.snackRevenue 
+                              - activeCaisseSession.expenses 
+                              - activeCaisseSession.purchases).toLocaleString('fr-FR')} FCFA
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Live Actions & Summary graph */}
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4 lg:col-span-2">
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span>📊</span> Répartition des Flux Financiers
+                          </h4>
+                          {/* Live progression/ratio bars */}
+                          <div className="space-y-4 pt-2">
+                            {(() => {
+                              const totalSales = activeCaisseSession.gamesRevenue + activeCaisseSession.snackRevenue;
+                              const totalCosts = activeCaisseSession.expenses + activeCaisseSession.purchases;
+                              
+                              const pctGames = totalSales > 0 ? (activeCaisseSession.gamesRevenue / totalSales) * 100 : 0;
+                              const pctSnacks = totalSales > 0 ? (activeCaisseSession.snackRevenue / totalSales) * 100 : 0;
+                              const pctExpenses = totalCosts > 0 ? (activeCaisseSession.expenses / totalCosts) * 100 : 0;
+                              const pctPurchases = totalCosts > 0 ? (activeCaisseSession.purchases / totalCosts) * 100 : 0;
+
+                              return (
+                                <div className="space-y-4">
+                                  {/* Recettes */}
+                                  <div className="space-y-1.5">
+                                    <div className="flex justify-between text-xs font-semibold text-zinc-300">
+                                      <span>Total Recettes Entrantes</span>
+                                      <span className="text-emerald-400 font-bold font-mono">+{totalSales.toLocaleString('fr-FR')} FCFA</span>
+                                    </div>
+                                    <div className="h-3 bg-zinc-950 rounded-full overflow-hidden flex border border-zinc-850 p-0.5">
+                                      <div style={{ width: `${pctGames}%` }} className="bg-gradient-to-r from-violet-600 to-indigo-500 rounded-l-full transition-all duration-500" title={`Jeux: ${pctGames.toFixed(0)}%`}></div>
+                                      <div style={{ width: `${pctSnacks}%` }} className="bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-500" title={`Snacks: ${pctSnacks.toFixed(0)}%`}></div>
+                                    </div>
+                                    <div className="flex gap-4 text-[10px] text-zinc-500 font-bold">
+                                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-violet-600"></span> Jeux ({pctGames.toFixed(0)}%)</span>
+                                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Snacks ({pctSnacks.toFixed(0)}%)</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Dépenses / Sorties */}
+                                  <div className="space-y-1.5 pt-2">
+                                    <div className="flex justify-between text-xs font-semibold text-zinc-300">
+                                      <span>Total Dépenses & Achats Sortants</span>
+                                      <span className="text-rose-400 font-bold font-mono">-{totalCosts.toLocaleString('fr-FR')} FCFA</span>
+                                    </div>
+                                    <div className="h-3 bg-zinc-950 rounded-full overflow-hidden flex border border-zinc-850 p-0.5">
+                                      <div style={{ width: `${pctExpenses}%` }} className="bg-gradient-to-r from-rose-600 to-pink-500 rounded-l-full transition-all duration-500" title={`Dépenses: ${pctExpenses.toFixed(0)}%`}></div>
+                                      <div style={{ width: `${pctPurchases}%` }} className="bg-gradient-to-r from-orange-600 to-red-500 transition-all duration-500" title={`Achats Stock: ${pctPurchases.toFixed(0)}%`}></div>
+                                    </div>
+                                    <div className="flex gap-4 text-[10px] text-zinc-500 font-bold">
+                                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-600"></span> Dépenses Directes ({pctExpenses.toFixed(0)}%)</span>
+                                      <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-600"></span> Achats Snacks ({pctPurchases.toFixed(0)}%)</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+
+                        {/* Direct Shift quick info */}
+                        <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">📋 Renseignements Shift</h4>
+                          <ul className="space-y-3 text-xs text-zinc-400 font-medium">
+                            <li className="flex justify-between border-b border-zinc-900 pb-2">
+                              <span>Identifiant unique :</span>
+                              <span className="text-white font-mono font-bold">{activeCaisseSession.id}</span>
+                            </li>
+                            <li className="flex justify-between border-b border-zinc-900 pb-2">
+                              <span>Heure de Début :</span>
+                              <span className="text-white font-bold">{new Date(activeCaisseSession.dateOpen).toLocaleTimeString('fr-FR')}</span>
+                            </li>
+                            <li className="flex justify-between border-b border-zinc-900 pb-2">
+                              <span>Opérateur Shift :</span>
+                              <span className="text-white font-bold">{activeCaisseSession.openedBy}</span>
+                            </li>
+                          </ul>
+                          <div className="pt-2 text-center">
+                            <button
+                              onClick={() => handlePrintShiftReport(activeCaisseSession)}
+                              className="w-full py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                            >
+                              <Printer className="w-4 h-4" />
+                              Imprimer Ticket d'État
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  /* History sub-tab view */
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
+                    <div className="flex justify-between items-center pb-2">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">📜 Historique des shifts clôturés</h4>
+                      <span className="text-[10px] bg-zinc-900 px-3 py-1 rounded-xl text-zinc-400 font-semibold border border-zinc-800">
+                        {caisseSessions.length} Shift(s) au total
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-zinc-850 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                            <th className="p-4">Période Shift</th>
+                            <th className="p-4">Gérants</th>
+                            <th className="p-4 text-right">Ouverture</th>
+                            <th className="p-4 text-right">Recettes (+J / +S)</th>
+                            <th className="p-4 text-right">Dépenses (-D / -A)</th>
+                            <th className="p-4 text-right">Solde Théorique</th>
+                            <th className="p-4 text-right">Solde Réel</th>
+                            <th className="p-4 text-center">Écart</th>
+                            <th className="p-4 text-center">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {caisseSessions.map((session, idx) => {
+                            const isOk = session.variance === 0;
+                            const isNegative = session.variance < 0;
+
+                            return (
+                              <tr key={idx} className="border-b border-zinc-900/60 hover:bg-zinc-950/40 text-xs text-zinc-300 font-medium">
+                                <td className="p-4 space-y-0.5">
+                                  <p className="text-white font-bold">{new Date(session.dateOpen).toLocaleDateString('fr-FR')}</p>
+                                  <p className="text-[9px] text-zinc-500">
+                                    {new Date(session.dateOpen).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} ➡️ {new Date(session.dateClose).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                  </p>
+                                </td>
+                                <td className="p-4 space-y-0.5">
+                                  <p className="text-zinc-300">Open: <span className="text-white font-bold">{session.openedBy}</span></p>
+                                  <p className="text-zinc-400">Close: <span className="text-white font-bold">{session.closedBy}</span></p>
+                                </td>
+                                <td className="p-4 text-right font-mono text-zinc-400">
+                                  {session.openingBalance.toLocaleString('fr-FR')} FCFA
+                                </td>
+                                <td className="p-4 text-right font-mono text-emerald-400 space-y-0.5">
+                                  <p>🎮 {session.gamesRevenue.toLocaleString('fr-FR')}</p>
+                                  <p className="text-[10px] text-emerald-500/80">🥤 {session.snackRevenue.toLocaleString('fr-FR')}</p>
+                                </td>
+                                <td className="p-4 text-right font-mono text-rose-400 space-y-0.5">
+                                  <p>💸 {session.expenses.toLocaleString('fr-FR')}</p>
+                                  <p className="text-[10px] text-rose-500/80">🛒 {session.purchases.toLocaleString('fr-FR')}</p>
+                                </td>
+                                <td className="p-4 text-right font-mono text-zinc-400">
+                                  {session.expectedBalance.toLocaleString('fr-FR')} FCFA
+                                </td>
+                                <td className="p-4 text-right font-mono text-white font-bold">
+                                  {session.realBalance.toLocaleString('fr-FR')} FCFA
+                                </td>
+                                <td className="p-4 text-center">
+                                  <span className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
+                                    isOk 
+                                      ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/30" 
+                                      : isNegative
+                                        ? "bg-rose-950/60 text-rose-400 border-rose-500/30 font-bold tracking-tight shadow-md shadow-rose-950/20"
+                                        : "bg-amber-950/60 text-amber-400 border-amber-500/30 font-bold tracking-tight shadow-md shadow-amber-950/20"
+                                  }`}>
+                                    {isOk ? (
+                                      "Conforme"
+                                    ) : (
+                                      `${session.variance > 0 ? '+' : ''}${session.variance.toLocaleString('fr-FR')} FCFA`
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="p-4 text-center">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      onClick={() => handlePrintShiftReport(session)}
+                                      className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
+                                      title="Imprimer le rapport de shift"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </button>
+                                    {session.notes && (
+                                      <button
+                                        onClick={() => alert(`Remarques du shift :\n\n"${session.notes}"`)}
+                                        className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
+                                        title="Voir les remarques"
+                                      >
+                                        <FileText className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -3761,6 +4565,212 @@ export default function App() {
 
 
       {/* ==================== MODALS & POPUPS ==================== */}
+
+      {/* Modale Ouverture de Caisse */}
+      {showOpenCaisseModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+              <div className="flex items-center gap-2">
+                <Unlock className="w-5 h-5 text-amber-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Ouverture de Caisse</h3>
+              </div>
+              <button 
+                onClick={() => setShowOpenCaisseModal(false)}
+                className="text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleOpenCaisse(openCaisseBalance, openCaisseOperator);
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Fond de caisse d'ouverture (FCFA)</label>
+                <input 
+                  type="number"
+                  required
+                  placeholder="Ex: 250000"
+                  value={openCaisseBalance}
+                  onChange={(e) => setOpenCaisseBalance(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Opérateur de Caisse</label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="Nom de l'opérateur"
+                  value={openCaisseOperator}
+                  onChange={(e) => setOpenCaisseOperator(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowOpenCaisseModal(false)}
+                  className="flex-1 py-3 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 rounded-xl text-xs font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black rounded-xl text-xs font-extrabold tracking-wider uppercase shadow-lg shadow-orange-950/20 active:scale-95 transition-all"
+                >
+                  Ouvrir la Caisse
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modale Fermeture de Caisse */}
+      {showCloseCaisseModal && activeCaisseSession && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-lg rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-4 animate-scale-up max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+              <div className="flex items-center gap-2">
+                <Lock className="w-5 h-5 text-rose-500" />
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Clôture de Caisse (Rapport Z)</h3>
+              </div>
+              <button 
+                onClick={() => setShowCloseCaisseModal(false)}
+                className="text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Shift financial details */}
+            <div className="bg-zinc-950/60 p-4 rounded-xl border border-zinc-900 space-y-2 text-xs">
+              <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block mb-2 border-b border-zinc-900 pb-1">Bilan Théorique du Shift</h4>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Fond d'Ouverture :</span>
+                <span className="font-mono text-zinc-300">{activeCaisseSession.openingBalance.toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              <div className="flex justify-between text-emerald-400">
+                <span>(+) Recettes Jeux (Consoles) :</span>
+                <span className="font-mono">+{activeCaisseSession.gamesRevenue.toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              <div className="flex justify-between text-emerald-400">
+                <span>(+) Recettes Snack Bar :</span>
+                <span className="font-mono">+{activeCaisseSession.snackRevenue.toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              <div className="flex justify-between text-rose-400">
+                <span>(-) Dépenses payées :</span>
+                <span className="font-mono">-{activeCaisseSession.expenses.toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              <div className="flex justify-between text-rose-400">
+                <span>(-) Achats stocks payés :</span>
+                <span className="font-mono">-{activeCaisseSession.purchases.toLocaleString('fr-FR')} FCFA</span>
+              </div>
+              
+              {(() => {
+                const expected = activeCaisseSession.openingBalance 
+                  + activeCaisseSession.gamesRevenue 
+                  + activeCaisseSession.snackRevenue 
+                  - activeCaisseSession.expenses 
+                  - activeCaisseSession.purchases;
+                
+                const real = parseFloat(closeCaisseRealBalance || 0);
+                const variance = real - expected;
+
+                return (
+                  <>
+                    <div className="flex justify-between font-bold text-cyan-400 border-t border-zinc-900 pt-2 mt-2 text-sm">
+                      <span>Solde Attendu :</span>
+                      <span className="font-mono">{expected.toLocaleString('fr-FR')} FCFA</span>
+                    </div>
+
+                    <div className="flex justify-between font-bold border-t border-zinc-900 pt-2 text-xs">
+                      <span className="text-zinc-300">Écart de Caisse calculé :</span>
+                      {closeCaisseRealBalance ? (
+                        <span className={`font-mono text-sm ${variance === 0 ? 'text-emerald-400' : variance < 0 ? 'text-rose-400' : 'text-amber-400'}`}>
+                          {variance > 0 ? '+' : ''}{variance.toLocaleString('fr-FR')} FCFA
+                          <span className="text-[10px] ml-1.5 font-bold uppercase">
+                            ({variance === 0 ? 'Conforme' : variance < 0 ? 'Déficit' : 'Surplus'})
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-zinc-500 italic">Saisir le solde réel</span>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCloseCaisse(closeCaisseRealBalance, closeCaisseNotes, closeCaisseOperator);
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Solde Réel Compté (FCFA)</label>
+                <input 
+                  type="number"
+                  required
+                  placeholder="Saisir le montant en caisse"
+                  value={closeCaisseRealBalance}
+                  onChange={(e) => setCloseCaisseRealBalance(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Fermé par (Opérateur clôture)</label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="Nom du responsable"
+                  value={closeCaisseOperator}
+                  onChange={(e) => setCloseCaisseOperator(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Remarques & Écarts de Caisse (Optionnel)</label>
+                <textarea 
+                  placeholder="Détails sur l'écart de caisse ou observations..."
+                  rows="2"
+                  value={closeCaisseNotes}
+                  onChange={(e) => setCloseCaisseNotes(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2 text-xs text-white placeholder-zinc-600 focus:outline-none focus:border-rose-500"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowCloseCaisseModal(false)}
+                  className="flex-1 py-3 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 rounded-xl text-xs font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-extrabold uppercase tracking-wider shadow-lg shadow-rose-950/20 active:scale-95 transition-all"
+                >
+                  Valider la Fermeture
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 1. Modal Démarrer Session Console */}
       {showStartModal && (

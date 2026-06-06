@@ -206,3 +206,41 @@ export const initialPurchases = [
   { id: 1, date: new Date(Date.now() - 6 * 3600 * 1000).toISOString(), supplier: "Grossiste Boissons SARL", product: "Coca-Cola (Cannette)", quantity: 50, unitPrice: 500, totalAmount: 25000, paymentMethod: "espèces", responsible: "Sofiane" },
   { id: 2, date: new Date(Date.now() - 30 * 3600 * 1000).toISOString(), supplier: "Tech Distribution", product: "Autre - Manette PS5 DualSense", quantity: 2, unitPrice: 45000, totalAmount: 90000, paymentMethod: "espèces", responsible: "Zidane" }
 ];
+
+export const initialCaisseSessions = [
+  {
+    id: "shift-1",
+    dateOpen: new Date(Date.now() - 28 * 3600 * 1000).toISOString(),
+    dateClose: new Date(Date.now() - 20 * 3600 * 1000).toISOString(),
+    openedBy: "Zidane",
+    closedBy: "Zidane",
+    openingBalance: 200000,
+    gamesRevenue: 95000,
+    snackRevenue: 120000,
+    expenses: 15000,
+    purchases: 90000,
+    expectedBalance: 310000,
+    realBalance: 310000,
+    variance: 0,
+    notes: "Clôture conforme. R.A.S. Toutes les consoles éteintes.",
+    status: "fermée"
+  },
+  {
+    id: "shift-2",
+    dateOpen: new Date(Date.now() - 52 * 3600 * 1000).toISOString(),
+    dateClose: new Date(Date.now() - 44 * 3600 * 1000).toISOString(),
+    openedBy: "Sofiane",
+    closedBy: "Sofiane",
+    openingBalance: 150000,
+    gamesRevenue: 150000,
+    snackRevenue: 175000,
+    expenses: 8000,
+    purchases: 0,
+    expectedBalance: 467000,
+    realBalance: 465000,
+    variance: -2000,
+    notes: "Écart de -2 000 FCFA. Manque suspecté sur canette chill.",
+    status: "fermée"
+  }
+];
+
