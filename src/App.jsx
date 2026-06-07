@@ -2270,6 +2270,46 @@ export default function App() {
     setShowCloseModal(null);
   };
 
+  const exportDailyReportExcel = () => {
+    const dateStr = currentDateTime.toLocaleDateString('fr-FR');
+    const totalGames = stats.gamesRevenue;
+    const totalSnacks = stats.snackRevenue;
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
+    const profit = totalGames + totalSnacks - totalExpenses;
+    const totalSessions = dailySessionsCount + consoles.filter(c => c.status === 'occupée').length;
+
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+    csvContent += "RAPPORT JOURNALIER - GAMEZONE\r\n";
+    csvContent += `Date;${dateStr}\r\n\r\n`;
+    csvContent += "Indicateur;Valeur\r\n";
+    csvContent += `Joueurs (Sessions);${totalSessions}\r\n`;
+    csvContent += `Revenus Jeux (${systemSettings.currency});${totalGames}\r\n`;
+    csvContent += `Revenus Snack (${systemSettings.currency});${totalSnacks}\r\n`;
+    csvContent += `Depenses (${systemSettings.currency});${totalExpenses}\r\n`;
+    csvContent += `Benefice (${systemSettings.currency});${profit}\r\n\r\n`;
+
+    csvContent += "DETAIL DES CONSOLES\r\n";
+    csvContent += "Console;Type;Sessions;Revenus\r\n";
+    dailyConsolesRevenue.forEach(c => {
+      csvContent += `${c.name};${c.type};${c.sessions};${c.revenue}\r\n`;
+    });
+    csvContent += "\r\n";
+
+    csvContent += "DETAIL DES VENTES SNACK\r\n";
+    csvContent += "Produit;Categorie;Quantite;Revenus\r\n";
+    dailyProductsRevenue.filter(p => p.quantity > 0).forEach(p => {
+      csvContent += `${p.name};${p.category};${p.quantity};${p.revenue}\r\n`;
+    });
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Rapport_Journalier_${dateStr.replace(/\//g, "-")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const exportDailyReportPDF = () => {
     const printWindow = window.open("", "_blank", "width=900,height=800");
     if (!printWindow) {
@@ -3149,6 +3189,18 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab("dailyReport")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "dailyReport"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <BarChart3 className="w-5 h-5 text-amber-400" />
+              Rapport Journalier
+            </button>
+
+            <button
               onClick={() => setActiveTab("invoices")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "invoices"
@@ -3264,7 +3316,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -5608,6 +5660,151 @@ export default function App() {
                       </table>
                     </div>
                   </div>
+                </div>
+              );
+            })()}
+
+            {/* ==================== VUE : RAPPORT JOURNALIER ==================== */}
+            {activeTab === "dailyReport" && (() => {
+              const totalSessions = dailySessionsCount + consoles.filter(c => c.status === "occupée").length;
+              const totalGamesRev = stats.gamesRevenue;
+              const totalSnacksRev = stats.snackRevenue;
+              const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
+              const netProfit = totalGamesRev + totalSnacksRev - totalExpenses;
+
+              return (
+                <div className="space-y-6 animate-fade-in pb-12 max-w-4xl mx-auto">
+                  <div>
+                    <span className="sticker-badge bg-zinc-900 text-amber-400 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">
+                      Synthèse d'Activité Journalière
+                    </span>
+                  </div>
+
+                  {/* Glassmorphic Daily Report Card */}
+                  <div className="glass-panel rounded-3xl border border-zinc-850 p-6 md:p-8 relative overflow-hidden space-y-6 shadow-2xl">
+                    <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+                    {/* Report Title & Date */}
+                    <div className="border-b border-zinc-800 pb-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <h3 className="text-xl font-black text-white tracking-wide uppercase italic">Rapport Journalier</h3>
+                        <p className="text-xs text-zinc-500 font-semibold mt-0.5">
+                          Bilan d'activité consolidé pour la journée du {currentDateTime.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-zinc-400 font-bold text-xs bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-900">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>Caisse Active</span>
+                      </div>
+                    </div>
+
+                    {/* Indicators list (mockup inspired) */}
+                    <div className="divide-y divide-zinc-900 font-sans">
+                      
+                      {/* Joueurs Row */}
+                      <div className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-violet-950/40 border border-violet-500/20 flex items-center justify-center text-violet-400">
+                            <Users className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-bold text-white block">Joueurs</span>
+                            <span className="text-[10px] text-zinc-500 block">Total des sessions lancées aujourd'hui</span>
+                          </div>
+                        </div>
+                        <span className="text-2xl font-black text-violet-400 font-mono pr-2">{totalSessions}</span>
+                      </div>
+
+                      {/* Games Revenue Row */}
+                      <div className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-cyan-950/40 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                            <Gamepad2 className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-bold text-white block">Revenus Jeux</span>
+                            <span className="text-[10px] text-zinc-500 block">Recettes générées par les stations</span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-extrabold text-cyan-400 font-mono pr-2">{formatPrice(totalGamesRev)}</span>
+                      </div>
+
+                      {/* Snacks Revenue Row */}
+                      <div className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-pink-950/40 border border-pink-500/20 flex items-center justify-center text-pink-400">
+                            <GlassWater className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-bold text-white block">Revenus Snack</span>
+                            <span className="text-[10px] text-zinc-500 block">Recettes du bar et consommations</span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-extrabold text-pink-400 font-mono pr-2">{formatPrice(totalSnacksRev)}</span>
+                      </div>
+
+                      {/* Expenses Row */}
+                      <div className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-rose-950/40 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                            <TrendingDown className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-bold text-white block">Dépenses</span>
+                            <span className="text-[10px] text-zinc-500 block">Dépenses de shift + achats de stocks snacks</span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-extrabold text-rose-400 font-mono pr-2">{formatPrice(totalExpenses)}</span>
+                      </div>
+
+                      {/* Net Profit Row */}
+                      <div className="py-5 flex items-center justify-between gap-4 border-t border-zinc-800">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-950/40 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                            <TrendingUp className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-base font-black text-white block uppercase tracking-wide">Bénéfice</span>
+                            <span className="text-[10px] text-zinc-500 block">Solde net d'exploitation de la journée</span>
+                          </div>
+                        </div>
+                        <span className="text-2xl font-black text-emerald-400 font-mono pr-2">{formatPrice(netProfit)}</span>
+                      </div>
+
+                    </div>
+
+                    {/* Action buttons (inspired by mockup) */}
+                    <div className="border-t border-zinc-800 pt-6 grid grid-cols-3 gap-4">
+                      <button
+                        type="button"
+                        onClick={exportDailyReportPDF}
+                        className="py-3 px-4 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 text-center flex items-center justify-center gap-2"
+                      >
+                        <FileText className="w-4 h-4 text-rose-500" />
+                        <span>Export PDF</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={exportDailyReportExcel}
+                        className="py-3 px-4 bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 text-center flex items-center justify-center gap-2"
+                      >
+                        <FileText className="w-4 h-4 text-emerald-500" />
+                        <span>Export Excel</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={exportDailyReportPDF}
+                        className="py-3 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black rounded-xl text-xs font-extrabold transition-all shadow-md active:scale-95 text-center flex items-center justify-center gap-2"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>Imprimer</span>
+                      </button>
+                    </div>
+
+                  </div>
+
                 </div>
               );
             })()}
