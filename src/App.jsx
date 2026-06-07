@@ -1097,6 +1097,300 @@ export default function App() {
     addLog("supplier_delete", `Fournisseur supprimé : ${target.nom}`, "console");
   };
 
+  // ─── Open Invoices & Mixed Payments Handlers ───────────────────────────
+  const handleToggleTicketStatus = (ticketId) => {
+    setTickets(prev => prev.map(t => {
+      if (t.id === ticketId) {
+        const nextStatus = t.status === "En attente" ? "En cours" : "En attente";
+        addLog("ticket_status", `Ticket "${t.name}" mis en statut : ${nextStatus}`, "snack");
+        return { ...t, status: nextStatus };
+      }
+      return t;
+    }));
+  };
+
+  const handleMergeTickets = (sourceId, targetId) => {
+    if (sourceId === targetId) return;
+    const sourceTicket = tickets.find(t => t.id === sourceId);
+    if (!sourceTicket) return;
+
+    if (targetId.startsWith("console-")) {
+      const consoleId = Number(targetId.replace("console-", ""));
+      setConsoles(prev => prev.map(c => {
+        if (c.id === consoleId && c.status === "occupée" && c.activeSession) {
+          const mergedList = [...(c.activeSession.extraSnacksList || [])];
+          sourceTicket.cart.forEach(sourceItem => {
+            const existing = mergedList.find(x => x.product.id === sourceItem.product.id);
+            if (existing) {
+              existing.quantity += sourceItem.quantity;
+            } else {
+              mergedList.push({ ...sourceItem });
+            }
+          });
+          const nextBill = mergedList.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
+          return {
+            ...c,
+            activeSession: {
+              ...c.activeSession,
+              extraSnacksList: mergedList,
+              extraSnacksBill: nextBill
+            }
+          };
+        }
+        return c;
+      }));
+
+      handleDeleteTicket(sourceId);
+      addLog("ticket_merge", `Ticket "${sourceTicket.name}" fusionné dans la session console ID ${consoleId}`, "snack");
+      alert(`Ticket fusionné avec succès dans la console !`);
+    } else {
+      setTickets(prev => {
+        return prev.map(t => {
+          if (t.id === targetId) {
+            const mergedCart = [...t.cart];
+            sourceTicket.cart.forEach(sourceItem => {
+              const existing = mergedCart.find(x => x.product.id === sourceItem.product.id);
+              if (existing) {
+                existing.quantity += sourceItem.quantity;
+              } else {
+                mergedCart.push({ ...sourceItem });
+              }
+            });
+            return {
+              ...t,
+              cart: mergedCart,
+              posCustomer: t.posCustomer || sourceTicket.posCustomer
+            };
+          }
+          return t;
+        });
+      });
+
+      handleDeleteTicket(sourceId);
+      addLog("ticket_merge", `Ticket "${sourceTicket.name}" fusionné dans un autre ticket`, "snack");
+      alert(`Tickets fusionnés avec succès !`);
+    }
+    setShowMergeModal(null);
+  };
+
+  const handleConfirmPayment = () => {
+    if (!showPaymentModal) return;
+    const inv = showPaymentModal;
+    const total = inv.total;
+
+    let cashUsed = 0;
+    let mobileUsed = 0;
+
+    if (paymentMethodSelected === "espèces") {
+      cashUsed = total;
+    } else if (paymentMethodSelected === "mobile money") {
+      mobileUsed = total;
+    } else if (paymentMethodSelected === "mixte") {
+      const cash = Number(paymentCashAmount || 0);
+      const mob = Number(paymentMobileAmount || 0);
+      if (cash + mob !== total) {
+        alert(`Erreur : La somme des montants saisi (${cash + mob}) n'est pas égale au total de la facture (${total}).`);
+        return;
+      }
+      cashUsed = cash;
+      mobileUsed = mob;
+    }
+
+    setStats(prev => {
+      const newGamesRev = prev.gamesRevenue + inv.gameCost;
+      const newSnacksRev = prev.snackRevenue + inv.snackCost;
+      const newCash = prev.cashBalance + cashUsed;
+      return {
+        ...prev,
+        gamesRevenue: newGamesRev,
+        snackRevenue: newSnacksRev,
+        cashBalance: newCash
+      };
+    });
+
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        gamesRevenue: prev.gamesRevenue + inv.gameCost,
+        snackRevenue: prev.snackRevenue + inv.snackCost,
+        cashBalance: prev.cashBalance + cashUsed
+      }));
+    }
+
+    if (inv.type === "pos") {
+      setProducts(prev => {
+        return prev.map(p => {
+          const sold = inv.itemsList.find(x => x.product.id === p.id);
+          if (sold) {
+            return { ...p, stock: Math.max(0, p.stock - sold.quantity) };
+          }
+          return p;
+        });
+      });
+
+      setStockMovements(prev => {
+        const newMovements = inv.itemsList.map((cartItem, idx) => ({
+          id: Date.now() + idx,
+          date: new Date().toISOString(),
+          productId: cartItem.product.id,
+          productName: cartItem.product.name,
+          type: "sortie",
+          quantity: cartItem.quantity,
+          reason: `Vente POS direct (${inv.customer})`,
+          user: role === "admin" ? "Administrateur" : "Gérant"
+        }));
+        return [...newMovements, ...prev];
+      });
+
+      setTopProductsState(prev => {
+        let updated = [...prev];
+        inv.itemsList.forEach(cartItem => {
+          const index = updated.findIndex(x => x.name === cartItem.product.name);
+          if (index > -1) {
+            updated[index] = {
+              ...updated[index],
+              quantity: updated[index].quantity + cartItem.quantity,
+              revenue: updated[index].revenue + (cartItem.product.price * cartItem.quantity)
+            };
+          } else {
+            updated.push({
+              name: cartItem.product.name,
+              quantity: cartItem.quantity,
+              revenue: cartItem.product.price * cartItem.quantity,
+              category: cartItem.product.category
+            });
+          }
+        });
+        return updated.sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+      });
+
+      setDailyProductsRevenue(prev => {
+        return prev.map(item => {
+          const sold = inv.itemsList.find(x => x.product.name === item.name);
+          if (sold) {
+            return {
+              ...item,
+              quantity: item.quantity + sold.quantity,
+              revenue: item.revenue + (sold.product.price * sold.quantity)
+            };
+          }
+          return item;
+        });
+      });
+    }
+
+    if (inv.type === "console" && inv.consoleId) {
+      setDailySessionsCount(prev => prev + 1);
+
+      const consoleObj = consoles.find(c => c.id === inv.consoleId);
+      const consoleName = consoleObj ? consoleObj.name : `Console ID ${inv.consoleId}`;
+
+      setTopConsolesState(prev => {
+        const exists = prev.find(item => item.name === consoleName);
+        if (exists) {
+          return prev.map(item => 
+            item.name === consoleName 
+              ? { ...item, revenue: item.revenue + inv.gameCost }
+              : item
+          ).sort((a, b) => b.revenue - a.revenue);
+        } else {
+          return [...prev, { name: consoleName, revenue: inv.gameCost, sessions: 0 }]
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 5);
+        }
+      });
+
+      setDailyConsolesRevenue(prev => prev.map(item => {
+        if (item.name === consoleName) {
+          return {
+            ...item,
+            revenue: item.revenue + inv.gameCost
+          };
+        }
+        return item;
+      }));
+
+      if (inv.itemsList && inv.itemsList.length > 0) {
+        setTopProductsState(prev => {
+          let updated = [...prev];
+          inv.itemsList.forEach(cartItem => {
+            const index = updated.findIndex(x => x.name === cartItem.product.name);
+            if (index > -1) {
+              updated[index] = {
+                ...updated[index],
+                quantity: updated[index].quantity + cartItem.quantity,
+                revenue: updated[index].revenue + (cartItem.product.price * cartItem.quantity)
+              };
+            } else {
+              updated.push({
+                name: cartItem.product.name,
+                quantity: cartItem.quantity,
+                revenue: cartItem.product.price * cartItem.quantity,
+                category: cartItem.product.category
+              });
+            }
+          });
+          return updated.sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+        });
+
+        setDailyProductsRevenue(prev => {
+          return prev.map(item => {
+            const sold = inv.itemsList.find(x => x.product.name === item.name);
+            if (sold) {
+              return {
+                ...item,
+                quantity: item.quantity + sold.quantity,
+                revenue: item.revenue + (sold.product.price * sold.quantity)
+              };
+            }
+            return item;
+          });
+        });
+      }
+
+      setConsoles(prev => prev.map(c => {
+        if (c.id === inv.consoleId) {
+          const sessionElapsed = c.activeSession?.timeElapsedSeconds || 0;
+          return {
+            ...c,
+            status: "libre",
+            totalTimeSeconds: (c.totalTimeSeconds || 0) + sessionElapsed,
+            activeSession: null
+          };
+        }
+        return c;
+      }));
+    }
+
+    const pmText = paymentMethodSelected === "mixte" ? `Mixte (Espèces: ${formatPrice(cashUsed)}, Mobile: ${formatPrice(mobileUsed)})` : paymentMethodSelected;
+    addLog(
+      "payment_complete",
+      `Paiement reçu pour "${inv.name}". Total: ${formatPrice(total)} (Méthode: ${pmText})`,
+      inv.type === "console" ? "console" : "snack"
+    );
+
+    setShowReceiptModal({
+      id: `REC-${Date.now().toString().slice(-6)}`,
+      customer: inv.customer,
+      itemsList: inv.itemsList,
+      gameCost: inv.gameCost,
+      snackCost: inv.snackCost,
+      total: total,
+      date: new Date().toLocaleTimeString(),
+      type: inv.type === "console" ? "Clôture Station & Snacks" : "Facture Directe",
+      paymentMethod: pmText
+    });
+
+    if (inv.type === "pos") {
+      handleDeleteTicket(inv.id);
+    }
+
+    setShowPaymentModal(null);
+    setPaymentCashAmount("");
+    setPaymentMobileAmount("");
+    setPaymentMethodSelected("espèces");
+  };
+
   const renderCaisseFermeeLock = (sectionName) => (
     <div className="glass-panel p-8 rounded-2xl border border-zinc-850 text-center space-y-6 max-w-xl mx-auto my-12 relative overflow-hidden">
       <div className="absolute top-0 right-0 w-24 h-24 bg-rose-500/5 rounded-full blur-2xl"></div>
@@ -1297,6 +1591,14 @@ export default function App() {
   const [showReceiptModal, setShowReceiptModal] = useState(null); // stores transaction receipt details
   const [showAddSnackToConsoleModal, setShowAddSnackToConsoleModal] = useState(null); // stores console object
   const [showInterruptModal, setShowInterruptModal] = useState(null); // stores console object to interrupt
+  
+  // Advanced Billing / Invoices Modal States
+  const [showPaymentModal, setShowPaymentModal] = useState(null); // stores invoice object to pay
+  const [paymentMethodSelected, setPaymentMethodSelected] = useState("espèces"); // 'espèces', 'mobile money', 'mixte'
+  const [paymentCashAmount, setPaymentCashAmount] = useState("");
+  const [paymentMobileAmount, setPaymentMobileAmount] = useState("");
+  const [showMergeModal, setShowMergeModal] = useState(null); // stores source invoice object to merge
+  const [targetMergeInvoiceId, setTargetMergeInvoiceId] = useState(""); // stores console object to interrupt
   
   // Custom rate editing state (Admin only)
   const [editingRates, setEditingRates] = useState(false);
@@ -2711,6 +3013,21 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab("invoices")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "invoices"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <FileText className="w-5 h-5 text-indigo-400" />
+              Factures en cours
+              <span className="ml-auto bg-indigo-900/60 text-indigo-400 border border-indigo-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                {tickets.length + consoles.filter(c => c.status === "occupée").length}
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("caisse")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "caisse"
@@ -2811,7 +3128,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -4012,7 +4329,25 @@ export default function App() {
                     </div>
 
                     <button
-                      onClick={handlePOSCheckout}
+                      onClick={() => {
+                        if (posAssociateConsoleId) {
+                          handlePOSCheckout();
+                        } else {
+                          setPaymentMethodSelected("espèces");
+                          setPaymentCashAmount(cartTotal);
+                          setPaymentMobileAmount("");
+                          setShowPaymentModal({
+                            type: "pos",
+                            id: isMultiBilling ? `group-${Date.now()}` : activeTicket.id,
+                            name: isMultiBilling ? `Facture Groupée (${selectedTickets.map(t => t.name).join(", ")})` : activeTicket.name,
+                            customer: posCustomer || "Client Comptant",
+                            gameCost: 0,
+                            snackCost: cartTotal,
+                            total: cartTotal,
+                            itemsList: [...cart]
+                          });
+                        }
+                      }}
                       disabled={cart.length === 0}
                       className="w-full py-3.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-extrabold shadow-lg shadow-violet-900/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                     >
@@ -4956,6 +5291,241 @@ export default function App() {
                   </div>
                 )}
               </div>
+              );
+            })()}
+
+            {/* ==================== VUE : FACTURES EN COURS ==================== */}
+            {activeTab === "invoices" && (() => {
+              const posInvoices = tickets.map(t => ({
+                type: "pos",
+                id: t.id,
+                name: t.name || `Ticket #${t.id.slice(-4)}`,
+                customer: t.posCustomer || t.name,
+                status: t.status || "En cours",
+                gameCost: 0,
+                snackCost: t.cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0),
+                total: t.cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0),
+                itemsList: t.cart,
+                consoleId: null,
+                dateCreated: t.dateCreated || new Date().toISOString()
+              }));
+
+              const consoleInvoices = consoles.filter(c => c.status === "occupée" && c.activeSession).map(c => {
+                const s = c.activeSession;
+                const gameCost = s.totalAmountDue || 0;
+                const snackCost = s.extraSnacksBill || 0;
+                return {
+                  type: "console",
+                  id: `console-${c.id}`,
+                  name: `${c.name} (${s.player})`,
+                  customer: s.player,
+                  status: "En cours",
+                  gameCost: gameCost,
+                  snackCost: snackCost,
+                  total: gameCost + snackCost,
+                  itemsList: s.extraSnacksList || [],
+                  consoleId: c.id,
+                  dateCreated: s.startTime
+                };
+              });
+
+              const allInvoices = [...posInvoices, ...consoleInvoices];
+              const totalOpenAmount = allInvoices.reduce((sum, inv) => sum + inv.total, 0);
+
+              return (
+                <div className="space-y-6 animate-fade-in pb-12">
+                  <div>
+                    <span className="sticker-badge bg-zinc-900 text-indigo-400 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">
+                      Suivi des factures de la salle
+                    </span>
+                  </div>
+
+                  {/* Indicators Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Montant total en attente</span>
+                      <span className="text-xl font-extrabold text-indigo-400 font-mono">{formatPrice(totalOpenAmount)}</span>
+                    </div>
+                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Tickets comptoir ouverts</span>
+                      <span className="text-xl font-extrabold text-white">{posInvoices.length} ouverts</span>
+                    </div>
+                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Sessions de jeux actives</span>
+                      <span className="text-xl font-extrabold text-white">{consoleInvoices.length} en cours</span>
+                    </div>
+                  </div>
+
+                  {/* Actions & Buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-900/60 p-4 rounded-2xl border border-zinc-800/80">
+                    <div className="text-xs font-bold text-zinc-300">
+                      Liste des factures actives ({allInvoices.length})
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateTicket()}
+                      className="py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-900/20 active:scale-95 transition-all flex items-center gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Ouvrir une nouvelle facture</span>
+                    </button>
+                  </div>
+
+                  {/* Invoices List Table */}
+                  <div className="glass-panel rounded-2xl border border-zinc-850 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-zinc-900/50 border-b border-zinc-800 text-zinc-400 font-bold uppercase tracking-wider">
+                            <th className="p-4">N° Facture</th>
+                            <th className="p-4">Client / Destination</th>
+                            <th className="p-4">Détails Prestations</th>
+                            <th className="p-4 text-right">Montant</th>
+                            <th className="p-4 text-center">Statut</th>
+                            <th className="p-4 text-center">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-900">
+                          {allInvoices.map((inv, idx) => {
+                            const isConsole = inv.type === "console";
+                            return (
+                              <tr key={idx} className="hover:bg-zinc-900/20 transition-all font-medium">
+                                <td className="p-4 font-mono font-bold text-zinc-400">
+                                  {isConsole ? `🕹️ ${inv.name.split(" ")[0]}` : `🧾 ${inv.name}`}
+                                </td>
+                                <td className="p-4">
+                                  <span className="text-white font-bold block">{inv.customer || "Client Comptant"}</span>
+                                  {isConsole && (
+                                    <span className="text-[10px] text-zinc-500 font-semibold uppercase tracking-wider">Console active</span>
+                                  )}
+                                </td>
+                                <td className="p-4 max-w-xs">
+                                  <div className="space-y-1">
+                                    {isConsole && (
+                                      <div className="text-[10px] text-cyan-400 font-semibold">
+                                        🎮 Session de Jeu active ({formatPrice(inv.gameCost)})
+                                      </div>
+                                    )}
+                                    {inv.itemsList && inv.itemsList.length > 0 ? (
+                                      <div className="text-[10px] text-zinc-400">
+                                        {inv.itemsList.map((it, i) => `${it.quantity}x ${it.product.name}`).join(", ")}
+                                      </div>
+                                    ) : (
+                                      !isConsole && <span className="text-zinc-600 italic">Aucune consommation</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-4 text-right font-mono font-extrabold text-white text-sm">
+                                  {formatPrice(inv.total)}
+                                </td>
+                                <td className="p-4 text-center">
+                                  <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                    inv.status === "En attente" 
+                                      ? "bg-amber-950/60 text-amber-400 border border-amber-500/20" 
+                                      : "bg-emerald-950/60 text-emerald-400 border border-emerald-500/20"
+                                  }`}>
+                                    {inv.status}
+                                  </span>
+                                </td>
+                                <td className="p-4">
+                                  <div className="flex items-center justify-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isConsole) {
+                                          setActiveTab("consoles");
+                                        } else {
+                                          setActiveTicketId(inv.id);
+                                          setSelectedTicketIds([inv.id]);
+                                          setActiveTab("snack");
+                                        }
+                                      }}
+                                      className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                                      title="Modifier / Ajouter des articles"
+                                    >
+                                      <Edit3 className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {!isConsole && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleTicketStatus(inv.id)}
+                                        className="p-1.5 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded-lg transition-colors"
+                                        title={inv.status === "En attente" ? "Reprendre" : "Mettre en attente"}
+                                      >
+                                        {inv.status === "En attente" ? (
+                                          <Play className="w-3.5 h-3.5" />
+                                        ) : (
+                                          <Clock className="w-3.5 h-3.5" />
+                                        )}
+                                      </button>
+                                    )}
+
+                                    {!isConsole && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowMergeModal(inv);
+                                          setTargetMergeInvoiceId("");
+                                        }}
+                                        className="p-1.5 text-zinc-400 hover:text-indigo-400 hover:bg-zinc-800 rounded-lg transition-colors"
+                                        title="Fusionner avec une autre facture"
+                                      >
+                                        <Users className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (isConsole) {
+                                          const consoleObj = consoles.find(c => c.id === inv.consoleId);
+                                          if (consoleObj) setShowInterruptModal(consoleObj);
+                                        } else {
+                                          if (confirm(`Voulez-vous vraiment annuler et vider la facture "${inv.name}" ?`)) {
+                                            handleDeleteTicket(inv.id);
+                                          }
+                                        }
+                                      }}
+                                      className="p-1.5 text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 rounded-lg transition-colors"
+                                      title="Annuler la facture"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setPaymentMethodSelected("espèces");
+                                        setPaymentCashAmount(inv.total);
+                                        setPaymentMobileAmount("");
+                                        setShowPaymentModal(inv);
+                                      }}
+                                      className="py-1 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1 active:scale-95 transition-all"
+                                      title="Encaisser"
+                                    >
+                                      <Check className="w-3 h-3" />
+                                      <span>Régler</span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {allInvoices.length === 0 && (
+                            <tr>
+                              <td colSpan="6" className="p-8 text-center text-zinc-500 italic">
+                                Aucune facture en cours dans l'établissement.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
               );
             })()}
 
@@ -6389,18 +6959,26 @@ export default function App() {
                     </button>
                     <button 
                       type="button"
-                      onClick={() => handleConfirmCloseSession(
-                        showCloseModal.id,
-                        gameCostDue,
-                        snackCost,
-                        showCloseModal.activeSession?.player || "Joueur",
-                        showCloseModal.name,
-                        gameCost,
-                        prepaid
-                      )}
+                      onClick={() => {
+                        setShowCloseModal(null);
+                        setPaymentMethodSelected("espèces");
+                        setPaymentCashAmount(totalCost);
+                        setPaymentMobileAmount("");
+                        setShowPaymentModal({
+                          type: "console",
+                          id: `console-${showCloseModal.id}`,
+                          name: `${showCloseModal.name} (${showCloseModal.activeSession?.player || "Joueur"})`,
+                          customer: showCloseModal.activeSession?.player || "Joueur",
+                          gameCost: gameCostDue,
+                          snackCost: snackCost,
+                          total: totalCost,
+                          itemsList: showCloseModal.activeSession?.extraSnacksList || [],
+                          consoleId: showCloseModal.id
+                        });
+                      }}
                       className="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/20 active:scale-95 transition-all"
                     >
-                      {totalCost > 0 ? "Régler le solde & Clôturer" : "Clôturer & Libérer"}
+                      {totalCost > 0 ? "Sélect. Paiement & Clôturer" : "Clôturer & Libérer"}
                     </button>
                   </div>
                 </div>
@@ -6555,6 +7133,229 @@ export default function App() {
         </div>
       )}
 
+      {/* Modal : Fusionner Factures */}
+      {showMergeModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-indigo-900/40 p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-950/50 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                  <Users className="w-4.5 h-4.5" />
+                </div>
+                <h3 className="text-base font-black text-white">Fusionner les Factures</h3>
+              </div>
+              <button onClick={() => setShowMergeModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs text-zinc-400">
+                Vous allez fusionner le ticket <strong className="text-white">"{showMergeModal.name}"</strong> (de {showMergeModal.customer || "Client Direct"}, montant : {formatPrice(showMergeModal.total)}) dans une autre facture en cours ou console active.
+              </p>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Sélectionner la facture de destination :</label>
+                <select
+                  value={targetMergeInvoiceId}
+                  onChange={(e) => setTargetMergeInvoiceId(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500 font-semibold"
+                >
+                  <option value="">-- Choisir une Facture --</option>
+                  {tickets.filter(t => t.id !== showMergeModal.id).map(t => (
+                    <option key={t.id} value={t.id}>
+                      🧾 Ticket: {t.name} ({t.posCustomer || "Comptant"})
+                    </option>
+                  ))}
+                  {consoles.filter(c => c.status === "occupée" && c.activeSession).map(c => (
+                    <option key={c.id} value={`console-${c.id}`}>
+                      🕹️ Console: {c.name} ({c.activeSession.player})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end border-t border-zinc-800 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowMergeModal(null)}
+                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMergeTickets(showMergeModal.id, targetMergeInvoiceId)}
+                disabled={!targetMergeInvoiceId}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95"
+              >
+                Confirmer la Fusion
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal : Paiement Facture (avec support Paiement Mixte) */}
+      {showPaymentModal && (() => {
+        const total = showPaymentModal.total;
+        const cashVal = Number(paymentCashAmount || 0);
+        const mobileVal = Number(paymentMobileAmount || 0);
+        const difference = total - (cashVal + mobileVal);
+        const isMixedValid = paymentMethodSelected !== "mixte" || difference === 0;
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="glass-panel w-full max-w-lg rounded-2xl border border-emerald-900/40 p-6 space-y-5 animate-scale-up">
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-950/50 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                    <Check className="w-4.5 h-4.5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white">Règlement de la Facture</h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold">{showPaymentModal.name}</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowPaymentModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+              </div>
+
+              <div className="bg-zinc-950/80 rounded-xl p-4 border border-zinc-900 space-y-3">
+                <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Récapitulatif des prestations :</div>
+                
+                <div className="space-y-1.5 text-xs text-zinc-300">
+                  {showPaymentModal.gameCost > 0 && (
+                    <div className="flex justify-between border-b border-zinc-900 pb-1.5">
+                      <span>🕹️ Session de Jeu</span>
+                      <span className="font-mono font-bold text-white">{formatPrice(showPaymentModal.gameCost)}</span>
+                    </div>
+                  )}
+                  {showPaymentModal.itemsList && showPaymentModal.itemsList.length > 0 && (
+                    <div className="space-y-1">
+                      {showPaymentModal.itemsList.map((item, idx) => (
+                        <div key={idx} className="flex justify-between text-zinc-400">
+                          <span>{item.quantity}x {item.product.name}</span>
+                          <span className="font-mono">{formatPrice(item.product.price * item.quantity)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between text-sm font-black text-white pt-2.5 border-t border-zinc-900">
+                  <span>TOTAL À PAYER :</span>
+                  <span className="font-mono text-emerald-400 text-base">{formatPrice(total)}</span>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block">Mode de règlement :</label>
+                
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { id: "espèces", label: "Espèces", desc: "Tiroir caisse" },
+                    { id: "mobile money", label: "Mobile Money", desc: "Orange, Wave, MTN" },
+                    { id: "mixte", label: "Paiement Mixte", desc: "Espèces + Mobile" }
+                  ].map(pm => {
+                    const isSelected = paymentMethodSelected === pm.id;
+                    return (
+                      <button
+                        key={pm.id}
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethodSelected(pm.id);
+                          if (pm.id === "espèces") {
+                            setPaymentCashAmount(total);
+                            setPaymentMobileAmount("");
+                          } else if (pm.id === "mobile money") {
+                            setPaymentCashAmount("");
+                            setPaymentMobileAmount(total);
+                          } else {
+                            setPaymentCashAmount("");
+                            setPaymentMobileAmount("");
+                          }
+                        }}
+                        className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                          isSelected 
+                            ? "bg-emerald-950/30 border-emerald-500/50 text-white shadow-inner" 
+                            : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                        }`}
+                      >
+                        <span className="text-xs font-bold capitalize">{pm.label}</span>
+                        <span className="text-[9px] text-zinc-500 font-semibold">{pm.desc}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {paymentMethodSelected === "mixte" && (
+                <div className="p-4 bg-zinc-950 border border-zinc-900 rounded-xl space-y-4 animate-fade-in">
+                  <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 border-b border-zinc-900 pb-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse"></span>
+                    <span>Ventilation des montants</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase block">Part Espèces ({systemSettings.currency}) :</label>
+                      <input 
+                        type="number" 
+                        min="0"
+                        placeholder="Ex: 1500"
+                        value={paymentCashAmount}
+                        onChange={(e) => setPaymentCashAmount(Math.max(0, Number(e.target.value)))}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold font-mono focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase block">Part Mobile Money ({systemSettings.currency}) :</label>
+                      <input 
+                        type="number" 
+                        min="0"
+                        placeholder="Ex: 2000"
+                        value={paymentMobileAmount}
+                        onChange={(e) => setPaymentMobileAmount(Math.max(0, Number(e.target.value)))}
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold font-mono focus:outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] pt-1 font-semibold">
+                    <span>Total Saisi : <strong className="text-white font-mono">{formatPrice(cashVal + mobileVal)}</strong></span>
+                    {difference > 0 ? (
+                      <span className="text-rose-400">Reste à ventiler : {formatPrice(difference)}</span>
+                    ) : difference < 0 ? (
+                      <span className="text-amber-400">Surplus : {formatPrice(Math.abs(difference))}</span>
+                    ) : (
+                      <span className="text-emerald-400 flex items-center gap-1">✅ Ventilation correcte !</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex gap-3 justify-end border-t border-zinc-800 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(null)}
+                  className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmPayment}
+                  disabled={!isMixedValid}
+                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-extrabold shadow-md active:scale-95 transition-all flex items-center gap-1"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Encaisser {formatPrice(total)}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 4. Modal Reçu de Vente / Facture imprimable client */}
       {showReceiptModal && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4">
@@ -6590,6 +7391,12 @@ export default function App() {
                 <span>TYPE :</span>
                 <span className="font-bold text-zinc-900 uppercase">{showReceiptModal.type}</span>
               </div>
+              {showReceiptModal.paymentMethod && (
+                <div className="flex justify-between">
+                  <span>RÈGLEMENT :</span>
+                  <span className="font-bold text-zinc-900 uppercase">{showReceiptModal.paymentMethod}</span>
+                </div>
+              )}
             </div>
 
             <div className="w-full border-t border-dashed border-zinc-300 my-2"></div>
