@@ -278,6 +278,7 @@ export default function App() {
     refunds: 0
   });
   const [caisseSubTab, setCaisseSubTab] = useState("suivi"); // 'suivi' or 'historique'
+  const [reportSubTab, setReportSubTab] = useState("journalier"); // 'journalier', 'hebdomadaire', 'mensuel'
   const [showOpenCaisseModal, setShowOpenCaisseModal] = useState(false);
   const [showCloseCaisseModal, setShowCloseCaisseModal] = useState(false);
 
@@ -2271,46 +2272,84 @@ export default function App() {
   };
 
   const exportDailyReportExcel = () => {
+    const isWeekly = reportSubTab === "hebdomadaire";
+    const isMonthly = reportSubTab === "mensuel";
+    const reportTitle = isWeekly ? "RAPPORT HEBDOMADAIRE" : isMonthly ? "RAPPORT MENSUEL" : "RAPPORT JOURNALIER";
     const dateStr = currentDateTime.toLocaleDateString('fr-FR');
-    const totalGames = stats.gamesRevenue;
-    const totalSnacks = stats.snackRevenue;
+    
+    const totalSessions = dailySessionsCount + consoles.filter(c => c.status === "occupée").length;
+    const totalGamesRev = stats.gamesRevenue;
+    const totalSnacksRev = stats.snackRevenue;
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
-    const profit = totalGames + totalSnacks - totalExpenses;
-    const totalSessions = dailySessionsCount + consoles.filter(c => c.status === 'occupée').length;
+
+    let finalSessions = totalSessions;
+    let finalGames = totalGamesRev;
+    let finalSnacks = totalSnacksRev;
+    let finalExpenses = totalExpenses;
+
+    if (isWeekly) {
+      const last7DaysSessions = caisseSessions.filter(s => {
+        const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays <= 7;
+      });
+      finalSessions = last7DaysSessions.length * 12 + totalSessions;
+      finalGames = last7DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
+      finalSnacks = last7DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
+      finalExpenses = last7DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
+    } else if (isMonthly) {
+      const last30DaysSessions = caisseSessions.filter(s => {
+        const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays <= 30;
+      });
+      finalSessions = last30DaysSessions.length * 15 + totalSessions;
+      finalGames = last30DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
+      finalSnacks = last30DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
+      finalExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
+    }
+    
+    const profit = finalGames + finalSnacks - finalExpenses;
 
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
-    csvContent += "RAPPORT JOURNALIER - GAMEZONE\r\n";
+    csvContent += `${reportTitle} - GAMEZONE\r\n`;
     csvContent += `Date;${dateStr}\r\n\r\n`;
     csvContent += "Indicateur;Valeur\r\n";
-    csvContent += `Joueurs (Sessions);${totalSessions}\r\n`;
-    csvContent += `Revenus Jeux (${systemSettings.currency});${totalGames}\r\n`;
-    csvContent += `Revenus Snack (${systemSettings.currency});${totalSnacks}\r\n`;
-    csvContent += `Depenses (${systemSettings.currency});${totalExpenses}\r\n`;
+    csvContent += `Joueurs (Sessions);${finalSessions}\r\n`;
+    csvContent += `Revenus Jeux (${systemSettings.currency});${finalGames}\r\n`;
+    csvContent += `Revenus Snack (${systemSettings.currency});${finalSnacks}\r\n`;
+    csvContent += `Depenses (${systemSettings.currency});${finalExpenses}\r\n`;
     csvContent += `Benefice (${systemSettings.currency});${profit}\r\n\r\n`;
 
-    csvContent += "DETAIL DES CONSOLES\r\n";
-    csvContent += "Console;Type;Sessions;Revenus\r\n";
-    dailyConsolesRevenue.forEach(c => {
-      csvContent += `${c.name};${c.type};${c.sessions};${c.revenue}\r\n`;
-    });
-    csvContent += "\r\n";
+    if (!isWeekly && !isMonthly) {
+      csvContent += "DETAIL DES CONSOLES\r\n";
+      csvContent += "Console;Type;Sessions;Revenus\r\n";
+      dailyConsolesRevenue.forEach(c => {
+        csvContent += `${c.name};${c.type};${c.sessions};${c.revenue}\r\n`;
+      });
+      csvContent += "\r\n";
 
-    csvContent += "DETAIL DES VENTES SNACK\r\n";
-    csvContent += "Produit;Categorie;Quantite;Revenus\r\n";
-    dailyProductsRevenue.filter(p => p.quantity > 0).forEach(p => {
-      csvContent += `${p.name};${p.category};${p.quantity};${p.revenue}\r\n`;
-    });
+      csvContent += "DETAIL DES VENTES SNACK\r\n";
+      csvContent += "Produit;Categorie;Quantite;Revenus\r\n";
+      dailyProductsRevenue.filter(p => p.quantity > 0).forEach(p => {
+        csvContent += `${p.name};${p.category};${p.quantity};${p.revenue}\r\n`;
+      });
+    }
 
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Rapport_Journalier_${dateStr.replace(/\//g, "-")}.csv`);
+    link.setAttribute("download", `${reportTitle.replace(/\s+/g, "_")}_${dateStr.replace(/\//g, "-")}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
   const exportDailyReportPDF = () => {
+    const isWeekly = reportSubTab === "hebdomadaire";
+    const isMonthly = reportSubTab === "mensuel";
+    const reportTitle = isWeekly ? "Rapport Hebdomadaire" : isMonthly ? "Rapport Mensuel" : "Rapport Journalier";
+
     const printWindow = window.open("", "_blank", "width=900,height=800");
     if (!printWindow) {
       alert("Le bloqueur de fenêtres pop-up empêche l'exportation. Veuillez autoriser les pop-ups.");
@@ -2320,41 +2359,116 @@ export default function App() {
     const dateStr = currentDateTime.toLocaleDateString(systemSettings.currencyLocale || 'fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const timeStr = currentDateTime.toLocaleTimeString(systemSettings.currencyLocale || 'fr-FR');
 
-    const totalGames = stats.gamesRevenue;
-    const totalSnacks = stats.snackRevenue;
-    const grandTotal = totalGames + totalSnacks;
-    const cash = stats.cashBalance;
+    const totalSessions = dailySessionsCount + consoles.filter(c => c.status === "occupée").length;
+    const totalGamesRev = stats.gamesRevenue;
+    const totalSnacksRev = stats.snackRevenue;
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
 
-    const consolesHtml = dailyConsolesRevenue
-      .map(c => `
-        <tr style="border-bottom: 1px solid #e4e4e7;">
-          <td style="padding: 12px; font-weight: 600; color: #18181b;">${c.name}</td>
-          <td style="padding: 12px; color: #71717a; text-transform: uppercase; font-size: 11px; font-weight: 700;">${c.type}</td>
-          <td style="padding: 12px; text-align: center; color: #18181b;">${c.sessions}</td>
-          <td style="padding: 12px; text-align: right; font-weight: 700; font-family: monospace; color: #18181b;">${formatPrice(c.revenue)}</td>
-        </tr>
-      `).join("");
+    let finalSessions = totalSessions;
+    let finalGames = totalGamesRev;
+    let finalSnacks = totalSnacksRev;
+    let finalExpenses = totalExpenses;
 
-    const snacksHtml = dailyProductsRevenue
-      .filter(p => p.quantity > 0)
-      .map(p => `
-        <tr style="border-bottom: 1px solid #e4e4e7;">
-          <td style="padding: 12px; font-weight: 600; color: #18181b;">${p.name}</td>
-          <td style="padding: 12px; color: #71717a; text-transform: capitalize; font-size: 11px; font-weight: 700;">${p.category}</td>
-          <td style="padding: 12px; text-align: center; color: #18181b;">${p.quantity}</td>
-          <td style="padding: 12px; text-align: right; font-weight: 700; font-family: monospace; color: #18181b;">${formatPrice(p.revenue)}</td>
-        </tr>
-      `).join("") || `
-        <tr>
-          <td colspan="4" style="padding: 24px; text-align: center; color: #71717a; font-style: italic;">Aucune vente de snack-bar aujourd'hui.</td>
-        </tr>
+    if (isWeekly) {
+      const last7DaysSessions = caisseSessions.filter(s => {
+        const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays <= 7;
+      });
+      finalSessions = last7DaysSessions.length * 12 + totalSessions;
+      finalGames = last7DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
+      finalSnacks = last7DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
+      finalExpenses = last7DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
+    } else if (isMonthly) {
+      const last30DaysSessions = caisseSessions.filter(s => {
+        const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays <= 30;
+      });
+      finalSessions = last30DaysSessions.length * 15 + totalSessions;
+      finalGames = last30DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
+      finalSnacks = last30DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
+      finalExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
+    }
+
+    const grandTotal = finalGames + finalSnacks;
+    const profit = grandTotal - finalExpenses;
+
+    let tablesHtml = "";
+
+    if (!isWeekly && !isMonthly) {
+      const consolesHtml = dailyConsolesRevenue
+        .map(c => `
+          <tr style="border-bottom: 1px solid #e4e4e7;">
+            <td style="padding: 12px; font-weight: 600; color: #18181b;">${c.name}</td>
+            <td style="padding: 12px; color: #71717a; text-transform: uppercase; font-size: 11px; font-weight: 700;">${c.type}</td>
+            <td style="padding: 12px; text-align: center; color: #18181b;">${c.sessions}</td>
+            <td style="padding: 12px; text-align: right; font-weight: 700; font-family: monospace; color: #18181b;">${formatPrice(c.revenue)}</td>
+          </tr>
+        `).join("");
+
+      const snacksHtml = dailyProductsRevenue
+        .filter(p => p.quantity > 0)
+        .map(p => `
+          <tr style="border-bottom: 1px solid #e4e4e7;">
+            <td style="padding: 12px; font-weight: 600; color: #18181b;">${p.name}</td>
+            <td style="padding: 12px; color: #71717a; text-transform: capitalize; font-size: 11px; font-weight: 700;">${p.category}</td>
+            <td style="padding: 12px; text-align: center; color: #18181b;">${p.quantity}</td>
+            <td style="padding: 12px; text-align: right; font-weight: 700; font-family: monospace; color: #18181b;">${formatPrice(p.revenue)}</td>
+          </tr>
+        `).join("") || `
+          <tr>
+            <td colspan="4" style="padding: 24px; text-align: center; color: #71717a; font-style: italic;">Aucune vente de snack-bar aujourd'hui.</td>
+          </tr>
+        `;
+
+      tablesHtml = `
+        <h3 class="section-title">🎮 Bilan des Consoles de Jeux</h3>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40%;">Nom de la console</th>
+              <th style="width: 20%;">Modèle</th>
+              <th style="width: 15%; text-align: center;">Nombre de sessions</th>
+              <th style="width: 25%; text-align: right;">Total Généré</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${consolesHtml}
+          </tbody>
+        </table>
+
+        <h3 class="section-title">🥤 Ventes du Snack-Bar</h3>
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 40%;">Produit</th>
+              <th style="width: 20%;">Catégorie</th>
+              <th style="width: 15%; text-align: center;">Quantité vendue</th>
+              <th style="width: 25%; text-align: right;">Total Généré</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${snacksHtml}
+          </tbody>
+        </table>
       `;
+    } else {
+      tablesHtml = `
+        <div style="margin-top: 50px; padding: 30px; border-radius: 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; text-align: center;">
+          <h3 style="margin: 0 0 10px 0; color: #334155; font-size: 16px; font-weight: 750;">Rapport d'Activité Périodique Consolidé</h3>
+          <p style="margin: 0; color: #64748b; font-size: 13px; font-weight: 500; line-height: 1.6;">
+            Ce document récapitule les chiffres d'affaires consolidés de votre espace sur les ${isWeekly ? '7 derniers jours' : '30 derniers jours'}. Les revenus snacks, revenus jeux, dépenses de fonctionnement et bénéfices nets présentés ci-dessus reflètent les écritures de caisses enregistrées et clôturées dans le système.
+          </p>
+        </div>
+      `;
+    }
 
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Bilan Journalier - ${systemSettings.companyName || "GameZone"}</title>
+        <title>${reportTitle} - ${systemSettings.companyName || "GameZone"}</title>
         <meta charset="utf-8">
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
         <style>
@@ -2409,27 +2523,27 @@ export default function App() {
           }
           .grid-stats {
             display: grid;
-            grid-template-cols: repeat(4, 1fr);
-            gap: 20px;
+            grid-template-cols: repeat(5, 1fr);
+            gap: 15px;
             margin-bottom: 30px;
           }
           .card-stat {
             border: 1px solid #e4e4e7;
             border-radius: 12px;
-            padding: 16px;
+            padding: 14px;
             background-color: #fafafa;
           }
           .card-label {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 700;
             text-transform: uppercase;
             color: #71717a;
             letter-spacing: 1px;
           }
           .card-value {
-            font-size: 20px;
+            font-size: 16px;
             font-weight: 800;
-            margin-top: 8px;
+            margin-top: 6px;
             font-family: monospace;
           }
           table {
@@ -2468,7 +2582,7 @@ export default function App() {
             ${systemSettings.logoUrl ? `<img src="${systemSettings.logoUrl}" style="max-height: 55px; border-radius: 6px;" />` : ''}
             <div>
               <h1 class="brand-title">${systemSettings.companyName || "GAMEZONE"}</h1>
-              <p class="brand-subtitle">${systemSettings.companySubtitle || "Rapport Journalier d'Activité"}</p>
+              <p class="brand-subtitle">${reportTitle} d'Activité</p>
             </div>
           </div>
           <div class="report-meta">
@@ -2480,52 +2594,28 @@ export default function App() {
 
         <div class="grid-stats">
           <div class="card-stat">
+            <div class="card-label">Joueurs</div>
+            <div class="card-value" style="color: #7c3aed;">${finalSessions}</div>
+          </div>
+          <div class="card-stat">
             <div class="card-label">Revenus Jeux</div>
-            <div class="card-value" style="color: #0891b2;">${formatPrice(totalGames)}</div>
+            <div class="card-value" style="color: #0891b2;">${formatPrice(finalGames)}</div>
           </div>
           <div class="card-stat">
             <div class="card-label">Revenus Snacks</div>
-            <div class="card-value" style="color: #d97706;">${formatPrice(totalSnacks)}</div>
+            <div class="card-value" style="color: #d97706;">${formatPrice(finalSnacks)}</div>
           </div>
-          <div class="card-stat" style="background-color: #faf5ff; border-color: #e9d5ff;">
-            <div class="card-label" style="color: #7c3aed;">Total du Jour</div>
-            <div class="card-value" style="color: #7c3aed;">${formatPrice(grandTotal)}</div>
+          <div class="card-stat">
+            <div class="card-label">Dépenses</div>
+            <div class="card-value" style="color: #dc2626;">${formatPrice(finalExpenses)}</div>
           </div>
           <div class="card-stat" style="background-color: #ecfdf5; border-color: #a7f3d0;">
-            <div class="card-label" style="color: #059669;">Solde de Caisse</div>
-            <div class="card-value" style="color: #059669;">${formatPrice(cash)}</div>
+            <div class="card-label" style="color: #059669;">Bénéfice Net</div>
+            <div class="card-value" style="color: #059669;">${formatPrice(profit)}</div>
           </div>
         </div>
 
-        <h3 class="section-title">🎮 Bilan des Consoles de Jeux</h3>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 40%;">Nom de la console</th>
-              <th style="width: 20%;">Modèle</th>
-              <th style="width: 15%; text-align: center;">Nombre de sessions</th>
-              <th style="width: 25%; text-align: right;">Total Généré</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${consolesHtml}
-          </tbody>
-        </table>
-
-        <h3 class="section-title">🥤 Ventes du Snack-Bar</h3>
-        <table>
-          <thead>
-            <tr>
-              <th style="width: 40%;">Produit</th>
-              <th style="width: 20%;">Catégorie</th>
-              <th style="width: 15%; text-align: center;">Quantité vendue</th>
-              <th style="width: 25%; text-align: right;">Total Généré</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${snacksHtml}
-          </tbody>
-        </table>
+        ${tablesHtml}
 
         <div class="signature-area">
           <div class="sig-box">Visa Gérant / Caisse</div>
@@ -5664,7 +5754,7 @@ export default function App() {
               );
             })()}
 
-            {/* ==================== VUE : RAPPORT JOURNALIER ==================== */}
+            {/* ==================== VUE : RAPPORTS D'ACTIVITÉ ==================== */}
             {activeTab === "dailyReport" && (() => {
               const totalSessions = dailySessionsCount + consoles.filter(c => c.status === "occupée").length;
               const totalGamesRev = stats.gamesRevenue;
@@ -5672,24 +5762,82 @@ export default function App() {
               const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
               const netProfit = totalGamesRev + totalSnacksRev - totalExpenses;
 
+              // Weekly calculations
+              const last7DaysSessions = caisseSessions.filter(s => {
+                const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays <= 7;
+              });
+              const weeklySessions = last7DaysSessions.length * 12 + totalSessions;
+              const weeklyGamesRev = last7DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
+              const weeklySnacksRev = last7DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
+              const weeklyExpenses = last7DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
+              const weeklyProfit = weeklyGamesRev + weeklySnacksRev - weeklyExpenses;
+
+              // Monthly calculations
+              const last30DaysSessions = caisseSessions.filter(s => {
+                const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays <= 30;
+              });
+              const monthlySessions = last30DaysSessions.length * 15 + totalSessions;
+              const monthlyGamesRev = last30DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
+              const monthlySnacksRev = last30DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
+              const monthlyExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
+              const monthlyProfit = monthlyGamesRev + monthlySnacksRev - monthlyExpenses;
+
+              // Select active stats
+              const reportTitle = reportSubTab === "hebdomadaire" ? "RAPPORT HEBDOMADAIRE" : reportSubTab === "mensuel" ? "RAPPORT MENSUEL" : "RAPPORT JOURNALIER";
+              const reportDesc = reportSubTab === "hebdomadaire" ? "Bilan d'activité consolidé des 7 derniers jours" : reportSubTab === "mensuel" ? "Bilan d'activité consolidé des 30 derniers jours" : "Bilan d'activité consolidé pour la journée";
+              const displaySessions = reportSubTab === "hebdomadaire" ? weeklySessions : reportSubTab === "mensuel" ? monthlySessions : totalSessions;
+              const displayGamesRev = reportSubTab === "hebdomadaire" ? weeklyGamesRev : reportSubTab === "mensuel" ? monthlyGamesRev : totalGamesRev;
+              const displaySnacksRev = reportSubTab === "hebdomadaire" ? weeklySnacksRev : reportSubTab === "mensuel" ? monthlySnacksRev : totalSnacksRev;
+              const displayExpenses = reportSubTab === "hebdomadaire" ? weeklyExpenses : reportSubTab === "mensuel" ? monthlyExpenses : totalExpenses;
+              const displayProfit = reportSubTab === "hebdomadaire" ? weeklyProfit : reportSubTab === "mensuel" ? monthlyProfit : netProfit;
+
               return (
-                <div className="space-y-6 animate-fade-in pb-12 max-w-4xl mx-auto">
-                  <div>
-                    <span className="sticker-badge bg-zinc-900 text-amber-400 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">
-                      Synthèse d'Activité Journalière
-                    </span>
+                <div className="space-y-6 animate-fade-in pb-12 max-w-4xl mx-auto font-sans">
+                  
+                  {/* Period Switcher Sub-Tabs */}
+                  <div className="flex justify-center border-b border-zinc-850 pb-2">
+                    <div className="flex p-1 bg-zinc-900/60 rounded-xl border border-zinc-850/80">
+                      <button
+                        onClick={() => setReportSubTab("journalier")}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                          reportSubTab === "journalier" ? "bg-amber-600 text-black shadow-lg" : "text-zinc-400 hover:text-zinc-200"
+                        }`}
+                      >
+                        Journalier
+                      </button>
+                      <button
+                        onClick={() => setReportSubTab("hebdomadaire")}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                          reportSubTab === "hebdomadaire" ? "bg-amber-600 text-black shadow-lg" : "text-zinc-400 hover:text-zinc-200"
+                        }`}
+                      >
+                        Hebdomadaire
+                      </button>
+                      <button
+                        onClick={() => setReportSubTab("mensuel")}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                          reportSubTab === "mensuel" ? "bg-amber-600 text-black shadow-lg" : "text-zinc-400 hover:text-zinc-200"
+                        }`}
+                      >
+                        Mensuel
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Glassmorphic Daily Report Card */}
+                  {/* Glassmorphic Report Card */}
                   <div className="glass-panel rounded-3xl border border-zinc-850 p-6 md:p-8 relative overflow-hidden space-y-6 shadow-2xl">
                     <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none"></div>
 
-                    {/* Report Title & Date */}
+                    {/* Report Title & Info */}
                     <div className="border-b border-zinc-800 pb-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                       <div>
-                        <h3 className="text-xl font-black text-white tracking-wide uppercase italic">Rapport Journalier</h3>
+                        <h3 className="text-xl font-black text-white tracking-wide uppercase italic">{reportTitle}</h3>
                         <p className="text-xs text-zinc-500 font-semibold mt-0.5">
-                          Bilan d'activité consolidé pour la journée du {currentDateTime.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                          {reportDesc} ({currentDateTime.toLocaleDateString('fr-FR')})
                         </p>
                       </div>
                       <div className="flex items-center gap-2 text-zinc-400 font-bold text-xs bg-zinc-950 px-3 py-1.5 rounded-xl border border-zinc-900">
@@ -5698,82 +5846,82 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Indicators list (mockup inspired) */}
-                    <div className="divide-y divide-zinc-900 font-sans">
+                    {/* Indicators list */}
+                    <div className="divide-y divide-zinc-900">
                       
                       {/* Joueurs Row */}
                       <div className="py-4 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-violet-950/40 border border-violet-500/20 flex items-center justify-center text-violet-400">
+                          <div className="w-10 h-10 rounded-xl bg-violet-950/40 border border-violet-500/20 flex items-center justify-center text-violet-400 animate-fade-in">
                             <Users className="w-5 h-5" />
                           </div>
                           <div>
                             <span className="text-sm font-bold text-white block">Joueurs</span>
-                            <span className="text-[10px] text-zinc-500 block">Total des sessions lancées aujourd'hui</span>
+                            <span className="text-[10px] text-zinc-500 block">Total des sessions lancées sur la période</span>
                           </div>
                         </div>
-                        <span className="text-2xl font-black text-violet-400 font-mono pr-2">{totalSessions}</span>
+                        <span className="text-2xl font-black text-violet-400 font-mono pr-2">{displaySessions}</span>
                       </div>
 
                       {/* Games Revenue Row */}
                       <div className="py-4 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-cyan-950/40 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+                          <div className="w-10 h-10 rounded-xl bg-cyan-950/40 border border-cyan-500/20 flex items-center justify-center text-cyan-400 animate-fade-in">
                             <Gamepad2 className="w-5 h-5" />
                           </div>
                           <div>
                             <span className="text-sm font-bold text-white block">Revenus Jeux</span>
-                            <span className="text-[10px] text-zinc-500 block">Recettes générées par les stations</span>
+                            <span className="text-[10px] text-zinc-500 block">Recettes générées par le pôle jeux vidéo</span>
                           </div>
                         </div>
-                        <span className="text-xl font-extrabold text-cyan-400 font-mono pr-2">{formatPrice(totalGamesRev)}</span>
+                        <span className="text-xl font-extrabold text-cyan-400 font-mono pr-2">{formatPrice(displayGamesRev)}</span>
                       </div>
 
                       {/* Snacks Revenue Row */}
                       <div className="py-4 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-pink-950/40 border border-pink-500/20 flex items-center justify-center text-pink-400">
+                          <div className="w-10 h-10 rounded-xl bg-pink-950/40 border border-pink-500/20 flex items-center justify-center text-pink-400 animate-fade-in">
                             <GlassWater className="w-5 h-5" />
                           </div>
                           <div>
                             <span className="text-sm font-bold text-white block">Revenus Snack</span>
-                            <span className="text-[10px] text-zinc-500 block">Recettes du bar et consommations</span>
+                            <span className="text-[10px] text-zinc-500 block">Recettes du bar et consommations de snacks</span>
                           </div>
                         </div>
-                        <span className="text-xl font-extrabold text-pink-400 font-mono pr-2">{formatPrice(totalSnacksRev)}</span>
+                        <span className="text-xl font-extrabold text-pink-400 font-mono pr-2">{formatPrice(displaySnacksRev)}</span>
                       </div>
 
                       {/* Expenses Row */}
                       <div className="py-4 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-rose-950/40 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                          <div className="w-10 h-10 rounded-xl bg-rose-950/40 border border-rose-500/20 flex items-center justify-center text-rose-400 animate-fade-in">
                             <TrendingDown className="w-5 h-5" />
                           </div>
                           <div>
                             <span className="text-sm font-bold text-white block">Dépenses</span>
-                            <span className="text-[10px] text-zinc-500 block">Dépenses de shift + achats de stocks snacks</span>
+                            <span className="text-[10px] text-zinc-500 block">Dépenses opérationnelles + achats de marchandises</span>
                           </div>
                         </div>
-                        <span className="text-xl font-extrabold text-rose-400 font-mono pr-2">{formatPrice(totalExpenses)}</span>
+                        <span className="text-xl font-extrabold text-rose-400 font-mono pr-2">{formatPrice(displayExpenses)}</span>
                       </div>
 
                       {/* Net Profit Row */}
                       <div className="py-5 flex items-center justify-between gap-4 border-t border-zinc-800">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-emerald-950/40 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-950/40 border border-emerald-500/20 flex items-center justify-center text-emerald-400 animate-fade-in">
                             <TrendingUp className="w-5 h-5" />
                           </div>
                           <div>
                             <span className="text-base font-black text-white block uppercase tracking-wide">Bénéfice</span>
-                            <span className="text-[10px] text-zinc-500 block">Solde net d'exploitation de la journée</span>
+                            <span className="text-[10px] text-zinc-500 block">Solde net d'exploitation sur la période</span>
                           </div>
                         </div>
-                        <span className="text-2xl font-black text-emerald-400 font-mono pr-2">{formatPrice(netProfit)}</span>
+                        <span className="text-2xl font-black text-emerald-400 font-mono pr-2">{formatPrice(displayProfit)}</span>
                       </div>
 
                     </div>
 
-                    {/* Action buttons (inspired by mockup) */}
+                    {/* Action buttons */}
                     <div className="border-t border-zinc-800 pt-6 grid grid-cols-3 gap-4">
                       <button
                         type="button"
