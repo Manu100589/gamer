@@ -3043,9 +3043,9 @@ export default function App() {
       
       {/* SIDEBAR */}
       <aside className="w-72 h-full glass-panel flex flex-col justify-between border-r border-zinc-800/60 z-20">
-        <div>
+        <div className="flex-1 flex flex-col min-h-0">
           {/* Logo Brand */}
-          <div className="p-4 flex flex-col items-center justify-center border-b border-zinc-800/40 gap-2">
+          <div className="p-4 flex flex-col items-center justify-center border-b border-zinc-800/40 gap-2 shrink-0">
             <div className="w-24 h-24 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl relative group">
               <img src={systemSettings.logoUrl || "/logo.jpg"} alt={`${systemSettings.companyName || "HOUSEPUB"} Logo`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-1.5">
@@ -3066,7 +3066,7 @@ export default function App() {
           </div>
 
           {/* Navigation Links */}
-          <nav className="p-4 space-y-1">
+          <nav className="flex-1 p-4 space-y-1 overflow-y-auto min-h-0">
             <button
               onClick={() => setActiveTab("dashboard")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
@@ -3249,7 +3249,7 @@ export default function App() {
         </div>
 
         {/* Access Rights Switcher (Admin vs Gérant) */}
-        <div className="p-4 border-t border-zinc-800/40 bg-zinc-950/50">
+        <div className="p-4 border-t border-zinc-800/40 bg-zinc-950/50 shrink-0">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Accès Actuel</span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex items-center gap-1 ${
