@@ -54,7 +54,8 @@ import {
   Sliders,
   RotateCcw,
   CreditCard,
-  Tag
+  Tag,
+  Bell
 } from "lucide-react";
 import { 
   initialConsoles,
@@ -89,7 +90,7 @@ export default function App() {
   // --- Global System Settings States ---
   const [systemSettings, setSystemSettings] = useState(() => {
     const saved = localStorage.getItem("system_settings");
-    return saved ? JSON.parse(saved) : {
+    const defaults = {
       companyName: "HOUSEPUB",
       companySubtitle: "PS LOUNGE",
       companySlogan: "\"La Maison du Bonheur\"",
@@ -100,8 +101,23 @@ export default function App() {
       email: "contact@housepub.cm",
       address: "Rue du Commerce, Yaoundé Centre",
       defaultStockThreshold: 5,
+      alertLowStock: true,
+      alertOutOfStock: true,
+      alertHighExpense: true,
+      alertUnclosedCaisse: true,
+      alertConsoleMaintenance: true,
+      highExpenseThreshold: 50000,
     };
+    return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
+
+  const [toastText, setToastText] = useState("Événement simulé appliqué avec succès !");
+  const [tempAlertLowStock, setTempAlertLowStock] = useState(() => systemSettings.alertLowStock);
+  const [tempAlertOutOfStock, setTempAlertOutOfStock] = useState(() => systemSettings.alertOutOfStock);
+  const [tempAlertHighExpense, setTempAlertHighExpense] = useState(() => systemSettings.alertHighExpense);
+  const [tempAlertUnclosedCaisse, setTempAlertUnclosedCaisse] = useState(() => systemSettings.alertUnclosedCaisse);
+  const [tempAlertConsoleMaintenance, setTempAlertConsoleMaintenance] = useState(() => systemSettings.alertConsoleMaintenance);
+  const [tempHighExpenseThreshold, setTempHighExpenseThreshold] = useState(() => systemSettings.highExpenseThreshold);
 
   const [productCategories, setProductCategories] = useState(() => {
     const saved = localStorage.getItem("system_product_categories");
@@ -494,6 +510,27 @@ export default function App() {
       `Dépense enregistrée : ${amt.toLocaleString('fr-FR')} FCFA (${category}) - ${description.slice(0, 30)}`,
       "console"
     );
+
+    // High expense threshold alert check
+    if (systemSettings.alertHighExpense && amt >= (systemSettings.highExpenseThreshold || 50000)) {
+      addLog(
+        "expense_alert", 
+        `⚠️ DÉPENSE IMPORTANTE : Le montant de ${amt.toLocaleString('fr-FR')} FCFA dépasse le seuil d'alerte de ${(systemSettings.highExpenseThreshold || 50000).toLocaleString('fr-FR')} FCFA! (Catégorie: ${category}, Responsable: ${newExpense.responsible})`,
+        "console"
+      );
+
+      // Trigger a beautiful GSAP warning toast
+      setToastText(`⚠️ Dépense importante enregistrée : ${amt.toLocaleString('fr-FR')} FCFA !`);
+      gsap.fromTo(
+        ".notification-toast",
+        { opacity: 0, y: -20 },
+        { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+          setTimeout(() => {
+            gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+          }, 3500);
+        }}
+      );
+    }
   };
 
   const handleDeleteExpense = (id) => {
@@ -3101,6 +3138,7 @@ export default function App() {
 
     const randomEventFn = events[Math.floor(Math.random() * events.length)];
     const feedback = randomEventFn();
+    setToastText(feedback);
     
     // Play sound/visual bounce on event simulation
     gsap.fromTo(
@@ -3455,7 +3493,7 @@ export default function App() {
           {/* SIMULATION NOTIFICATION TOAST */}
           <div className="notification-toast opacity-0 pointer-events-none fixed top-24 right-8 bg-zinc-900 border border-purple-500/40 text-purple-200 text-xs px-4 py-3 rounded-xl shadow-xl flex items-center gap-2 z-50">
             <Sparkles className="w-4 h-4 text-purple-400" />
-            <span>Événement simulé appliqué avec succès !</span>
+            <span>{toastText}</span>
           </div>
 
           <div className="view-container">
@@ -3466,6 +3504,57 @@ export default function App() {
                 <div>
                   <span className="sticker-badge bg-blue-600 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Tableau de Bord</span>
                 </div>
+
+                {/* Notification / Alert Banners */}
+                {((systemSettings.alertUnclosedCaisse && caisseStatus === "ouverte") || 
+                  (systemSettings.alertConsoleMaintenance && consoles.some(c => c.status === "maintenance"))) && (
+                  <div className="space-y-4">
+                    {/* Caisse Non Fermée Alert */}
+                    {systemSettings.alertUnclosedCaisse && caisseStatus === "ouverte" && (
+                      <div className="glass-panel p-4 rounded-xl border border-amber-500/25 bg-amber-500/5 flex items-center justify-between text-xs animate-pulse">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
+                            <Unlock className="w-4.5 h-4.5" />
+                          </div>
+                          <div>
+                            <span className="font-extrabold text-white uppercase block tracking-wider">Alerte : Session Caisse Active</span>
+                            <span className="text-zinc-400">La caisse de shift est actuellement ouverte et n'a pas encore été clôturée.</span>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => setActiveTab("caisse")} 
+                          className="py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-lg uppercase tracking-wider text-[10px] active:scale-95 transition-all"
+                        >
+                          Voir la caisse
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Maintenance Console Alert */}
+                    {systemSettings.alertConsoleMaintenance && consoles.some(c => c.status === "maintenance") && (
+                      <div className="glass-panel p-4 rounded-xl border border-red-500/25 bg-red-500/5 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-400 animate-bounce">
+                            <Gamepad2 className="w-4.5 h-4.5" />
+                          </div>
+                          <div>
+                            <span className="font-extrabold text-white uppercase block tracking-wider">Alerte : Stations en Maintenance</span>
+                            <span className="text-zinc-400">
+                              {consoles.filter(c => c.status === "maintenance").length} station(s) de jeu hors-service : {" "}
+                              <span className="text-zinc-200 font-bold">{consoles.filter(c => c.status === "maintenance").map(c => c.name).join(", ")}</span>
+                            </span>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => setActiveTab("consoles")} 
+                          className="py-1.5 px-3 bg-red-500 hover:bg-red-400 text-white font-extrabold rounded-lg uppercase tracking-wider text-[10px] active:scale-95 transition-all"
+                        >
+                          Gérer les stations
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 {/* 4 Stats Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
@@ -3557,91 +3646,97 @@ export default function App() {
                 </div>
 
                 {/* Alert Panels: Out of Stock & Low Stock */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Panel: Rupture de Stock */}
-                  <div className="glass-panel p-6 rounded-2xl border border-red-900/20 shadow-lg space-y-4">
-                    <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-red-950/40 border border-red-500/20 flex items-center justify-center">
-                          <AlertCircle className="w-4.5 h-4.5 text-red-400" />
-                        </div>
-                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-                          Rupture de Stock
-                        </h4>
-                      </div>
-                      <span className="text-[10px] bg-red-950/60 border border-red-500/30 text-red-400 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
-                        {products.filter(p => p.stock === 0).length} produit(s)
-                      </span>
-                    </div>
-
-                    <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
-                      {products.filter(p => p.stock === 0).map(p => (
-                        <div key={p.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-xl">{p.image}</span>
-                            <div>
-                              <span className="text-xs font-extrabold text-white block">{p.name}</span>
-                              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{p.category}</span>
+                {(systemSettings.alertOutOfStock || systemSettings.alertLowStock) && (
+                  <div className={`grid grid-cols-1 ${systemSettings.alertOutOfStock && systemSettings.alertLowStock ? "lg:grid-cols-2" : ""} gap-6`}>
+                    {/* Panel: Rupture de Stock */}
+                    {systemSettings.alertOutOfStock && (
+                      <div className="glass-panel p-6 rounded-2xl border border-red-900/20 shadow-lg space-y-4">
+                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-red-950/40 border border-red-500/20 flex items-center justify-center">
+                              <AlertCircle className="w-4.5 h-4.5 text-red-400" />
                             </div>
+                            <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                              Rupture de Stock
+                            </h4>
                           </div>
-                          <span className="text-[9px] font-black uppercase tracking-wider text-red-400 bg-red-950/30 border border-red-500/10 px-2 py-0.5 rounded">
-                            Rupture
+                          <span className="text-[10px] bg-red-950/60 border border-red-500/30 text-red-400 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
+                            {products.filter(p => p.stock === 0).length} produit(s)
                           </span>
                         </div>
-                      ))}
 
-                      {products.filter(p => p.stock === 0).length === 0 && (
-                        <div className="py-8 text-center text-zinc-500 text-xs italic flex flex-col items-center justify-center gap-1.5">
-                          <span className="text-xl">✅</span>
-                          <span>Aucun produit en rupture. Inventaire impeccable !</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Panel: Seuil Bas */}
-                  <div className="glass-panel p-6 rounded-2xl border border-amber-900/20 shadow-lg space-y-4">
-                    <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-amber-950/40 border border-amber-500/20 flex items-center justify-center">
-                          <AlertTriangle className="w-4.5 h-4.5 text-amber-400" />
-                        </div>
-                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-                          Seuil Bas (Alerte Stock)
-                        </h4>
-                      </div>
-                      <span className="text-[10px] bg-amber-950/60 border border-amber-500/30 text-amber-400 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
-                        {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length} produit(s)
-                      </span>
-                    </div>
-
-                    <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
-                      {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).map(p => (
-                        <div key={p.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-xl">{p.image}</span>
-                            <div>
-                              <span className="text-xs font-extrabold text-white block">{p.name}</span>
-                              <span className="text-[9px] text-zinc-500 font-semibold">
-                                Stock actuel : <strong className="text-white font-mono">{p.stock}</strong> &bull; Seuil min : <span className="font-mono">{p.minThreshold}</span>
+                        <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
+                          {products.filter(p => p.stock === 0).map(p => (
+                            <div key={p.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-xl">{p.image}</span>
+                                <div>
+                                  <span className="text-xs font-extrabold text-white block">{p.name}</span>
+                                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{p.category}</span>
+                                </div>
+                              </div>
+                              <span className="text-[9px] font-black uppercase tracking-wider text-red-400 bg-red-950/30 border border-red-500/10 px-2 py-0.5 rounded">
+                                Rupture
                               </span>
                             </div>
+                          ))}
+
+                          {products.filter(p => p.stock === 0).length === 0 && (
+                            <div className="py-8 text-center text-zinc-500 text-xs italic flex flex-col items-center justify-center gap-1.5">
+                              <span className="text-xl">✅</span>
+                              <span>Aucun produit en rupture. Inventaire impeccable !</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Panel: Seuil Bas */}
+                    {systemSettings.alertLowStock && (
+                      <div className="glass-panel p-6 rounded-2xl border border-amber-900/20 shadow-lg space-y-4">
+                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-amber-950/40 border border-amber-500/20 flex items-center justify-center">
+                              <AlertTriangle className="w-4.5 h-4.5 text-amber-400" />
+                            </div>
+                            <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                              Seuil Bas (Alerte Stock)
+                            </h4>
                           </div>
-                          <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/30 border border-amber-500/10 px-2 py-0.5 rounded">
-                            Seuil Bas
+                          <span className="text-[10px] bg-amber-950/60 border border-amber-500/30 text-amber-400 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
+                            {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length} produit(s)
                           </span>
                         </div>
-                      ))}
 
-                      {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length === 0 && (
-                        <div className="py-8 text-center text-zinc-500 text-xs italic flex flex-col items-center justify-center gap-1.5">
-                          <span className="text-xl">👍</span>
-                          <span>Aucun produit sous le seuil d'alerte.</span>
+                        <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1">
+                          {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).map(p => (
+                            <div key={p.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-xl">{p.image}</span>
+                                <div>
+                                  <span className="text-xs font-extrabold text-white block">{p.name}</span>
+                                  <span className="text-[9px] text-zinc-500 font-semibold">
+                                    Stock actuel : <strong className="text-white font-mono">{p.stock}</strong> &bull; Seuil min : <span className="font-mono">{p.minThreshold}</span>
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/30 border border-amber-500/10 px-2 py-0.5 rounded">
+                                Seuil Bas
+                              </span>
+                            </div>
+                          ))}
+
+                          {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).length === 0 && (
+                            <div className="py-8 text-center text-zinc-500 text-xs italic flex flex-col items-center justify-center gap-1.5">
+                              <span className="text-xl">👍</span>
+                              <span>Aucun produit sous le seuil d'alerte.</span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
 
                 {/* Dashboard Charts & Top Performers */}
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
@@ -6354,6 +6449,179 @@ export default function App() {
                         <Check className="w-3.5 h-3.5" />
                         <span>Enregistrer les paramètres</span>
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Card 3: NOTIFICATIONS & ALERTES */}
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-5 lg:col-span-2 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl"></div>
+                    <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
+                      <Bell className="w-5 h-5 text-purple-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Notifications & Alertes</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {/* Checkboxes List */}
+                      <div className="space-y-4">
+                        <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-2">Options de Notification</span>
+                        
+                        <div className="space-y-3.5">
+                          {/* Stock Faible */}
+                          <label className="flex items-center gap-3.5 group cursor-pointer select-none">
+                            <div className="relative flex items-center justify-center">
+                              <input 
+                                type="checkbox"
+                                checked={tempAlertLowStock}
+                                onChange={(e) => setTempAlertLowStock(e.target.checked)}
+                                className="sr-only"
+                              />
+                              <div className={`w-5 h-5 border rounded-lg transition-all flex items-center justify-center ${tempAlertLowStock ? "bg-purple-600 border-purple-400 text-black" : "bg-zinc-950 border-zinc-800"}`}>
+                                {tempAlertLowStock && <Check className="w-3.5 h-3.5 text-black" />}
+                              </div>
+                            </div>
+                            <div className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                              ⚠️ Stock Faible
+                            </div>
+                          </label>
+
+                          {/* Rupture Stock */}
+                          <label className="flex items-center gap-3.5 group cursor-pointer select-none">
+                            <div className="relative flex items-center justify-center">
+                              <input 
+                                type="checkbox"
+                                checked={tempAlertOutOfStock}
+                                onChange={(e) => setTempAlertOutOfStock(e.target.checked)}
+                                className="sr-only"
+                              />
+                              <div className={`w-5 h-5 border rounded-lg transition-all flex items-center justify-center ${tempAlertOutOfStock ? "bg-purple-600 border-purple-400 text-black" : "bg-zinc-950 border-zinc-800"}`}>
+                                {tempAlertOutOfStock && <Check className="w-3.5 h-3.5 text-black" />}
+                              </div>
+                            </div>
+                            <div className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                              🚫 Rupture Stock
+                            </div>
+                          </label>
+
+                          {/* Dépense Importante */}
+                          <label className="flex items-center gap-3.5 group cursor-pointer select-none">
+                            <div className="relative flex items-center justify-center">
+                              <input 
+                                type="checkbox"
+                                checked={tempAlertHighExpense}
+                                onChange={(e) => setTempAlertHighExpense(e.target.checked)}
+                                className="sr-only"
+                              />
+                              <div className={`w-5 h-5 border rounded-lg transition-all flex items-center justify-center ${tempAlertHighExpense ? "bg-purple-600 border-purple-400 text-black" : "bg-zinc-950 border-zinc-800"}`}>
+                                {tempAlertHighExpense && <Check className="w-3.5 h-3.5 text-black" />}
+                              </div>
+                            </div>
+                            <div className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                              💰 Dépense Importante
+                            </div>
+                          </label>
+
+                          {/* Caisse Non Fermée */}
+                          <label className="flex items-center gap-3.5 group cursor-pointer select-none">
+                            <div className="relative flex items-center justify-center">
+                              <input 
+                                type="checkbox"
+                                checked={tempAlertUnclosedCaisse}
+                                onChange={(e) => setTempAlertUnclosedCaisse(e.target.checked)}
+                                className="sr-only"
+                              />
+                              <div className={`w-5 h-5 border rounded-lg transition-all flex items-center justify-center ${tempAlertUnclosedCaisse ? "bg-purple-600 border-purple-400 text-black" : "bg-zinc-950 border-zinc-800"}`}>
+                                {tempAlertUnclosedCaisse && <Check className="w-3.5 h-3.5 text-black" />}
+                              </div>
+                            </div>
+                            <div className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                              🔓 Caisse Non Fermée
+                            </div>
+                          </label>
+
+                          {/* Maintenance Console */}
+                          <label className="flex items-center gap-3.5 group cursor-pointer select-none">
+                            <div className="relative flex items-center justify-center">
+                              <input 
+                                type="checkbox"
+                                checked={tempAlertConsoleMaintenance}
+                                onChange={(e) => setTempAlertConsoleMaintenance(e.target.checked)}
+                                className="sr-only"
+                              />
+                              <div className={`w-5 h-5 border rounded-lg transition-all flex items-center justify-center ${tempAlertConsoleMaintenance ? "bg-purple-600 border-purple-400 text-black" : "bg-zinc-950 border-zinc-800"}`}>
+                                {tempAlertConsoleMaintenance && <Check className="w-3.5 h-3.5 text-black" />}
+                              </div>
+                            </div>
+                            <div className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                              🛠️ Maintenance Console
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Threshold Config */}
+                      <div className="space-y-4 flex flex-col justify-between">
+                        <div>
+                          <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block mb-2">
+                            Montant alerte dépense (FCFA)
+                          </label>
+                          <div className="relative rounded-xl bg-zinc-950 border border-zinc-800 px-3 py-2.5 flex items-center focus-within:border-purple-500 transition-all">
+                            <input 
+                              type="number"
+                              min="0"
+                              step="1000"
+                              value={tempHighExpenseThreshold}
+                              onChange={(e) => setTempHighExpenseThreshold(Math.max(0, Number(e.target.value)))}
+                              className="w-full bg-transparent text-sm text-white focus:outline-none font-bold font-mono"
+                            />
+                            <span className="text-xs text-zinc-400 font-extrabold select-none pl-2">
+                              FCFA
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-zinc-500 italic mt-2">
+                            Une alerte de dépenses importantes sera générée pour toute dépense supérieure ou égale à ce montant.
+                          </p>
+                        </div>
+
+                        {/* Save Button */}
+                        <div className="pt-4 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSystemSettings(prev => ({
+                                ...prev,
+                                alertLowStock: tempAlertLowStock,
+                                alertOutOfStock: tempAlertOutOfStock,
+                                alertHighExpense: tempAlertHighExpense,
+                                alertUnclosedCaisse: tempAlertUnclosedCaisse,
+                                alertConsoleMaintenance: tempAlertConsoleMaintenance,
+                                highExpenseThreshold: tempHighExpenseThreshold,
+                              }));
+                              
+                              addLog(
+                                "settings_update",
+                                `Paramètres d'alertes mis à jour : Stock Bas (${tempAlertLowStock ? "ON" : "OFF"}), Rupture (${tempAlertOutOfStock ? "ON" : "OFF"}), Dépenses (${tempAlertHighExpense ? "ON" : "OFF"}, Seuil: ${tempHighExpenseThreshold} FCFA), Caisse (${tempAlertUnclosedCaisse ? "ON" : "OFF"}), Maintenance (${tempAlertConsoleMaintenance ? "ON" : "OFF"})`,
+                                "console"
+                              );
+
+                              // Trigger GSAP notification toast
+                              setToastText("Paramètres d'alertes enregistrés avec succès !");
+                              gsap.fromTo(
+                                ".notification-toast",
+                                { opacity: 0, y: -20 },
+                                { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+                                  setTimeout(() => {
+                                    gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+                                  }, 3500);
+                                }}
+                              );
+                            }}
+                            className="py-2.5 px-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-950/20 active:scale-95 transition-all flex items-center gap-2 uppercase tracking-wider cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5 text-white" />
+                            <span>ENREGISTRER</span>
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
