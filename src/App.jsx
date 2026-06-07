@@ -69,7 +69,8 @@ import {
   initialExpenses,
   initialPurchases,
   initialCaisseSessions,
-  initialSuppliers
+  initialSuppliers,
+  initialPlayers
 } from "./mockData";
 
 export default function App() {
@@ -117,6 +118,11 @@ export default function App() {
     return saved ? JSON.parse(saved) : ["espèces", "wave", "mobile money", "carte bancaire", "virement"];
   });
 
+  const [players, setPlayers] = useState(() => {
+    const saved = localStorage.getItem("system_players");
+    return saved ? JSON.parse(saved) : initialPlayers;
+  });
+
   // --- Sync States to localStorage ---
   useEffect(() => {
     localStorage.setItem("system_consoles", JSON.stringify(consoles));
@@ -137,6 +143,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("system_payment_methods", JSON.stringify(paymentMethods));
   }, [paymentMethods]);
+
+  useEffect(() => {
+    localStorage.setItem("system_players", JSON.stringify(players));
+  }, [players]);
 
   // Global helper for formatting prices/currency dynamically
   const formatPrice = (amount) => {
@@ -292,6 +302,17 @@ export default function App() {
   const [suppAdresse, setSuppAdresse] = useState("");
   const [suppProduits, setSuppProduits] = useState(""); // comma-separated string
   const [suppNotes, setSuppNotes] = useState("");
+
+  // ─── Players (Joueurs) State declarations ──────────────────────────────
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
+  const [showEditPlayerModal, setShowEditPlayerModal] = useState(null); // stores player obj
+  const [showViewPlayerModal, setShowViewPlayerModal] = useState(null); // stores player obj
+
+  // Add/Edit Player Form Fields
+  const [playNom, setPlayNom] = useState("");
+  const [playTel, setPlayTel] = useState("");
+  const [playEmail, setPlayEmail] = useState("");
 
   // Prefill price when selecting snack products
   useEffect(() => {
@@ -1048,6 +1069,53 @@ export default function App() {
     printWindow.document.close();
   };
 
+  // ─── Players CRUD Handlers ─────────────────────────────────────────────
+  const resetPlayerForm = () => {
+    setPlayNom("");
+    setPlayTel("");
+    setPlayEmail("");
+  };
+
+  const handleAddPlayer = () => {
+    if (!playNom.trim()) return;
+    const newPlayer = {
+      id: Date.now(),
+      nom: playNom.trim(),
+      telephone: playTel.trim(),
+      email: playEmail.trim(),
+      dateInscription: new Date().toISOString(),
+      totalSessions: 0,
+      totalSpent: 0,
+      totalTimeMinutes: 0
+    };
+    setPlayers(prev => [newPlayer, ...prev]);
+    resetPlayerForm();
+    setShowAddPlayerModal(false);
+    addLog("player_add", `Joueur inscrit : ${newPlayer.nom}`, "console");
+  };
+
+  const handleEditPlayer = (id) => {
+    if (!playNom.trim()) return;
+    setPlayers(prev => prev.map(p => p.id === id ? {
+      ...p,
+      nom: playNom.trim(),
+      telephone: playTel.trim(),
+      email: playEmail.trim()
+    } : p));
+    resetPlayerForm();
+    setShowEditPlayerModal(null);
+    addLog("player_edit", `Profil joueur modifié : ${playNom.trim()}`, "console");
+  };
+
+  const handleDeletePlayer = (id) => {
+    if (role !== "admin") return;
+    const target = players.find(p => p.id === id);
+    if (!target) return;
+    if (!window.confirm(`Supprimer définitivement le joueur "${target.nom}" et toutes ses statistiques de fidélité ?`)) return;
+    setPlayers(prev => prev.filter(p => p.id !== id));
+    addLog("player_delete", `Joueur supprimé de la base : ${target.nom}`, "console");
+  };
+
   // ─── Supplier CRUD Handlers ────────────────────────────────────────────
   const resetSupplierForm = () => {
     setSuppNom(""); setSuppTel(""); setSuppEmail("");
@@ -1277,6 +1345,18 @@ export default function App() {
           return item;
         });
       });
+
+      // Update player loyalty spent
+      setPlayers(prev => prev.map(p => {
+        if (p.nom.toLowerCase() === inv.customer.toLowerCase()) {
+          return {
+            ...p,
+            totalSpent: (p.totalSpent || 0) + total,
+            totalSessions: (p.totalSessions || 0) + 1
+          };
+        }
+        return p;
+      }));
     }
 
     if (inv.type === "console" && inv.consoleId) {
@@ -1347,6 +1427,23 @@ export default function App() {
           });
         });
       }
+
+      // Update player loyalty spent & time spent (deducting prepaid registered at session start)
+      setPlayers(prev => prev.map(p => {
+        if (p.nom.toLowerCase() === inv.customer.toLowerCase()) {
+          const elapsedSec = consoleObj?.activeSession?.timeElapsedSeconds || 0;
+          const elapsedMin = Math.round(elapsedSec / 60);
+          const prepaidAmount = consoleObj?.activeSession?.prepaidAmount || 0;
+          const extraSpent = Math.max(0, total - prepaidAmount);
+
+          return {
+            ...p,
+            totalSpent: (p.totalSpent || 0) + extraSpent,
+            totalTimeMinutes: (p.totalTimeMinutes || 0) + elapsedMin
+          };
+        }
+        return p;
+      }));
 
       setConsoles(prev => prev.map(c => {
         if (c.id === inv.consoleId) {
@@ -1727,6 +1824,30 @@ export default function App() {
     const gameCost = newDurationType === "limited"
       ? consoleObj.ratePerHour * newDurationHours
       : Number(newPrepaidAmount || 0);
+
+    // Auto register new player or update existing profile
+    setPlayers(prev => {
+      const exists = prev.some(p => p.nom.toLowerCase() === fullName.toLowerCase());
+      if (exists) {
+        return prev.map(p => p.nom.toLowerCase() === fullName.toLowerCase() ? {
+          ...p,
+          totalSessions: (p.totalSessions || 0) + 1,
+          totalSpent: (p.totalSpent || 0) + gameCost,
+          totalTimeMinutes: (p.totalTimeMinutes || 0) + durationMinutes
+        } : p);
+      } else {
+        return [{
+          id: Date.now(),
+          nom: fullName,
+          telephone: newPlayerPhone.trim(),
+          email: "",
+          dateInscription: new Date().toISOString(),
+          totalSessions: 1,
+          totalSpent: gameCost,
+          totalTimeMinutes: durationMinutes
+        }, ...prev];
+      }
+    });
     
     // Update daily revenue stats immediately since payment is made BEFORE playing
     setStats(prev => ({
@@ -3013,6 +3134,21 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab("players")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "players"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <User className="w-5 h-5 text-fuchsia-400" />
+              Gestion Joueurs
+              <span className="ml-auto bg-fuchsia-900/60 text-fuchsia-400 border border-fuchsia-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                {players.length}
+              </span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("invoices")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "invoices"
@@ -3128,7 +3264,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -5291,6 +5427,188 @@ export default function App() {
                   </div>
                 )}
               </div>
+              );
+            })()}
+
+            {/* ==================== VUE : GESTION DES JOUEURS ==================== */}
+            {activeTab === "players" && (() => {
+              const filteredPlayers = players.filter(p =>
+                p.nom.toLowerCase().includes(playerSearch.toLowerCase()) ||
+                (p.telephone && p.telephone.includes(playerSearch)) ||
+                (p.email && p.email.toLowerCase().includes(playerSearch.toLowerCase()))
+              );
+
+              const getPlayerActiveConsole = (playerNom) => {
+                return consoles.find(c => 
+                  c.status === "occupée" && 
+                  c.activeSession && 
+                  c.activeSession.player.toLowerCase().includes(playerNom.toLowerCase())
+                );
+              };
+
+              return (
+                <div className="space-y-6 animate-fade-in pb-12">
+                  <div>
+                    <span className="sticker-badge bg-zinc-900 text-fuchsia-400 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">
+                      Base de Données Joueurs / Fidélité
+                    </span>
+                  </div>
+
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Joueurs Inscrits</span>
+                      <span className="text-xl font-extrabold text-fuchsia-400">{players.length} membres</span>
+                    </div>
+                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Joueurs Actifs en Salle</span>
+                      <span className="text-xl font-extrabold text-white">
+                        {consoles.filter(c => c.status === "occupée" && c.activeSession).length} en jeu
+                      </span>
+                    </div>
+                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Fidélité cumulée</span>
+                      <span className="text-xl font-extrabold text-emerald-400 font-mono">
+                        {formatPrice(players.reduce((sum, p) => sum + (p.totalSpent || 0), 0))}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Search bar + New player action */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-900/60 p-4 rounded-2xl border border-zinc-800/80">
+                    <div className="relative w-full md:w-80">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-zinc-500">
+                        <Search className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        placeholder="Rechercher un joueur..."
+                        value={playerSearch}
+                        onChange={(e) => setPlayerSearch(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-fuchsia-500 transition-all font-semibold"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetPlayerForm();
+                        setShowAddPlayerModal(true);
+                      }}
+                      className="py-2.5 px-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-fuchsia-900/20 active:scale-95 transition-all flex items-center gap-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Nouveau joueur</span>
+                    </button>
+                  </div>
+
+                  {/* Players list Table */}
+                  <div className="glass-panel rounded-2xl border border-zinc-850 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-zinc-900/50 border-b border-zinc-800 text-zinc-400 font-bold uppercase tracking-wider">
+                            <th className="p-4">Nom du Joueur</th>
+                            <th className="p-4">Console</th>
+                            <th className="p-4">Temps</th>
+                            <th className="p-4">Montant</th>
+                            <th className="p-4 text-center">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-900">
+                          {filteredPlayers.map((p, idx) => {
+                            const activeConsole = getPlayerActiveConsole(p.nom);
+                            
+                            let consoleName = "Aucune";
+                            let tempsText = `${Math.floor((p.totalTimeMinutes || 0) / 60)}h`;
+                            let montantText = formatPrice(p.totalSpent || 0);
+
+                            if (activeConsole && activeConsole.activeSession) {
+                              consoleName = activeConsole.name.split(" ")[0];
+                              
+                              const elapsedSec = activeConsole.activeSession.timeElapsedSeconds || 0;
+                              const hrs = Math.max(1, Math.round(elapsedSec / 3605));
+                              tempsText = `${hrs}h`;
+                              montantText = formatPrice(activeConsole.activeSession.totalAmountDue + (activeConsole.activeSession.extraSnacksBill || 0));
+                            }
+
+                            return (
+                              <tr key={p.id} className="hover:bg-zinc-900/20 transition-all font-medium">
+                                <td className="p-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-full bg-zinc-950/60 border border-zinc-800 flex items-center justify-center font-bold text-[10px] text-fuchsia-400 uppercase">
+                                      {p.nom.slice(0, 2)}
+                                    </div>
+                                    <div>
+                                      <span className="text-white font-bold block">{p.nom}</span>
+                                      <span className="text-[9px] text-zinc-500 block font-mono">{p.telephone || "Sans téléphone"}</span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="p-4">
+                                  {activeConsole ? (
+                                    <span className="px-2 py-1 bg-cyan-950/50 text-cyan-400 border border-cyan-800/30 rounded-lg font-black uppercase text-[10px]">
+                                      🎮 {consoleName}
+                                    </span>
+                                  ) : (
+                                    <span className="text-zinc-500 italic">Aucune</span>
+                                  )}
+                                </td>
+                                <td className="p-4 font-mono font-bold text-zinc-300">
+                                  {tempsText}
+                                </td>
+                                <td className="p-4 font-mono font-extrabold text-emerald-400 text-sm">
+                                  {montantText}
+                                </td>
+                                <td className="p-4">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowViewPlayerModal(p)}
+                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                                    >
+                                      👁️ Voir
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setPlayNom(p.nom);
+                                        setPlayTel(p.telephone || "");
+                                        setPlayEmail(p.email || "");
+                                        setShowEditPlayerModal(p);
+                                      }}
+                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-amber-500 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                                    >
+                                      ✏️ Modifier
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeletePlayer(p.id)}
+                                      disabled={role !== "admin"}
+                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-rose-500 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
+                                    >
+                                      🗑️ Supprimer
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {filteredPlayers.length === 0 && (
+                            <tr>
+                              <td colSpan="5" className="p-8 text-center text-zinc-500 italic">
+                                Aucun joueur trouvé.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
               );
             })()}
 
@@ -7489,6 +7807,252 @@ export default function App() {
           </div>
         </div>
       )}
+
+
+      {/* ===== JOUEURS MODALS ===== */}
+      {showAddPlayerModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-fuchsia-900/40 p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-fuchsia-950/50 border border-fuchsia-500/20 flex items-center justify-center text-fuchsia-400">
+                  <User className="w-4.5 h-4.5" />
+                </div>
+                <h3 className="text-base font-black text-white font-sans">Nouveau Joueur</h3>
+              </div>
+              <button onClick={() => setShowAddPlayerModal(false)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom Complet :</label>
+                <input 
+                  type="text" 
+                  value={playNom}
+                  onChange={(e) => setPlayNom(e.target.value)}
+                  placeholder="Ex: Kevin Nguemo"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Téléphone :</label>
+                  <input 
+                    type="text" 
+                    value={playTel}
+                    onChange={(e) => setPlayTel(e.target.value)}
+                    placeholder="Ex: +237..."
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Adresse E-mail :</label>
+                  <input 
+                    type="email" 
+                    value={playEmail}
+                    onChange={(e) => setPlayEmail(e.target.value)}
+                    placeholder="Ex: mail@domaine.com"
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end border-t border-zinc-800 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowAddPlayerModal(false)}
+                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleAddPlayer}
+                disabled={!playNom.trim()}
+                className="px-5 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95"
+              >
+                Créer le Joueur
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditPlayerModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-fuchsia-900/40 p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-fuchsia-950/50 border border-fuchsia-500/20 flex items-center justify-center text-fuchsia-400">
+                  <Edit3 className="w-4.5 h-4.5" />
+                </div>
+                <h3 className="text-base font-black text-white font-sans">Modifier le Joueur</h3>
+              </div>
+              <button onClick={() => setShowEditPlayerModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom Complet :</label>
+                <input 
+                  type="text" 
+                  value={playNom}
+                  onChange={(e) => setPlayNom(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Téléphone :</label>
+                  <input 
+                    type="text" 
+                    value={playTel}
+                    onChange={(e) => setPlayTel(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Adresse E-mail :</label>
+                  <input 
+                    type="email" 
+                    value={playEmail}
+                    onChange={(e) => setPlayEmail(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end border-t border-zinc-800 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowEditPlayerModal(null)}
+                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => handleEditPlayer(showEditPlayerModal.id)}
+                disabled={!playNom.trim()}
+                className="px-5 py-2.5 bg-fuchsia-600 hover:bg-fuchsia-500 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95"
+              >
+                Enregistrer les Modifications
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showViewPlayerModal && (() => {
+        const p = showViewPlayerModal;
+        const activeConsole = consoles.find(c => 
+          c.status === "occupée" && 
+          c.activeSession && 
+          c.activeSession.player.toLowerCase().includes(p.nom.toLowerCase())
+        );
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="glass-panel w-full max-w-lg rounded-2xl border border-fuchsia-900/40 p-6 space-y-6 animate-scale-up relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-500/5 rounded-full blur-3xl"></div>
+              
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-fuchsia-600 to-indigo-600 flex items-center justify-center font-black text-white text-lg shadow-lg shadow-fuchsia-950/30 uppercase">
+                    {p.nom.slice(0, 2)}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white leading-tight">{p.nom}</h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold">
+                      Inscrit le : {new Date(p.dateInscription).toLocaleDateString(systemSettings.currencyLocale || 'fr-FR')}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowViewPlayerModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Téléphone</span>
+                  <span className="text-white font-bold font-mono">{p.telephone || "Non renseigné"}</span>
+                </div>
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Adresse E-mail</span>
+                  <span className="text-white font-bold block truncate">{p.email || "Non renseigné"}</span>
+                </div>
+              </div>
+
+              {activeConsole ? (
+                <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping"></span>
+                      En Jeu Actuellement
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 text-[9px] font-bold font-mono border border-cyan-800/30 uppercase">
+                      {activeConsole.name}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                    <div>
+                      <span className="text-[9px] text-zinc-500 block">Temps écoulé :</span>
+                      <strong className="text-white font-mono text-sm">
+                        {Math.max(1, Math.round(activeConsole.activeSession.timeElapsedSeconds / 3600))}h
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[9px] text-zinc-500 block">Facture actuelle :</span>
+                      <strong className="text-emerald-400 font-mono text-sm">
+                        {formatPrice(activeConsole.activeSession.totalAmountDue + (activeConsole.activeSession.extraSnacksBill || 0))}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-zinc-950/40 border border-zinc-900 rounded-xl p-3 text-center text-xs text-zinc-500 italic">
+                  Hors ligne (aucun jeu en cours)
+                </div>
+              )}
+
+              <div className="space-y-2.5">
+                <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-900 pb-1.5">Statistiques de Fidélité</h4>
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                    <span className="text-[9px] text-zinc-500 block font-bold">Sessions</span>
+                    <strong className="text-white text-base block mt-0.5">{p.totalSessions || 0}</strong>
+                  </div>
+                  <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                    <span className="text-[9px] text-zinc-500 block font-bold">Temps Total</span>
+                    <strong className="text-white text-base block mt-0.5 font-mono">
+                      {Math.floor((p.totalTimeMinutes || 0) / 60)}h
+                    </strong>
+                  </div>
+                  <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                    <span className="text-[9px] text-zinc-500 block font-bold">Dépenses</span>
+                    <strong className="text-emerald-400 text-sm block mt-1 font-mono">
+                      {formatPrice(p.totalSpent || 0)}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowViewPlayerModal(null)}
+                  className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all text-center"
+                >
+                  Fermer la Fiche
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
 
       {/* ===== FOURNISSEURS MODALS ===== */}

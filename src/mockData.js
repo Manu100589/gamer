@@ -328,3 +328,76 @@ export const initialSuppliers = [
     notes: "Contact: Serge."
   }
 ];
+
+export const initialPlayers = [
+  {
+    id: 1,
+    nom: "Kevin Nguemo",
+    telephone: "+237 6 99 88 77 66",
+    email: "kevin.nguemo@gmail.com",
+    dateInscription: new Date(Date.now() - 60 * 24 * 3600 * 1000).toISOString(),
+    totalSessions: 14,
+    totalSpent: 45000,
+    totalTimeMinutes: 840
+  },
+  {
+    id: 2,
+    nom: "Marc Etoa",
+    telephone: "+237 6 55 44 33 22",
+    email: "marc.etoa@yahoo.fr",
+    dateInscription: new Date(Date.now() - 45 * 24 * 3600 * 1000).toISOString(),
+    totalSessions: 22,
+    totalSpent: 78000,
+    totalTimeMinutes: 1320
+  },
+  {
+    id: 3,
+    nom: "Junior Tchakounté",
+    telephone: "+237 6 77 66 55 44",
+    email: "junior.tchako@outlook.com",
+    dateInscription: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
+    totalSessions: 8,
+    totalSpent: 24000,
+    totalTimeMinutes: 480
+  },
+  {
+    id: 4,
+    nom: "Sofiane Zidane",
+    telephone: "06 12 34 56 78",
+    email: "sofiane.zidane@gmail.com",
+    dateInscription: new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString(),
+    totalSessions: 45,
+    totalSpent: 185000,
+    totalTimeMinutes: 3200
+  },
+  {
+    id: 5,
+    nom: "Karim Belhadj",
+    telephone: "06 98 76 54 32",
+    email: "karim.belhadj@yahoo.fr",
+    dateInscription: new Date(Date.now() - 75 * 24 * 3600 * 1000).toISOString(),
+    totalSessions: 30,
+    totalSpent: 110000,
+    totalTimeMinutes: 2100
+  },
+  {
+    id: 6,
+    nom: "Amine El Amrani",
+    telephone: "06 55 44 33 22",
+    email: "amine.amrani@gmail.com",
+    dateInscription: new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString(),
+    totalSessions: 5,
+    totalSpent: 300000,
+    totalTimeMinutes: 600
+  },
+  {
+    id: 7,
+    nom: "Lucas Martin",
+    telephone: "07 11 22 33 44",
+    email: "lucas.martin@hotmail.com",
+    dateInscription: new Date(Date.now() - 100 * 24 * 3600 * 1000).toISOString(),
+    totalSessions: 50,
+    totalSpent: 140000,
+    totalTimeMinutes: 2900
+  }
+];
