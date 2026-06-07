@@ -326,6 +326,19 @@ export default function App() {
   const [showEditPlayerModal, setShowEditPlayerModal] = useState(null); // stores player obj
   const [showViewPlayerModal, setShowViewPlayerModal] = useState(null); // stores player obj
 
+  // New CRUD Action States
+  const [showViewProductModal, setShowViewProductModal] = useState(null); // product obj
+  const [showViewExpenseModal, setShowViewExpenseModal] = useState(null); // expense obj
+  const [showViewPurchaseModal, setShowViewPurchaseModal] = useState(null); // purchase obj
+  const [showViewShiftModal, setShowViewShiftModal] = useState(null); // shift/session obj
+  const [showEditExpenseModal, setShowEditExpenseModal] = useState(null); // expense obj to edit
+  const [editExpenseAmount, setEditExpenseAmount] = useState("");
+  const [editExpenseCategory, setEditExpenseCategory] = useState("électricité");
+  const [editExpenseDescription, setEditExpenseDescription] = useState("");
+  const [editExpenseResponsible, setEditExpenseResponsible] = useState("");
+  const [editExpenseDate, setEditExpenseDate] = useState("");
+
+
   // Add/Edit Player Form Fields
   const [playNom, setPlayNom] = useState("");
   const [playTel, setPlayTel] = useState("");
@@ -559,6 +572,82 @@ export default function App() {
       `Dépense supprimée : ${target.amount.toLocaleString('fr-FR')} FCFA (${target.category}) - ${target.description.slice(0, 30)} (Remboursé à la caisse)`,
       "console"
     );
+  };
+
+  const handleDeleteProduct = (productId) => {
+    if (role !== "admin") return;
+    const target = products.find(p => p.id === productId);
+    if (!target) return;
+
+    if (confirm(`Voulez-vous vraiment supprimer le produit "${target.name}" ?`)) {
+      setProducts(prev => prev.filter(p => p.id !== productId));
+      addLog(
+        "product_delete",
+        `Produit supprimé : ${target.name} (Catégorie : ${target.category})`,
+        "console"
+      );
+    }
+  };
+
+  const handleEditExpense = (id, amount, category, description, responsible, dateStr) => {
+    if (role !== "admin") return;
+    const target = expenses.find(e => e.id === id);
+    if (!target) return;
+
+    const newAmt = parseFloat(amount) || 0;
+    if (newAmt <= 0) return;
+
+    const diff = newAmt - target.amount;
+
+    setExpenses(prev => prev.map(e => e.id === id ? {
+      ...e,
+      date: dateStr ? new Date(dateStr).toISOString() : e.date,
+      category,
+      amount: newAmt,
+      description: description.trim(),
+      responsible: responsible.trim() || e.responsible
+    } : e));
+
+    setStats(prev => ({
+      ...prev,
+      cashBalance: prev.cashBalance - diff
+    }));
+
+    if (caisseStatus === "ouverte") {
+      setActiveCaisseSession(prev => ({
+        ...prev,
+        expenses: Math.max(0, prev.expenses + diff)
+      }));
+    }
+
+    addLog(
+      "expense_edit", 
+      `Dépense modifiée : ${target.amount.toLocaleString('fr-FR')} -> ${newAmt.toLocaleString('fr-FR')} FCFA (${category})`,
+      "console"
+    );
+
+    if (systemSettings.alertHighExpense && newAmt >= (systemSettings.highExpenseThreshold || 50000)) {
+      addLog(
+        "expense_alert", 
+        `⚠️ DÉPENSE IMPORTANTE MODIFIÉE : Le montant de ${newAmt.toLocaleString('fr-FR')} FCFA dépasse le seuil d'alerte de ${(systemSettings.highExpenseThreshold || 50000).toLocaleString('fr-FR')} FCFA!`,
+        "console"
+      );
+    }
+  };
+
+  const handleDeleteCaisseSession = (sessionId) => {
+    if (role !== "admin") return;
+    const target = caisseSessions.find(s => s.id === sessionId);
+    if (!target) return;
+
+    if (confirm(`Voulez-vous vraiment supprimer le shift clôturé du ${new Date(target.dateOpen).toLocaleDateString('fr-FR')} (${target.openedBy}) de l'historique ?`)) {
+      setCaisseSessions(prev => prev.filter(s => s.id !== sessionId));
+      addLog(
+        "caisse_shift_delete",
+        `Shift clôturé supprimé : ID ${target.id} (Opérateur: ${target.openedBy})`,
+        "console"
+      );
+    }
   };
 
   // Purchase operations helpers
@@ -4918,20 +5007,38 @@ export default function App() {
                                   </td>
                                   <td className="p-4 text-center font-mono text-zinc-500 font-semibold">{p.minThreshold}</td>
                                   <td className="p-4 text-right">
-                                    <div className="flex justify-end gap-2">
+                                    <div className="flex justify-end gap-1.5 items-center">
                                       <button
-                                        onClick={() => openAdjustStockModal(p)}
-                                        className="bg-zinc-800 hover:bg-zinc-750 text-zinc-300 hover:text-white px-3 py-1.5 rounded-lg border border-zinc-700/50 text-[11px] font-bold transition-all active:scale-95"
+                                        type="button"
+                                        onClick={() => setShowViewProductModal(p)}
+                                        className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
                                       >
-                                        Ajuster
+                                        👁️ Voir
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => openAdjustStockModal(p)}
+                                        className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-cyan-400 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                                      >
+                                        ⚖️ Ajuster
                                       </button>
                                       {role === "admin" && (
-                                        <button
-                                          onClick={() => openEditProductModal(p)}
-                                          className="bg-violet-600/20 hover:bg-violet-600/30 text-violet-300 hover:text-white px-3 py-1.5 rounded-lg border border-violet-500/30 text-[11px] font-bold transition-all active:scale-95"
-                                        >
-                                          Configurer
-                                        </button>
+                                        <>
+                                          <button
+                                            type="button"
+                                            onClick={() => openEditProductModal(p)}
+                                            className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-amber-500 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                                          >
+                                            ✏️ Modifier
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteProduct(p.id)}
+                                            className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-rose-500 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                                          >
+                                            🗑️ Supprimer
+                                          </button>
+                                        </>
                                       )}
                                     </div>
                                   </td>
@@ -5142,7 +5249,7 @@ export default function App() {
                             <th className="p-4 text-right">Montant</th>
                             <th className="p-4">Motif / Description</th>
                             <th className="p-4">Responsable</th>
-                            {role === "admin" && <th className="p-4 text-center">Action</th>}
+                            <th className="p-4 text-center">Actions</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -5174,21 +5281,44 @@ export default function App() {
                                   <td className="p-4 text-xs text-zinc-400">
                                     {e.responsible}
                                   </td>
-                                  {role === "admin" && (
-                                    <td className="p-4 text-center">
+                                  <td className="p-4 text-center">
+                                    <div className="flex items-center justify-center gap-1.5">
                                       <button
+                                        type="button"
+                                        onClick={() => setShowViewExpenseModal(e)}
+                                        className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                                      >
+                                        👁️ Voir
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowEditExpenseModal(e);
+                                          setEditExpenseAmount(e.amount);
+                                          setEditExpenseCategory(e.category);
+                                          setEditExpenseDescription(e.description);
+                                          setEditExpenseResponsible(e.responsible);
+                                          setEditExpenseDate(e.date ? e.date.substring(0, 16) : new Date().toISOString().substring(0, 16));
+                                        }}
+                                        disabled={role !== "admin"}
+                                        className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-amber-500 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
+                                      >
+                                        ✏️ Modifier
+                                      </button>
+                                      <button
+                                        type="button"
                                         onClick={() => {
                                           if (confirm(`Voulez-vous vraiment supprimer cette dépense de ${e.amount.toLocaleString('fr-FR')} FCFA ? Le solde de caisse sera réajusté.`)) {
                                             handleDeleteExpense(e.id);
                                           }
                                         }}
-                                        className="p-1.5 hover:bg-rose-950/40 text-zinc-500 hover:text-rose-400 rounded-lg transition-all"
-                                        title="Supprimer la dépense"
+                                        disabled={role !== "admin"}
+                                        className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-rose-500 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
                                       >
-                                        <Trash2 className="w-4 h-4" />
+                                        🗑️ Supprimer
                                       </button>
-                                    </td>
-                                  )}
+                                    </div>
+                                  </td>
                                 </tr>
                               );
                             })}
@@ -5200,7 +5330,7 @@ export default function App() {
                             return matchesSearch && matchesCat;
                           }).length === 0 && (
                             <tr>
-                              <td colSpan={role === "admin" ? 6 : 5} className="p-8 text-center text-zinc-500 italic text-xs">
+                              <td colSpan={6} className="p-8 text-center text-zinc-500 italic text-xs">
                                 Aucune dépense enregistrée.
                               </td>
                             </tr>
@@ -5415,7 +5545,7 @@ export default function App() {
                           <th className="p-4 text-right">Montant Total</th>
                           <th className="p-4">Mode</th>
                           <th className="p-4">Responsable</th>
-                          {role === "admin" && <th className="p-4 text-right">Actions</th>}
+                          <th className="p-4 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-900/60">
@@ -5446,56 +5576,66 @@ export default function App() {
                                 <td className="p-4">
                                   <span className="px-2 py-0.5 bg-zinc-950 text-zinc-400 rounded-lg border border-zinc-800 text-[10px] font-semibold">{p.responsible}</span>
                                 </td>
-                                {role === "admin" && (
-                                  <td className="p-4 text-right">
-                                    <div className="flex items-center justify-end gap-2">
-                                      <button 
-                                        onClick={() => {
-                                          const supplierExists = suppliers.some(s => s.nom === p.supplier);
-                                          if (supplierExists) {
-                                            setPurchaseSupplier(p.supplier);
-                                            setPurchaseIsCustomSupplier(false);
-                                            setPurchaseCustomSupplierName("");
-                                          } else {
-                                            setPurchaseSupplier("NEW_SUPPLIER");
-                                            setPurchaseIsCustomSupplier(true);
-                                            setPurchaseCustomSupplierName(p.supplier);
-                                          }
-                                          const matched = products.find(x => x.name === p.product);
-                                          if (matched) {
-                                            setPurchaseProduct(p.product);
-                                            setPurchaseCustomProductName("");
-                                          } else {
-                                            setPurchaseProduct("Autre");
-                                            setPurchaseCustomProductName(p.product);
-                                          }
-                                          setPurchaseQuantity(p.quantity);
-                                          setPurchaseUnitPrice(p.unitPrice);
-                                          setPurchaseTotalAmount(p.totalAmount);
-                                          setPurchasePaymentMethod(p.paymentMethod);
-                                          setPurchaseResponsible(p.responsible);
-                                          setPurchaseDate(new Date(p.date).toISOString().substring(0, 16));
-                                          setShowEditPurchaseModal(p);
-                                        }}
-                                        className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
-                                        title="Modifier cet achat"
-                                      >
-                                        <Settings className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button 
-                                        onClick={() => {
-                                          if (confirm(`Voulez-vous vraiment supprimer cet achat de ${p.quantity}x "${p.product}" de chez "${p.supplier}" ?`)) {
-                                            handleDeletePurchase(p.id);
-                                          }
-                                        }}
-                                        className="p-1.5 rounded-lg bg-rose-950/20 border border-rose-500/20 hover:bg-rose-950/40 text-rose-400 hover:text-rose-300 transition-all"
-                                        title="Supprimer cet achat"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                )}
+                                <td className="p-4 text-right">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <button 
+                                      type="button"
+                                      onClick={() => setShowViewPurchaseModal(p)}
+                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                                      title="Voir les détails"
+                                    >
+                                      👁️ Voir
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        const supplierExists = suppliers.some(s => s.nom === p.supplier);
+                                        if (supplierExists) {
+                                          setPurchaseSupplier(p.supplier);
+                                          setPurchaseIsCustomSupplier(false);
+                                          setPurchaseCustomSupplierName("");
+                                        } else {
+                                          setPurchaseSupplier("NEW_SUPPLIER");
+                                          setPurchaseIsCustomSupplier(true);
+                                          setPurchaseCustomSupplierName(p.supplier);
+                                        }
+                                        const matched = products.find(x => x.name === p.product);
+                                        if (matched) {
+                                          setPurchaseProduct(p.product);
+                                          setPurchaseCustomProductName("");
+                                        } else {
+                                          setPurchaseProduct("Autre");
+                                          setPurchaseCustomProductName(p.product);
+                                        }
+                                        setPurchaseQuantity(p.quantity);
+                                        setPurchaseUnitPrice(p.unitPrice);
+                                        setPurchaseTotalAmount(p.totalAmount);
+                                        setPurchasePaymentMethod(p.paymentMethod);
+                                        setPurchaseResponsible(p.responsible);
+                                        setPurchaseDate(new Date(p.date).toISOString().substring(0, 16));
+                                        setShowEditPurchaseModal(p);
+                                      }}
+                                      disabled={role !== "admin"}
+                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-amber-500 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
+                                      title="Modifier cet achat"
+                                    >
+                                      ✏️ Modifier
+                                    </button>
+                                    <button 
+                                      type="button"
+                                      onClick={() => {
+                                        if (confirm(`Voulez-vous vraiment supprimer cet achat de ${p.quantity}x "${p.product}" de chez "${p.supplier}" ?`)) {
+                                          handleDeletePurchase(p.id);
+                                        }
+                                      }}
+                                      disabled={role !== "admin"}
+                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-rose-500 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
+                                      title="Supprimer cet achat"
+                                    >
+                                      🗑️ Supprimer
+                                    </button>
+                                  </div>
+                                </td>
                               </tr>
                             );
                           })}
@@ -5507,7 +5647,7 @@ export default function App() {
                           return matchQuery && matchMethod;
                         }).length === 0 && (
                           <tr>
-                            <td colSpan={role === "admin" ? 9 : 8} className="p-8 text-center text-zinc-500 italic">Aucun achat enregistré.</td>
+                            <td colSpan={9} className="p-8 text-center text-zinc-500 italic">Aucun achat enregistré.</td>
                           </tr>
                         )}
                       </tbody>
@@ -5586,8 +5726,17 @@ export default function App() {
                               </p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center gap-1.5">
                             <button
+                              type="button"
+                              onClick={() => setShowSupplierDetailModal(supp)}
+                              className="p-1 px-2 text-zinc-300 bg-zinc-900 hover:bg-zinc-800 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                              title="Voir"
+                            >
+                              👁️ Voir
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => {
                                 setSuppNom(supp.nom); setSuppTel(supp.telephone);
                                 setSuppEmail(supp.email); setSuppAdresse(supp.adresse);
@@ -5595,20 +5744,21 @@ export default function App() {
                                 setSuppNotes(supp.notes || "");
                                 setShowEditSupplierModal(supp);
                               }}
-                              className="p-1.5 rounded-lg bg-zinc-800 hover:bg-blue-900/40 hover:text-blue-400 text-zinc-400 transition-all"
+                              disabled={role !== "admin"}
+                              className="p-1 px-2 text-amber-500 bg-zinc-900 hover:bg-zinc-800 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
                               title="Modifier"
                             >
-                              <Edit3 className="w-3.5 h-3.5" />
+                              ✏️ Modifier
                             </button>
-                            {role === "admin" && (
-                              <button
-                                onClick={() => handleDeleteSupplier(supp.id)}
-                                className="p-1.5 rounded-lg bg-zinc-800 hover:bg-rose-900/40 hover:text-rose-400 text-zinc-400 transition-all"
-                                title="Supprimer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSupplier(supp.id)}
+                              disabled={role !== "admin"}
+                              className="p-1 px-2 text-rose-500 bg-zinc-900 hover:bg-zinc-800 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
+                              title="Supprimer"
+                            >
+                              🗑️ Supprimer
+                            </button>
                           </div>
                         </div>
 
@@ -7201,21 +7351,29 @@ export default function App() {
                                   </span>
                                 </td>
                                 <td className="p-4 text-center">
-                                  <div className="flex items-center justify-center gap-2">
+                                  <div className="flex items-center justify-center gap-1.5">
                                     <button
-                                      onClick={() => handlePrintShiftReport(session)}
-                                      className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
-                                      title="Imprimer le rapport de shift"
+                                      type="button"
+                                      onClick={() => setShowViewShiftModal(session)}
+                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
                                     >
-                                      <Printer className="w-3.5 h-3.5" />
+                                      👁️ Voir
                                     </button>
-                                    {session.notes && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePrintShiftReport(session)}
+                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-cyan-400 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                                      title="Imprimer"
+                                    >
+                                      🖨️ Imprimer
+                                    </button>
+                                    {role === "admin" && (
                                       <button
-                                        onClick={() => alert(`Remarques du shift :\n\n"${session.notes}"`)}
-                                        className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all"
-                                        title="Voir les remarques"
+                                        type="button"
+                                        onClick={() => handleDeleteCaisseSession(session.id)}
+                                        className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-rose-500 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
                                       >
-                                        <FileText className="w-3.5 h-3.5" />
+                                        🗑️ Supprimer
                                       </button>
                                     )}
                                   </div>
@@ -8653,13 +8811,598 @@ export default function App() {
                 </div>
               </div>
 
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ===== DETAILED VIEW AND EDIT MODALS (CRUD ACTIONS) ===== */}
+
+      {showViewProductModal && (() => {
+        const p = showViewProductModal;
+        const purchase = p.purchasePrice || 0;
+        const margin = p.price - purchase;
+        const marginPct = p.price > 0 ? (margin / p.price) * 100 : 0;
+        const isLow = p.stock <= p.minThreshold;
+        const isOutOfStock = p.stock === 0;
+        const productMovements = stockMovements.filter(m => m.productId === p.id);
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="glass-panel w-full max-w-lg rounded-2xl border border-violet-900/40 p-6 space-y-5 animate-scale-up relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/5 rounded-full blur-3xl"></div>
+              
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-2xl shadow-lg">
+                    {p.image || "📦"}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white leading-tight">{p.name}</h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold uppercase">
+                      ID: {p.id} • Catégorie: <span className="text-violet-400 capitalize">{p.category}</span>
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowViewProductModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Prix d'Achat</span>
+                  <span className="text-zinc-300 font-bold font-mono">{formatPrice(purchase)}</span>
+                </div>
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Prix de Vente</span>
+                  <span className="text-white font-bold font-mono">{formatPrice(p.price)}</span>
+                </div>
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Marge</span>
+                  <span className="text-emerald-400 font-bold font-mono">{formatPrice(margin)} <span className="text-[9px] text-zinc-500 font-normal">({marginPct.toFixed(0)}%)</span></span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 flex justify-between items-center">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Stock Actuel</span>
+                    <strong className="text-white text-sm font-mono">{p.stock} unités</strong>
+                  </div>
+                  <div>
+                    {isOutOfStock ? (
+                      <span className="px-2 py-0.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[8px] font-bold rounded uppercase tracking-wider animate-pulse">Rupture</span>
+                    ) : isLow ? (
+                      <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[8px] font-bold rounded uppercase tracking-wider">Faible</span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[8px] font-bold rounded uppercase tracking-wider">OK</span>
+                    )}
+                  </div>
+                </div>
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Seuil d'Alerte Minimum</span>
+                  <span className="text-zinc-400 font-bold font-mono">{p.minThreshold} unités</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-900 pb-1.5 flex justify-between">
+                  <span>Historique des mouvements</span>
+                  <span>{productMovements.length} logs</span>
+                </h4>
+                <div className="max-h-[160px] overflow-y-auto space-y-1.5 pr-1 text-[11px]">
+                  {productMovements.length === 0 ? (
+                    <p className="text-zinc-500 italic text-center py-4">Aucun mouvement enregistré pour ce produit.</p>
+                  ) : (
+                    productMovements.map((m) => {
+                      const mDate = new Date(m.date);
+                      return (
+                        <div key={m.id} className="bg-zinc-950/30 border border-zinc-900 rounded-lg p-2 flex justify-between items-center">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${
+                                m.type === 'entrée' 
+                                  ? 'bg-emerald-950/50 text-emerald-400 border border-emerald-500/20' 
+                                  : 'bg-rose-950/50 text-rose-400 border border-rose-500/20'
+                              }`}>
+                                {m.type}
+                              </span>
+                              <span className="text-white font-bold font-mono">{m.quantity} u.</span>
+                              <span className="text-zinc-500">• {m.reason}</span>
+                            </div>
+                            <span className="text-[9px] text-zinc-500 font-mono">
+                              {mDate.toLocaleDateString('fr-FR')} {mDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                          <span className="text-[9px] text-zinc-400 bg-zinc-950 border border-zinc-900 px-1.5 py-0.5 rounded font-semibold">{m.user}</span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
               <div className="pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowViewPlayerModal(null)}
+                  onClick={() => setShowViewProductModal(null)}
                   className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all text-center"
                 >
-                  Fermer la Fiche
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {showViewExpenseModal && (() => {
+        const e = showViewExpenseModal;
+        const eDate = new Date(e.date);
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="glass-panel w-full max-w-md rounded-2xl border border-rose-900/40 p-6 space-y-5 animate-scale-up relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/5 rounded-full blur-3xl"></div>
+              
+              <div className="flex items-start justify-between border-b border-zinc-850 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-950/30 border border-rose-500/20 flex items-center justify-center text-lg text-rose-400">
+                    💸
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white leading-tight">Détail de la Dépense</h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold uppercase">
+                      ID: {e.id}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowViewExpenseModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+              </div>
+
+              <div className="space-y-3.5 text-xs">
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Catégorie</span>
+                    <span className="text-white font-bold capitalize">{e.category}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Responsable</span>
+                    <span className="text-zinc-300 font-semibold">{e.responsible}</span>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Montant</span>
+                    <strong className="text-rose-400 text-base font-mono">{formatPrice(e.amount)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Date & Heure</span>
+                    <span className="text-zinc-300 font-semibold font-mono">
+                      {eDate.toLocaleDateString('fr-FR')} {eDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Motif / Description</span>
+                  <p className="text-zinc-200 leading-relaxed font-medium whitespace-pre-wrap">{e.description || "Aucune description fournie."}</p>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowViewExpenseModal(null)}
+                  className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all text-center"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {showEditExpenseModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-amber-900/40 p-6 space-y-5 animate-scale-up relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl"></div>
+            
+            <div className="flex items-start justify-between border-b border-zinc-850 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-950/30 border border-amber-500/20 flex items-center justify-center">
+                  <Edit3 className="w-4 h-4 text-amber-400" />
+                </div>
+                <h3 className="text-base font-black text-white">Modifier la Dépense</h3>
+              </div>
+              <button onClick={() => setShowEditExpenseModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Montant *</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={editExpenseAmount}
+                    onChange={(e) => setEditExpenseAmount(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-3.5 pr-16 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono font-bold"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 font-black">FCFA</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Catégorie *</label>
+                  <select
+                    value={editExpenseCategory}
+                    onChange={(e) => setEditExpenseCategory(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-zinc-300 focus:outline-none focus:border-amber-500 font-semibold"
+                  >
+                    {expenseCategories.map((c, i) => (
+                      <option key={i} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Responsable</label>
+                  <input
+                    type="text"
+                    value={editExpenseResponsible}
+                    onChange={(e) => setEditExpenseResponsible(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Date & Heure de la dépense *</label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={editExpenseDate}
+                  onChange={(e) => setEditExpenseDate(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1">Description / Motif *</label>
+                <textarea
+                  rows={3}
+                  required
+                  value={editExpenseDescription}
+                  onChange={(e) => setEditExpenseDescription(e.target.value)}
+                  placeholder="Expliquez à quoi a servi cette dépense..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 resize-none font-medium"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditExpenseModal(null)}
+                  className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl text-xs font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleEditExpense(
+                      showEditExpenseModal.id,
+                      editExpenseAmount,
+                      editExpenseCategory,
+                      editExpenseDescription,
+                      editExpenseResponsible,
+                      editExpenseDate
+                    );
+                    setShowEditExpenseModal(null);
+                  }}
+                  disabled={!editExpenseAmount || !editExpenseDescription.trim()}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-extrabold shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Sauvegarder
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showViewPurchaseModal && (() => {
+        const p = showViewPurchaseModal;
+        const pDate = new Date(p.date);
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-850 p-6 space-y-5 animate-scale-up relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/5 rounded-full blur-3xl"></div>
+              
+              <div className="flex items-start justify-between border-b border-zinc-850 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-zinc-950 border border-zinc-850 flex items-center justify-center text-lg">
+                    📦
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white leading-tight">Détail de l'Achat</h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold uppercase">
+                      ID: {p.id}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowViewPurchaseModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+              </div>
+
+              <div className="space-y-3.5 text-xs">
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Fournisseur</span>
+                    <span className="text-white font-bold block truncate">{p.supplier}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Responsable</span>
+                    <span className="text-zinc-300 font-semibold block truncate">{p.responsible}</span>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Produit</span>
+                    <span className="text-white font-bold block truncate">{p.product}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Quantité</span>
+                    <span className="text-cyan-400 font-bold font-mono">{p.quantity} unités</span>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Prix Unitaire</span>
+                    <span className="text-zinc-300 font-bold font-mono">{formatPrice(p.unitPrice)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Montant Total</span>
+                    <strong className="text-emerald-400 text-base font-mono">{formatPrice(p.totalAmount)}</strong>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Mode de Paiement</span>
+                    <span className="px-2 py-0.5 bg-emerald-950/20 text-emerald-400 rounded border border-emerald-500/20 text-[9px] uppercase font-bold tracking-wider inline-block mt-0.5">{p.paymentMethod}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Date & Heure</span>
+                    <span className="text-zinc-300 font-semibold font-mono">
+                      {pDate.toLocaleDateString('fr-FR')} {pDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowViewPurchaseModal(null)}
+                  className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all text-center"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {showSupplierDetailModal && (() => {
+        const supp = showSupplierDetailModal;
+        const addDate = new Date(supp.dateAjout);
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="glass-panel w-full max-w-md rounded-2xl border border-teal-900/40 p-6 space-y-5 animate-scale-up relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 rounded-full blur-3xl"></div>
+              
+              <div className="flex items-start justify-between border-b border-zinc-850 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-teal-950/30 border border-teal-500/20 flex items-center justify-center text-lg text-teal-400">
+                    <Building2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white leading-tight">{supp.nom}</h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold">
+                      Ajouté le : {addDate.toLocaleDateString('fr-FR')}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowSupplierDetailModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 space-y-2">
+                  {supp.telephone && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Téléphone</span>
+                      <span className="text-white font-bold font-mono">{supp.telephone}</span>
+                    </div>
+                  )}
+                  {supp.email && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Adresse Email</span>
+                      <span className="text-zinc-300 font-semibold block truncate">{supp.email}</span>
+                    </div>
+                  )}
+                  {supp.adresse && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Adresse Physique</span>
+                      <span className="text-zinc-300 font-semibold block truncate">{supp.adresse}</span>
+                    </div>
+                  )}
+                </div>
+
+                {supp.produitsFournis && supp.produitsFournis.length > 0 && (
+                  <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 space-y-1.5">
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Produits Fournis</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {supp.produitsFournis.map((p, i) => (
+                        <span key={i} className="text-[10px] bg-zinc-900 border border-zinc-800 text-zinc-300 px-2 py-0.5 rounded-md font-medium">
+                          {p}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Notes / Remarques</span>
+                  <p className="text-zinc-300 italic leading-relaxed whitespace-pre-wrap">{supp.notes || "Aucune note disponible."}</p>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSupplierDetailModal(null)}
+                  className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all text-center"
+                >
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {showViewShiftModal && (() => {
+        const s = showViewShiftModal;
+        const dOpen = new Date(s.dateOpen);
+        const dClose = new Date(s.dateClose);
+        const durationMs = dClose - dOpen;
+        const durationHours = Math.floor(durationMs / 3600000);
+        const durationMinutes = Math.floor((durationMs % 3600000) / 60000);
+        const isOk = s.variance === 0;
+        const isNegative = s.variance < 0;
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="glass-panel w-full max-w-lg rounded-2xl border border-zinc-850 p-6 space-y-5 animate-scale-up relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl"></div>
+              
+              <div className="flex items-start justify-between border-b border-zinc-850 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-950/30 border border-cyan-500/20 flex items-center justify-center text-lg text-cyan-400">
+                    📜
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white leading-tight">Détails du Shift Clôturé</h3>
+                    <p className="text-[10px] text-zinc-500 font-semibold uppercase">
+                      ID: {s.id}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setShowViewShiftModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Période du Shift</span>
+                    <span className="text-white font-bold block">{dOpen.toLocaleDateString('fr-FR')}</span>
+                    <span className="text-[10px] text-zinc-400 block font-mono mt-0.5">
+                      {dOpen.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} ➡️ {dClose.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="text-[9px] text-zinc-500 font-mono">({durationHours}h {durationMinutes}m)</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Opérateurs</span>
+                    <p className="text-zinc-300 font-medium">Ouvert par : <strong className="text-white">{s.openedBy}</strong></p>
+                    <p className="text-zinc-300 font-medium">Clôturé par : <strong className="text-white">{s.closedBy}</strong></p>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 space-y-2.5">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block border-b border-zinc-900 pb-1.5">Flux Financiers du Shift</span>
+                  
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    <div className="flex justify-between items-center text-zinc-400">
+                      <span>Fond de caisse initial :</span>
+                      <span className="font-mono text-zinc-300">{formatPrice(s.openingBalance)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-zinc-400">
+                      <span>Total Remboursements :</span>
+                      <span className="font-mono text-zinc-300">{formatPrice(s.refunds || 0)}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-emerald-400 border-t border-zinc-900/50 pt-1.5">
+                      <span>Revenus Sessions Console :</span>
+                      <span className="font-mono font-bold">+{formatPrice(s.gamesRevenue)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-emerald-400 border-t border-zinc-900/50 pt-1.5">
+                      <span>Revenus Snack / POS :</span>
+                      <span className="font-mono font-bold">+{formatPrice(s.snackRevenue)}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-rose-400 border-t border-zinc-900/50 pt-1.5">
+                      <span>Dépenses Diverses / Maintenance :</span>
+                      <span className="font-mono font-bold">-{formatPrice(s.expenses)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-rose-400 border-t border-zinc-900/50 pt-1.5">
+                      <span>Achats Fournisseurs :</span>
+                      <span className="font-mono font-bold">-{formatPrice(s.purchases)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-3 gap-3 items-center">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Solde Théorique</span>
+                    <strong className="text-zinc-300 font-mono text-xs">{formatPrice(s.expectedBalance)}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Solde Physique Réel</span>
+                    <strong className="text-white font-mono text-sm">{formatPrice(s.realBalance)}</strong>
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Écart de Caisse</span>
+                    <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-full border mt-0.5 ${
+                      isOk 
+                        ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/30" 
+                        : isNegative
+                          ? "bg-rose-950/60 text-rose-400 border-rose-500/30"
+                          : "bg-amber-950/60 text-amber-400 border-amber-500/30"
+                    }`}>
+                      {isOk ? "Conforme" : `${s.variance > 0 ? '+' : ''}${formatPrice(s.variance)}`}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Remarques / Notes du Shift</span>
+                  <p className="text-zinc-300 italic leading-relaxed whitespace-pre-wrap">{s.notes || "Aucune note écrite par le gérant."}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrintShiftReport(s)}
+                  className="flex-1 py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-cyan-400 hover:text-cyan-300 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                >
+                  🖨️ Imprimer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowViewShiftModal(null)}
+                  className="flex-1 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all text-center"
+                >
+                  Fermer
                 </button>
               </div>
             </div>
