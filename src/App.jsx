@@ -171,7 +171,7 @@ export default function App() {
   }, [systemSettings.theme]);
 
   useEffect(() => {
-    const initializedTest = localStorage.getItem("system_test_reset_v1");
+    const initializedTest = localStorage.getItem("system_test_reset_v2");
     if (!initializedTest) {
       localStorage.removeItem("system_consoles");
       localStorage.removeItem("system_players");
@@ -182,7 +182,7 @@ export default function App() {
       localStorage.removeItem("system_activity_log");
       localStorage.removeItem("system_stock_movements");
       localStorage.removeItem("system_settings");
-      localStorage.setItem("system_test_reset_v1", "true");
+      localStorage.setItem("system_test_reset_v2", "true");
       window.location.reload();
     }
   }, []);
@@ -3568,11 +3568,6 @@ export default function App() {
             >
               <Wallet className="w-5 h-5 text-amber-500" />
               Gestion Caisse
-              <span className={`ml-auto text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1 ${
-                caisseStatus === "ouverte" ? "bg-emerald-950/60 text-emerald-400 border border-emerald-500/30" : "bg-rose-950/60 text-rose-400 border border-rose-500/30"
-              }`}>
-                {caisseStatus === "ouverte" ? "Ouverte" : "Fermée"}
-              </span>
             </button>
 
             {role === "admin" && (
@@ -7569,18 +7564,6 @@ export default function App() {
                             </p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => {
-                            setCloseCaisseRealBalance("");
-                            setCloseCaisseNotes("");
-                            setCloseCaisseOperator("");
-                            setShowCloseCaisseModal(true);
-                          }}
-                          className="w-full lg:w-auto py-2.5 px-4 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-                        >
-                          <Lock className="w-4 h-4" />
-                          Fermer la Caisse (Z-Clôture)
-                        </button>
                       </div>
 
                       {/* Live Counter Cards */}
