@@ -3676,16 +3676,7 @@ export default function App() {
               </span>
             </div>
 
-            {/* Realtime Event Simulator */}
-            <button 
-              onClick={triggerSimulatedEvent}
-              className="sim-btn flex items-center gap-2 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-lg shadow-pink-900/20 active:scale-95 transition-all"
-            >
-              <Sparkles className="w-4 h-4 animate-spin-slow" />
-              Simuler Flux
-            </button>
 
-            <div className="h-8 w-px bg-zinc-800"></div>
 
             <div className="flex items-center gap-3">
               <div className="text-right">
