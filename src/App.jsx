@@ -171,7 +171,7 @@ export default function App() {
   }, [systemSettings.theme]);
 
   useEffect(() => {
-    const initializedTest = localStorage.getItem("system_test_reset_v2");
+    const initializedTest = localStorage.getItem("system_test_reset_v3");
     if (!initializedTest) {
       localStorage.removeItem("system_consoles");
       localStorage.removeItem("system_players");
@@ -182,7 +182,7 @@ export default function App() {
       localStorage.removeItem("system_activity_log");
       localStorage.removeItem("system_stock_movements");
       localStorage.removeItem("system_settings");
-      localStorage.setItem("system_test_reset_v2", "true");
+      localStorage.setItem("system_test_reset_v3", "true");
       window.location.reload();
     }
   }, []);
@@ -330,9 +330,20 @@ export default function App() {
   }, [purchaseQuantity, purchaseUnitPrice]);
 
   // Caisse (Cash register) management states
-  const [caisseStatus, setCaisseStatus] = useState("fermee");
+  const [caisseStatus, setCaisseStatus] = useState("ouverte");
   const [caisseSessions, setCaisseSessions] = useState(initialCaisseSessions);
-  const [activeCaisseSession, setActiveCaisseSession] = useState(null);
+  const [activeCaisseSession, setActiveCaisseSession] = useState({
+    id: "shift-permanent",
+    dateOpen: new Date().toISOString(),
+    openedBy: "Gérant",
+    openingBalance: 0,
+    gamesRevenue: 0,
+    snackRevenue: 0,
+    expensesMaintenance: 0,
+    expensesDiverses: 0,
+    purchases: 0,
+    refunds: 0
+  });
   const [caisseSubTab, setCaisseSubTab] = useState("suivi"); // 'suivi' or 'historique'
   const [reportSubTab, setReportSubTab] = useState("journalier"); // 'journalier', 'hebdomadaire', 'mensuel'
   const [showOpenCaisseModal, setShowOpenCaisseModal] = useState(false);
