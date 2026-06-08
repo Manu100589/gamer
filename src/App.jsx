@@ -171,6 +171,23 @@ export default function App() {
   }, [systemSettings.theme]);
 
   useEffect(() => {
+    const initializedTest = localStorage.getItem("system_test_reset_v1");
+    if (!initializedTest) {
+      localStorage.removeItem("system_consoles");
+      localStorage.removeItem("system_players");
+      localStorage.removeItem("system_pos_tickets");
+      localStorage.removeItem("system_active_caisse_session");
+      localStorage.removeItem("system_expenses");
+      localStorage.removeItem("system_purchases");
+      localStorage.removeItem("system_activity_log");
+      localStorage.removeItem("system_stock_movements");
+      localStorage.removeItem("system_settings");
+      localStorage.setItem("system_test_reset_v1", "true");
+      window.location.reload();
+    }
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem("system_product_categories", JSON.stringify(productCategories));
   }, [productCategories]);
 
@@ -313,20 +330,9 @@ export default function App() {
   }, [purchaseQuantity, purchaseUnitPrice]);
 
   // Caisse (Cash register) management states
-  const [caisseStatus, setCaisseStatus] = useState("ouverte");
+  const [caisseStatus, setCaisseStatus] = useState("fermee");
   const [caisseSessions, setCaisseSessions] = useState(initialCaisseSessions);
-  const [activeCaisseSession, setActiveCaisseSession] = useState({
-    id: "shift-initial",
-    dateOpen: new Date(Date.now() - 4 * 3600 * 1000).toISOString(), // 4 hours ago
-    openedBy: "Sofiane",
-    openingBalance: 250000.00,
-    gamesRevenue: 120000.00,
-    snackRevenue: 180000.00,
-    expensesMaintenance: 8000.00,
-    expensesDiverses: 17000.00,
-    purchases: 25000.00,
-    refunds: 0
-  });
+  const [activeCaisseSession, setActiveCaisseSession] = useState(null);
   const [caisseSubTab, setCaisseSubTab] = useState("suivi"); // 'suivi' or 'historique'
   const [reportSubTab, setReportSubTab] = useState("journalier"); // 'journalier', 'hebdomadaire', 'mensuel'
   const [showOpenCaisseModal, setShowOpenCaisseModal] = useState(false);
