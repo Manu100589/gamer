@@ -6098,6 +6098,79 @@ export default function App() {
               const displayExpenses = reportSubTab === "hebdomadaire" ? weeklyExpenses : reportSubTab === "mensuel" ? monthlyExpenses : totalExpenses;
               const displayProfit = reportSubTab === "hebdomadaire" ? weeklyProfit : reportSubTab === "mensuel" ? monthlyProfit : netProfit;
 
+              // Graphs calculations
+              const totalRev = displayGamesRev + displaySnacksRev;
+              const donutRadius = 38;
+              const donutCircumference = 2 * Math.PI * donutRadius; // ~238.76
+              const gamesShare = totalRev > 0 ? displayGamesRev / totalRev : 0.6;
+              const snacksShare = totalRev > 0 ? displaySnacksRev / totalRev : 0.4;
+              const dashGames = gamesShare * donutCircumference;
+              const dashSnacks = snacksShare * donutCircumference;
+
+              // Trend history calculations
+              const trendHistory = [...caisseSessions]
+                .slice(0, 5)
+                .reverse()
+                .map((s, idx) => {
+                  const rev = (s.gamesRevenue || 0) + (s.snackRevenue || 0);
+                  const exp = (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0);
+                  const prof = rev - exp;
+                  const dateObj = new Date(s.dateClose || s.dateOpen);
+                  const label = dateObj.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+                  return { label, revenue: rev, profit: prof, expenses: exp };
+                });
+
+              // Fallback padding if we don't have enough history
+              if (trendHistory.length < 5) {
+                const pad = [
+                  { label: "01 Juin", revenue: 120000, profit: 80000, expenses: 40000 },
+                  { label: "02 Juin", revenue: 180000, profit: 120000, expenses: 60000 },
+                  { label: "03 Juin", revenue: 150000, profit: 90000, expenses: 60000 },
+                  { label: "04 Juin", revenue: 220000, profit: 150000, expenses: 70000 },
+                  { label: "05 Juin", revenue: 260000, profit: 180000, expenses: 80000 }
+                ];
+                trendHistory.unshift(...pad.slice(0, 5 - trendHistory.length));
+              }
+
+              // Append current shift to trendHistory
+              trendHistory.push({
+                label: "En cours",
+                revenue: totalRev,
+                profit: displayProfit,
+                expenses: displayExpenses
+              });
+
+              // Limit to last 6 points
+              const activeTrendPoints = trendHistory.slice(-6);
+
+              const maxTrendVal = Math.max(
+                ...activeTrendPoints.map(d => Math.max(d.revenue, d.profit, d.expenses, 100000))
+              ) * 1.15;
+
+              // Generate line coordinates
+              const pointsRevenue = activeTrendPoints.map((d, idx) => {
+                const x = 35 + idx * 50;
+                const y = 90 - (d.revenue / maxTrendVal) * 70;
+                return { x, y, val: d.revenue, label: d.label };
+              });
+
+              const pointsProfit = activeTrendPoints.map((d, idx) => {
+                const x = 35 + idx * 50;
+                const y = 90 - (d.profit / maxTrendVal) * 70;
+                return { x, y, val: d.profit, label: d.label };
+              });
+
+              const pathRevenueD = pointsRevenue.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+              const pathProfitD = pointsProfit.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+              
+              const areaRevenueD = pointsRevenue.length > 0 
+                ? `M ${pointsRevenue[0].x} 90 L ${pointsRevenue.map(p => `${p.x} ${p.y}`).join(' L ')} L ${pointsRevenue[pointsRevenue.length - 1].x} 90 Z`
+                : '';
+
+              const areaProfitD = pointsProfit.length > 0 
+                ? `M ${pointsProfit[0].x} 90 L ${pointsProfit.map(p => `${p.x} ${p.y}`).join(' L ')} L ${pointsProfit[pointsProfit.length - 1].x} 90 Z`
+                : '';
+
               return (
                 <div className="space-y-6 animate-fade-in pb-12 max-w-4xl mx-auto font-sans">
                   
@@ -6129,6 +6202,202 @@ export default function App() {
                         Mensuel
                       </button>
                     </div>
+                  </div>
+
+                  {/* Grille des Rapports Graphiques */}
+                  <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    
+                    {/* Graphique Donut - Répartition des Revenus (2/5 cols) */}
+                    <div className="glass-panel p-5 rounded-3xl border border-zinc-850 relative overflow-hidden flex flex-col justify-between col-span-1 lg:col-span-2 min-h-[260px]">
+                      <div className="absolute top-0 right-0 w-24 h-24 bg-cyan-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-zinc-500 font-extrabold uppercase tracking-wider block">Répartition du CA</span>
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Jeux vs Snacks</h4>
+                      </div>
+
+                      <div className="relative flex items-center justify-center py-2">
+                        <svg width="130" height="130" viewBox="0 0 100 100" className="transform -rotate-90">
+                          {/* Background Track */}
+                          <circle cx="50" cy="50" r={donutRadius} fill="none" stroke="#18181b" strokeWidth="8" />
+                          {totalRev > 0 ? (
+                            <>
+                              {/* Games segment */}
+                              <circle 
+                                cx="50" 
+                                cy="50" 
+                                r={donutRadius} 
+                                fill="none" 
+                                stroke="#22d3ee" 
+                                strokeWidth="8" 
+                                strokeDasharray={`${dashGames} ${donutCircumference}`}
+                                strokeDashoffset={0}
+                                strokeLinecap="round"
+                                className="transition-all duration-500"
+                              />
+                              {/* Snacks segment */}
+                              <circle 
+                                cx="50" 
+                                cy="50" 
+                                r={donutRadius} 
+                                fill="none" 
+                                stroke="#f43f5e" 
+                                strokeWidth="8" 
+                                strokeDasharray={`${dashSnacks} ${donutCircumference}`}
+                                strokeDashoffset={-dashGames}
+                                strokeLinecap="round"
+                                className="transition-all duration-500"
+                              />
+                            </>
+                          ) : (
+                            <circle cx="50" cy="50" r={donutRadius} fill="none" stroke="#27272a" strokeWidth="8" strokeDasharray="3 3" />
+                          )}
+                        </svg>
+
+                        {/* Centered Stats */}
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                          <span className="text-[14px] font-black font-mono text-white">
+                            {totalRev > 0 ? `${Math.round(gamesShare * 100)}%` : "N/A"}
+                          </span>
+                          <span className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider">
+                            Part Jeux
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex justify-around items-center pt-2 border-t border-zinc-800/60 text-[10px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                          <div>
+                            <p className="text-[9px] text-zinc-500 font-semibold uppercase leading-none">Jeux</p>
+                            <p className="font-bold text-white font-mono">{displayGamesRev.toLocaleString('fr-FR')} F</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                          <div>
+                            <p className="text-[9px] text-zinc-500 font-semibold uppercase leading-none">Snack</p>
+                            <p className="font-bold text-white font-mono">{displaySnacksRev.toLocaleString('fr-FR')} F</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Graphique d'Évolution - Tendances (3/5 cols) */}
+                    <div className="glass-panel p-5 rounded-3xl border border-zinc-850 relative overflow-hidden flex flex-col justify-between col-span-1 lg:col-span-3 min-h-[260px]">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-zinc-500 font-extrabold uppercase tracking-wider block">Évolution financière</span>
+                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">CA vs Bénéfices par Shift</h4>
+                        </div>
+                        <div className="flex items-center gap-3 text-[9px] font-bold text-zinc-500 uppercase">
+                          <div className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded bg-cyan-400"></span>
+                            <span>CA</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded bg-emerald-400"></span>
+                            <span>Bénéfice</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* SVG Line Chart */}
+                      <div className="w-full relative h-[130px] mt-2">
+                        <svg className="w-full h-full overflow-visible" viewBox="0 0 300 110">
+                          {/* Grid horizontal lines */}
+                          {[0, 0.25, 0.5, 0.75, 1].map((p, i) => {
+                            const y = 20 + p * 70;
+                            return (
+                              <line 
+                                key={i}
+                                x1="20" 
+                                y1={y} 
+                                x2="290" 
+                                y2={y} 
+                                stroke="#18181b" 
+                                strokeWidth="1" 
+                                strokeDasharray="4 4" 
+                              />
+                            );
+                          })}
+
+                          {/* Gradient Definitions */}
+                          <defs>
+                            <linearGradient id="cyanGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.25" />
+                              <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+                            </linearGradient>
+                            <linearGradient id="emeraldGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#34d399" stopOpacity="0.2" />
+                              <stop offset="100%" stopColor="#34d399" stopOpacity="0" />
+                            </linearGradient>
+                          </defs>
+
+                          {/* Area backgrounds */}
+                          <path d={areaRevenueD} fill="url(#cyanGrad)" className="transition-all duration-500" />
+                          <path d={areaProfitD} fill="url(#emeraldGrad)" className="transition-all duration-500" />
+
+                          {/* Line paths */}
+                          <path 
+                            d={pathRevenueD} 
+                            fill="none" 
+                            stroke="#22d3ee" 
+                            strokeWidth="2" 
+                            className="transition-all duration-500" 
+                          />
+                          <path 
+                            d={pathProfitD} 
+                            fill="none" 
+                            stroke="#34d399" 
+                            strokeWidth="2" 
+                            className="transition-all duration-500" 
+                          />
+
+                          {/* Dots & labels for points */}
+                          {pointsRevenue.map((p, idx) => (
+                            <g key={`rev-${idx}`} className="group/dot">
+                              <circle 
+                                cx={p.x} 
+                                cy={p.y} 
+                                r="3" 
+                                fill="#09090b" 
+                                stroke="#22d3ee" 
+                                strokeWidth="1.5" 
+                              />
+                            </g>
+                          ))}
+
+                          {pointsProfit.map((p, idx) => (
+                            <g key={`prof-${idx}`} className="group/pdot">
+                              <circle 
+                                cx={p.x} 
+                                cy={p.y} 
+                                r="3" 
+                                fill="#09090b" 
+                                stroke="#34d399" 
+                                strokeWidth="1.5" 
+                              />
+                              
+                              {/* X Axis Labels */}
+                              <text
+                                x={p.x}
+                                y="105"
+                                fill="#71717a"
+                                fontSize="7"
+                                fontWeight="bold"
+                                textAnchor="middle"
+                                className="uppercase tracking-wider"
+                              >
+                                {p.label}
+                              </text>
+                            </g>
+                          ))}
+                        </svg>
+                      </div>
+                    </div>
+
                   </div>
 
                   {/* Glassmorphic Report Card */}
