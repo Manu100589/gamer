@@ -107,6 +107,7 @@ export default function App() {
       alertUnclosedCaisse: true,
       alertConsoleMaintenance: true,
       highExpenseThreshold: 50000,
+      theme: "sombre",
     };
     return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
@@ -151,6 +152,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("system_settings", JSON.stringify(systemSettings));
   }, [systemSettings]);
+
+  useEffect(() => {
+    if (systemSettings.theme === "clair") {
+      document.body.classList.add("light-theme");
+    } else {
+      document.body.classList.remove("light-theme");
+    }
+  }, [systemSettings.theme]);
 
   useEffect(() => {
     localStorage.setItem("system_product_categories", JSON.stringify(productCategories));
@@ -6603,7 +6612,7 @@ export default function App() {
                   </div>
 
                   {/* Card 3: NOTIFICATIONS & ALERTES */}
-                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-5 lg:col-span-2 relative overflow-hidden">
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-5 relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl"></div>
                     <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
                       <Bell className="w-5 h-5 text-purple-400" />
@@ -6770,6 +6779,79 @@ export default function App() {
                             <Check className="w-3.5 h-3.5 text-white" />
                             <span>ENREGISTRER</span>
                           </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Card 4: PERSONNALISATION */}
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-5 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl"></div>
+                    <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
+                      <Sliders className="w-5 h-5 text-purple-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">PERSONNALISATION</h3>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <span className="text-[10px] font-bold text-zinc-400 uppercase block mb-2">Thème :</span>
+                        
+                        <div className="flex gap-6 items-center">
+                          {/* Sombre */}
+                          <label className="flex items-center gap-2.5 group cursor-pointer select-none">
+                            <div className="relative flex items-center justify-center">
+                              <input 
+                                type="radio" 
+                                name="theme-selection"
+                                checked={systemSettings.theme === "sombre" || !systemSettings.theme}
+                                onChange={() => {
+                                  setSystemSettings(prev => ({ ...prev, theme: "sombre" }));
+                                  addLog("theme_change", "Thème configuré sur Sombre", "console");
+                                }}
+                                className="sr-only"
+                              />
+                              <div className={`w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center ${
+                                (systemSettings.theme === "sombre" || !systemSettings.theme) 
+                                  ? "border-purple-600" 
+                                  : "border-zinc-800"
+                              }`}>
+                                {(systemSettings.theme === "sombre" || !systemSettings.theme) && (
+                                  <div className="w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                              🌑 Sombre
+                            </span>
+                          </label>
+
+                          {/* Clair */}
+                          <label className="flex items-center gap-2.5 group cursor-pointer select-none">
+                            <div className="relative flex items-center justify-center">
+                              <input 
+                                type="radio" 
+                                name="theme-selection"
+                                checked={systemSettings.theme === "clair"}
+                                onChange={() => {
+                                  setSystemSettings(prev => ({ ...prev, theme: "clair" }));
+                                  addLog("theme_change", "Thème configuré sur Clair", "console");
+                                }}
+                                className="sr-only"
+                              />
+                              <div className={`w-5 h-5 rounded-full border-2 transition-all flex items-center justify-center ${
+                                systemSettings.theme === "clair" 
+                                  ? "border-purple-600" 
+                                  : "border-zinc-800"
+                              }`}>
+                                {systemSettings.theme === "clair" && (
+                                  <div className="w-2.5 h-2.5 bg-purple-600 rounded-full"></div>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-xs font-semibold text-zinc-300 group-hover:text-white transition-colors">
+                              ☀️ Clair
+                            </span>
+                          </label>
                         </div>
                       </div>
                     </div>

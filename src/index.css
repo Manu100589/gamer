@@ -309,4 +309,234 @@ body {
   z-index: 0;
 }
 
+/* ==================== LIGHT THEME OVERRIDES ==================== */
+body.light-theme {
+  color-scheme: light;
+  color: #18181b;
+  background-color: #f6f8fb;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(0, 90, 255, 0.04) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(255, 0, 60, 0.03) 0px, transparent 50%),
+    radial-gradient(at 50% 50%, rgba(0, 90, 255, 0.01) 0px, transparent 40%),
+    radial-gradient(at 50% 100%, rgba(255, 0, 60, 0.02) 0px, transparent 50%);
+}
+
+body.light-theme .glass-panel {
+  background: rgba(255, 255, 255, 0.8) !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.03) !important;
+}
+
+body.light-theme .glass-panel-hover:hover {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(59, 130, 246, 0.15) !important;
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Text Overrides */
+body.light-theme .text-white {
+  color: #18181b !important;
+}
+
+body.light-theme .text-zinc-100 {
+  color: #18181b !important;
+}
+
+body.light-theme .text-zinc-200 {
+  color: #27272a !important;
+}
+
+body.light-theme .text-zinc-300 {
+  color: #3f3f46 !important;
+}
+
+body.light-theme .text-zinc-400 {
+  color: #52525b !important;
+}
+
+body.light-theme .text-zinc-500 {
+  color: #71717a !important;
+}
+
+/* Background Overrides */
+body.light-theme .bg-zinc-950 {
+  background-color: #ffffff !important;
+}
+
+body.light-theme .bg-zinc-900 {
+  background-color: #f4f4f5 !important;
+}
+
+body.light-theme .bg-zinc-900\/20 {
+  background-color: rgba(244, 244, 245, 0.4) !important;
+}
+
+body.light-theme .bg-zinc-900\/40 {
+  background-color: rgba(244, 244, 245, 0.6) !important;
+}
+
+body.light-theme .bg-zinc-900\/50 {
+  background-color: rgba(244, 244, 245, 0.7) !important;
+}
+
+body.light-theme .bg-zinc-950\/40 {
+  background-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+body.light-theme .bg-zinc-950\/60 {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+}
+
+body.light-theme .bg-zinc-850\/40 {
+  background-color: rgba(244, 244, 245, 0.4) !important;
+}
+
+body.light-theme .bg-zinc-900\/60 {
+  background-color: rgba(244, 244, 245, 0.6) !important;
+}
+
+body.light-theme .bg-zinc-950\/30 {
+  background-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+body.light-theme .bg-zinc-900\/30 {
+  background-color: rgba(244, 244, 245, 0.3) !important;
+}
+
+body.light-theme .bg-zinc-950\/20 {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+body.light-theme .bg-zinc-800 {
+  background-color: #e4e4e7 !important;
+  color: #27272a !important;
+}
+
+body.light-theme .bg-zinc-950\/80 {
+  background-color: rgba(255, 255, 255, 0.8) !important;
+}
+
+body.light-theme .bg-zinc-800\/20 {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+}
+
+body.light-theme .bg-zinc-900\/80 {
+  background-color: rgba(244, 244, 245, 0.8) !important;
+}
+
+body.light-theme .bg-zinc-950\/90 {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* Border Overrides */
+body.light-theme .border-zinc-800 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+body.light-theme .border-zinc-800\/60 {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.light-theme .border-zinc-800\/80 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+body.light-theme .border-zinc-850 {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.light-theme .border-zinc-855 {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.light-theme .border-zinc-900 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+body.light-theme .border-zinc-900\/60 {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.light-theme .border-zinc-950 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Inputs and Forms */
+body.light-theme input,
+body.light-theme select,
+body.light-theme textarea {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
+  color: #09090b !important;
+}
+
+body.light-theme input:focus,
+body.light-theme select:focus,
+body.light-theme textarea:focus {
+  border-color: #3b82f6 !important;
+}
+
+body.light-theme select option {
+  background-color: #ffffff !important;
+  color: #09090b !important;
+}
+
+/* Specific elements */
+body.light-theme .graffiti-tag {
+  color: #09090b !important;
+  text-shadow: 
+    1.5px 1.5px 0px rgba(255, 0, 60, 0.4), 
+    -1.5px -1.5px 0px rgba(0, 90, 255, 0.4) !important;
+}
+
+body.light-theme .sticker-badge {
+  box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.15) !important;
+  border-color: #18181b !important;
+}
+
+body.light-theme .sticker-badge-red {
+  box-shadow: 2px 2px 0px rgba(255, 0, 60, 0.2) !important;
+}
+
+body.light-theme .sticker-badge-blue {
+  box-shadow: 2px 2px 0px rgba(0, 0, 0, 0.15) !important;
+}
+
+body.light-theme .text-blue-300 {
+  color: #1e3a8a !important;
+}
+
+body.light-theme .from-blue-900\/30 {
+  --tw-gradient-from: rgba(59, 130, 246, 0.15) !important;
+}
+
+body.light-theme .to-rose-900\/10 {
+  --tw-gradient-to: rgba(244, 63, 94, 0.05) !important;
+}
+
+body.light-theme .scrollbar-thin::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03) !important;
+}
+
+body.light-theme .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(0, 90, 255, 0.2) 0%, rgba(255, 0, 60, 0.2) 100%) !important;
+}
+
+body.light-theme .divide-zinc-800\/50 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.light-theme .divide-zinc-900 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.light-theme .divide-zinc-900\/60 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+body.light-theme .hover\:bg-zinc-900\/40:hover {
+  background-color: rgba(0, 0, 0, 0.04) !important;
+}
+
+
 
