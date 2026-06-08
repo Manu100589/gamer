@@ -4735,15 +4735,6 @@ export default function App() {
                   {/* Ticket Footer (Taxes & Totals) */}
                   <div className="p-5 border-t border-zinc-850 bg-zinc-900/30 rounded-b-2xl space-y-4">
                     <div className="space-y-1.5 text-xs text-zinc-400">
-                      <div className="flex justify-between">
-                        <span>Sous-total HT</span>
-                        <span>{formatPrice(cartTotal * 0.9)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>TVA (10%)</span>
-                        <span>{formatPrice(cartTotal * 0.1)}</span>
-                      </div>
-                      <div className="h-px bg-zinc-850 my-1"></div>
                       <div className="flex justify-between text-base font-extrabold text-white">
                         <span>Montant Total</span>
                         <span className="text-violet-400">{formatPrice(cartTotal)}</span>
@@ -8574,10 +8565,6 @@ export default function App() {
               <div className="flex justify-between text-xs text-zinc-600">
                 <span>Total Prestations :</span>
                 <span>{formatPrice(showReceiptModal.total)}</span>
-              </div>
-              <div className="flex justify-between text-xs text-zinc-600">
-                <span>TVA (10%) :</span>
-                <span>{formatPrice(Math.round(showReceiptModal.total * 0.10))}</span>
               </div>
               <div className="flex justify-between text-base font-black text-zinc-950 pt-2 border-t border-zinc-200">
                 <span>
