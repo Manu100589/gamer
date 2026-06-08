@@ -1956,11 +1956,18 @@ export default function App() {
   const [newDurationType, setNewDurationType] = useState("unlimited"); // 'unlimited' or 'limited'
   const [newDurationHours, setNewDurationHours] = useState(1);
   const [newPrepaidAmount, setNewPrepaidAmount] = useState(0);
+  const [playerSearchVal, setPlayerSearchVal] = useState("");
+  const [showPlayerDropdown, setShowPlayerDropdown] = useState(false);
 
   // Initialize newPrepaidAmount when opening the start modal
   useEffect(() => {
     if (showStartModal) {
       setNewPrepaidAmount(showStartModal.ratePerHour);
+      setNewPlayerFirstName("");
+      setNewPlayerLastName("");
+      setNewPlayerPhone("");
+      setPlayerSearchVal("");
+      setShowPlayerDropdown(false);
     }
   }, [showStartModal]);
   const [closeSessionHours, setCloseSessionHours] = useState(1);
@@ -7871,6 +7878,77 @@ export default function App() {
 
             {/* Forms */}
             <div className="space-y-4">
+              
+              {/* Recherche Joueur Existant */}
+              <div className="relative">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">
+                  🔍 Rechercher un joueur existant (Optionnel) :
+                </label>
+                <input 
+                  type="text"
+                  placeholder="Saisir un nom, prénom ou téléphone..."
+                  value={playerSearchVal}
+                  onChange={(e) => {
+                    setPlayerSearchVal(e.target.value);
+                    setShowPlayerDropdown(true);
+                  }}
+                  onFocus={() => setShowPlayerDropdown(true)}
+                  className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
+                />
+                {playerSearchVal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlayerSearchVal("");
+                      setShowPlayerDropdown(false);
+                      setNewPlayerFirstName("");
+                      setNewPlayerLastName("");
+                      setNewPlayerPhone("");
+                    }}
+                    className="absolute right-3.5 top-[27px] text-zinc-500 hover:text-zinc-300 text-xs font-bold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
+                
+                {showPlayerDropdown && playerSearchVal.trim().length > 0 && (() => {
+                  const filtered = players.filter(p => {
+                    const search = playerSearchVal.toLowerCase();
+                    const fName = (p.firstName || "").toLowerCase();
+                    const lName = (p.lastName || "").toLowerCase();
+                    const pPhone = (p.phone || "").toLowerCase();
+                    return fName.includes(search) || lName.includes(search) || pPhone.includes(search);
+                  });
+
+                  if (filtered.length === 0) return null;
+
+                  return (
+                    <div className="absolute left-0 right-0 mt-1 bg-zinc-950/95 border border-zinc-800 rounded-xl shadow-xl z-30 max-h-40 overflow-y-auto divide-y divide-zinc-900/60 backdrop-blur-md">
+                      {filtered.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setNewPlayerFirstName(p.firstName || "");
+                            setNewPlayerLastName(p.lastName || "");
+                            setNewPlayerPhone(p.phone || "");
+                            setPlayerSearchVal(`${p.firstName} ${p.lastName.toUpperCase()}`);
+                            setShowPlayerDropdown(false);
+                          }}
+                          className="w-full text-left px-4 py-2.5 hover:bg-zinc-900 text-xs text-zinc-300 hover:text-white flex items-center justify-between transition-colors font-medium cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-emerald-400">👤</span>
+                            <span>{p.firstName} {p.lastName.toUpperCase()}</span>
+                          </div>
+                          <span className="text-[10px] text-zinc-500 font-mono">{p.phone}</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Prénom</label>
