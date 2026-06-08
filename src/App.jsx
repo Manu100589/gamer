@@ -1950,8 +1950,7 @@ export default function App() {
   });
 
   // Modal forms
-  const [newPlayerFirstName, setNewPlayerFirstName] = useState("");
-  const [newPlayerLastName, setNewPlayerLastName] = useState("");
+  const [newPlayerPseudo, setNewPlayerPseudo] = useState("");
   const [newPlayerPhone, setNewPlayerPhone] = useState("");
   const [newDurationType, setNewDurationType] = useState("unlimited"); // 'unlimited' or 'limited'
   const [newDurationHours, setNewDurationHours] = useState(1);
@@ -1963,8 +1962,7 @@ export default function App() {
   useEffect(() => {
     if (showStartModal) {
       setNewPrepaidAmount(showStartModal.ratePerHour);
-      setNewPlayerFirstName("");
-      setNewPlayerLastName("");
+      setNewPlayerPseudo("");
       setNewPlayerPhone("");
       setPlayerSearchVal("");
       setShowPlayerDropdown(false);
@@ -2067,10 +2065,10 @@ export default function App() {
 
   // Start a new console session
   const handleStartSession = (consoleObj) => {
-    if (!newPlayerFirstName.trim() || !newPlayerLastName.trim() || !newPlayerPhone.trim()) return;
+    if (!newPlayerPseudo.trim() || !newPlayerPhone.trim()) return;
 
     const durationMinutes = newDurationType === "limited" ? newDurationHours * 60 : 0;
-    const fullName = `${newPlayerFirstName.trim()} ${newPlayerLastName.trim().toUpperCase()}`;
+    const fullName = newPlayerPseudo.trim();
     const gameCost = newDurationType === "limited"
       ? consoleObj.ratePerHour * newDurationHours
       : Number(newPrepaidAmount || 0);
@@ -2122,8 +2120,8 @@ export default function App() {
           totalRevenue: (c.totalRevenue || 0) + gameCost,
           activeSession: {
             player: fullName,
-            firstName: newPlayerFirstName.trim(),
-            lastName: newPlayerLastName.trim(),
+            firstName: fullName,
+            lastName: "",
             phone: newPlayerPhone.trim(),
             startTime: new Date().toISOString(),
             durationType: newDurationType,
@@ -8146,7 +8144,7 @@ export default function App() {
                 </label>
                 <input 
                   type="text"
-                  placeholder="Saisir un nom, prénom ou téléphone..."
+                  placeholder="Saisir un nom ou téléphone..."
                   value={playerSearchVal}
                   onChange={(e) => {
                     setPlayerSearchVal(e.target.value);
@@ -8161,8 +8159,7 @@ export default function App() {
                     onClick={() => {
                       setPlayerSearchVal("");
                       setShowPlayerDropdown(false);
-                      setNewPlayerFirstName("");
-                      setNewPlayerLastName("");
+                      setNewPlayerPseudo("");
                       setNewPlayerPhone("");
                     }}
                     className="absolute right-3.5 top-[27px] text-zinc-500 hover:text-zinc-300 text-xs font-bold cursor-pointer"
@@ -8174,10 +8171,9 @@ export default function App() {
                 {showPlayerDropdown && playerSearchVal.trim().length > 0 && (() => {
                   const filtered = players.filter(p => {
                     const search = playerSearchVal.toLowerCase();
-                    const fName = (p.firstName || "").toLowerCase();
-                    const lName = (p.lastName || "").toLowerCase();
-                    const pPhone = (p.phone || "").toLowerCase();
-                    return fName.includes(search) || lName.includes(search) || pPhone.includes(search);
+                    const pNom = (p.nom || "").toLowerCase();
+                    const pPhone = (p.phone || p.telephone || "").toLowerCase();
+                    return pNom.includes(search) || pPhone.includes(search);
                   });
 
                   if (filtered.length === 0) return null;
@@ -8189,19 +8185,18 @@ export default function App() {
                           key={p.id}
                           type="button"
                           onClick={() => {
-                            setNewPlayerFirstName(p.firstName || "");
-                            setNewPlayerLastName(p.lastName || "");
-                            setNewPlayerPhone(p.phone || "");
-                            setPlayerSearchVal(`${p.firstName} ${p.lastName.toUpperCase()}`);
+                            setNewPlayerPseudo(p.nom || "");
+                            setNewPlayerPhone(p.phone || p.telephone || "");
+                            setPlayerSearchVal(p.nom || "");
                             setShowPlayerDropdown(false);
                           }}
                           className="w-full text-left px-4 py-2.5 hover:bg-zinc-900 text-xs text-zinc-300 hover:text-white flex items-center justify-between transition-colors font-medium cursor-pointer"
                         >
                           <div className="flex items-center gap-2">
                             <span className="text-emerald-400">👤</span>
-                            <span>{p.firstName} {p.lastName.toUpperCase()}</span>
+                            <span>{p.nom}</span>
                           </div>
-                          <span className="text-[10px] text-zinc-500 font-mono">{p.phone}</span>
+                          <span className="text-[10px] text-zinc-500 font-mono">{p.phone || p.telephone}</span>
                         </button>
                       ))}
                     </div>
@@ -8209,27 +8204,15 @@ export default function App() {
                 })()}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Prénom</label>
-                  <input 
-                    type="text"
-                    placeholder="Ex: Karim"
-                    value={newPlayerFirstName}
-                    onChange={(e) => setNewPlayerFirstName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Nom</label>
-                  <input 
-                    type="text"
-                    placeholder="Ex: Belhadj"
-                    value={newPlayerLastName}
-                    onChange={(e) => setNewPlayerLastName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Pseudo (Surnom)</label>
+                <input 
+                  type="text"
+                  placeholder="Ex: Sofiane"
+                  value={newPlayerPseudo}
+                  onChange={(e) => setNewPlayerPseudo(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
+                />
               </div>
 
               <div>
@@ -8319,7 +8302,7 @@ export default function App() {
                   </button>
                   <button 
                     onClick={() => handleStartSession(showStartModal)}
-                    disabled={!newPlayerFirstName.trim() || !newPlayerLastName.trim() || !newPlayerPhone.trim()}
+                    disabled={!newPlayerPseudo.trim() || !newPlayerPhone.trim()}
                     className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all"
                   >
                     Encaisser {amountToPay.toLocaleString('fr-FR')} FCFA & Démarrer
@@ -9146,37 +9129,25 @@ export default function App() {
 
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom Complet :</label>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Pseudo :</label>
                 <input 
                   type="text" 
                   value={playNom}
                   onChange={(e) => setPlayNom(e.target.value)}
-                  placeholder="Ex: Kevin Nguemo"
+                  placeholder="Ex: Kevin"
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-semibold"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Téléphone :</label>
-                  <input 
-                    type="text" 
-                    value={playTel}
-                    onChange={(e) => setPlayTel(e.target.value)}
-                    placeholder="Ex: +237..."
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-mono"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Adresse E-mail :</label>
-                  <input 
-                    type="email" 
-                    value={playEmail}
-                    onChange={(e) => setPlayEmail(e.target.value)}
-                    placeholder="Ex: mail@domaine.com"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Téléphone :</label>
+                <input 
+                  type="text" 
+                  value={playTel}
+                  onChange={(e) => setPlayTel(e.target.value)}
+                  placeholder="Ex: +237..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-mono"
+                />
               </div>
             </div>
 
@@ -9216,7 +9187,7 @@ export default function App() {
 
             <div className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom Complet :</label>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Pseudo :</label>
                 <input 
                   type="text" 
                   value={playNom}
@@ -9225,25 +9196,14 @@ export default function App() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Téléphone :</label>
-                  <input 
-                    type="text" 
-                    value={playTel}
-                    onChange={(e) => setPlayTel(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-mono"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Adresse E-mail :</label>
-                  <input 
-                    type="email" 
-                    value={playEmail}
-                    onChange={(e) => setPlayEmail(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Téléphone :</label>
+                <input 
+                  type="text" 
+                  value={playTel}
+                  onChange={(e) => setPlayTel(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-mono"
+                />
               </div>
             </div>
 
@@ -9296,14 +9256,10 @@ export default function App() {
                 <button onClick={() => setShowViewPlayerModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 text-xs">
+              <div className="grid grid-cols-1 gap-4 text-xs">
                 <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
-                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Téléphone</span>
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Numéro de Téléphone</span>
                   <span className="text-white font-bold font-mono">{p.telephone || "Non renseigné"}</span>
-                </div>
-                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
-                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Adresse E-mail</span>
-                  <span className="text-white font-bold block truncate">{p.email || "Non renseigné"}</span>
                 </div>
               </div>
 
