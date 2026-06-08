@@ -140,7 +140,16 @@ export default function App() {
     return saved ? JSON.parse(saved) : initialPlayers;
   });
 
+  const [zones, setZones] = useState(() => {
+    const saved = localStorage.getItem("system_zones");
+    return saved ? JSON.parse(saved) : ["A", "B", "C"];
+  });
+
   // --- Sync States to localStorage ---
+  useEffect(() => {
+    localStorage.setItem("system_zones", JSON.stringify(zones));
+  }, [zones]);
+
   useEffect(() => {
     localStorage.setItem("system_consoles", JSON.stringify(consoles));
   }, [consoles]);
@@ -256,6 +265,13 @@ export default function App() {
   const [addProdPrice, setAddProdPrice] = useState(0);
   const [addProdInitialStock, setAddProdInitialStock] = useState(0);
   const [addProdMinThreshold, setAddProdMinThreshold] = useState(5);
+
+  // Add Console Form State
+  const [showAddConsoleModal, setShowAddConsoleModal] = useState(false);
+  const [addConsoleName, setAddConsoleName] = useState("");
+  const [addConsoleZone, setAddConsoleZone] = useState("A");
+  const [addConsoleType, setAddConsoleType] = useState("PS5");
+  const [addConsoleRate, setAddConsoleRate] = useState(1500);
 
   // Expenses management states
   const [expenses, setExpenses] = useState(initialExpenses);
@@ -469,6 +485,43 @@ export default function App() {
     }
 
     addLog("stock_add", `Nouveau produit ajouté au stock : ${newProduct.name} (Stock : ${newProduct.initialStock} unités)`, "snack");
+  };
+
+  const handleAddConsole = () => {
+    if (!addConsoleName.trim()) return;
+    const nextId = consoles.length > 0 ? Math.max(...consoles.map(c => c.id)) + 1 : 1;
+    const newConsole = {
+      id: nextId,
+      name: addConsoleName.trim().toUpperCase(),
+      zone: addConsoleZone,
+      type: addConsoleType,
+      status: "libre",
+      ratePerHour: Number(addConsoleRate),
+      totalSessions: 0,
+      totalRevenue: 0,
+      totalTimeSeconds: 0,
+      activeSession: null
+    };
+
+    setConsoles(prev => [...prev, newConsole]);
+    addLog("settings_update", `Nouvelle console ajoutée : ${newConsole.name} (${newConsole.type}, Zone ${newConsole.zone}, Tarif: ${newConsole.ratePerHour} FCFA/h)`, "console");
+    
+    setAddConsoleName("");
+    setAddConsoleZone(zones[0] || "A");
+    setAddConsoleType("PS5");
+    setAddConsoleRate(1500);
+    setShowAddConsoleModal(false);
+
+    setToastText(`Console ${newConsole.name} ajoutée avec succès !`);
+    gsap.fromTo(
+      ".notification-toast",
+      { opacity: 0, y: -20 },
+      { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+        setTimeout(() => {
+          gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+        }, 3500);
+      }}
+    );
   };
 
   const openAdjustStockModal = (product) => {
@@ -4174,7 +4227,7 @@ export default function App() {
                   <>
 
                 {/* Console Grid – grouped by Zone */}
-                {["A", "B", "C"].map(zone => {
+                {zones.map(zone => {
                   const zoneConsoles = consoles.filter(c => c.zone === zone);
                   if (zoneConsoles.length === 0) return null;
 
@@ -4182,7 +4235,7 @@ export default function App() {
                     A: { border: "border-sky-500/30", text: "text-sky-400", bg: "bg-sky-950/30", dot: "bg-sky-400" },
                     B: { border: "border-violet-500/30", text: "text-violet-400", bg: "bg-violet-950/30", dot: "bg-violet-400" },
                     C: { border: "border-rose-500/30", text: "text-rose-400", bg: "bg-rose-950/30", dot: "bg-rose-400" }
-                  }[zone];
+                  }[zone] || { border: "border-emerald-500/30", text: "text-emerald-400", bg: "bg-emerald-950/30", dot: "bg-emerald-400" };
 
                   return (
                     <div key={zone} className="space-y-3">
@@ -6805,20 +6858,89 @@ export default function App() {
 
                 {/* Section 2: Tarifs Consoles */}
                 <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-4">
-                  <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
-                    <Gamepad2 className="w-5 h-5 text-blue-400" />
-                    <h3 className="text-sm font-bold text-white uppercase tracking-wider">Tarification Horaire des Stations / Consoles</h3>
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-850 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Gamepad2 className="w-5 h-5 text-blue-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Tarification Horaire des Stations / Consoles</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const zoneName = prompt("Saisissez le nom de la nouvelle zone (ex: D, VIP, Zone D) :");
+                          if (zoneName && zoneName.trim()) {
+                            const trimmed = zoneName.trim().toUpperCase();
+                            if (zones.includes(trimmed)) {
+                              alert("Cette zone existe déjà !");
+                              return;
+                            }
+                            setZones(prev => [...prev, trimmed]);
+                            addLog("settings_update", `Nouvelle zone ajoutée : Zone ${trimmed}`, "console");
+                            
+                            setToastText(`Zone ${trimmed} ajoutée avec succès !`);
+                            gsap.fromTo(
+                              ".notification-toast",
+                              { opacity: 0, y: -20 },
+                              { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+                                  setTimeout(() => {
+                                    gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+                                  }, 3500);
+                              }}
+                            );
+                          }
+                        }}
+                        className="flex items-center gap-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-bold px-3 py-1.5 rounded-lg border border-zinc-700/40 transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3 text-emerald-400" />
+                        Ajouter une Zone
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAddConsoleZone(zones[0] || "A");
+                          setShowAddConsoleModal(true);
+                        }}
+                        className="flex items-center gap-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Plus className="w-3 h-3 text-white" />
+                        Nouvelle Console
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {consoles.map(consoleObj => (
                       <div key={consoleObj.id} className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 space-y-3 relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-8 h-8 opacity-[0.03] text-white">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Voulez-vous vraiment supprimer la console ${consoleObj.name} ?`)) {
+                              setConsoles(prev => prev.filter(c => c.id !== consoleObj.id));
+                              addLog("settings_update", `Console supprimée : ${consoleObj.name}`, "console");
+                              
+                              setToastText(`Console ${consoleObj.name} supprimée !`);
+                              gsap.fromTo(
+                                ".notification-toast",
+                                { opacity: 0, y: -20 },
+                                { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+                                  setTimeout(() => {
+                                    gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+                                  }, 3500);
+                                }}
+                              );
+                            }
+                          }}
+                          className="absolute top-2.5 right-2.5 text-zinc-600 hover:text-rose-400 transition-colors p-1"
+                          title="Supprimer la console"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="absolute top-0 right-0 w-8 h-8 opacity-[0.03] text-white pointer-events-none">
                           <Gamepad2 className="w-full h-full" />
                         </div>
-                        <div className="space-y-0.5">
+                        <div className="space-y-0.5 pr-6">
                           <h4 className="text-xs font-extrabold text-white">{consoleObj.name}</h4>
-                          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{consoleObj.type}</p>
+                          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{consoleObj.type} • Zone {consoleObj.zone}</p>
                         </div>
                         <div className="space-y-1">
                           <label className="text-[9px] font-bold text-zinc-500 uppercase">Tarif horaire ({systemSettings.currency}) :</label>
@@ -10776,6 +10898,105 @@ export default function App() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Ajouter une Nouvelle Console */}
+      {showAddConsoleModal && role === "admin" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-6 animate-scale-up">
+            
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-4">
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-blue-400" />
+                <h3 className="text-base font-bold text-white">Nouvelle Station / Console</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowAddConsoleModal(false);
+                  setAddConsoleName("");
+                }}
+                className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
+              >
+                ✖
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom de la station :</label>
+                <input
+                  type="text"
+                  placeholder="ex: STADE VELODROME"
+                  value={addConsoleName}
+                  onChange={(e) => setAddConsoleName(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-blue-500 uppercase"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Zone :</label>
+                  <select
+                    value={addConsoleZone}
+                    onChange={(e) => setAddConsoleZone(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
+                  >
+                    {zones.map(z => (
+                      <option key={z} value={z}>Zone {z}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Type :</label>
+                  <select
+                    value={addConsoleType}
+                    onChange={(e) => setAddConsoleType(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="PS5">PS5</option>
+                    <option value="PS4">PS4</option>
+                    <option value="PC Gaming">PC Gaming</option>
+                    <option value="Xbox Series">Xbox Series</option>
+                    <option value="Nintendo Switch">Nintendo Switch</option>
+                    <option value="Autre">Autre</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Tarif Horaire (FCFA/h) :</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={addConsoleRate}
+                  onChange={(e) => setAddConsoleRate(Math.max(0, Number(e.target.value)))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button 
+                onClick={() => {
+                  setShowAddConsoleModal(false);
+                  setAddConsoleName("");
+                }}
+                className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
+              >
+                Annuler
+              </button>
+              <button 
+                disabled={!addConsoleName.trim()}
+                onClick={handleAddConsole}
+                className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-950/20 active:scale-95 transition-all"
+              >
+                Ajouter la station
+              </button>
+            </div>
+
           </div>
         </div>
       )}
