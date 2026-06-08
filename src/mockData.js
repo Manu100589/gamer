@@ -178,10 +178,10 @@ export const snackProducts = [
   { id: 126, name: "Bouteille Havana Club", price: 40000.00, purchasePrice: 20000.00, category: "whisky", image: "🍾", stock: 4, minThreshold: 1 },
 
   // Chichas
-  { id: 127, name: "Chicha Double Pomme", price: 10000.00, purchasePrice: 2500.00, category: "chicha", image: "💨", stock: 99, minThreshold: 5 },
-  { id: 128, name: "Chicha Menthe-Myrtille", price: 10000.00, purchasePrice: 2500.00, category: "chicha", image: "🫐", stock: 99, minThreshold: 5 },
-  { id: 129, name: "Chicha Love 66", price: 12000.00, purchasePrice: 3000.00, category: "chicha", image: "❤️", stock: 99, minThreshold: 5 },
-  { id: 130, name: "Chicha Hawai", price: 12000.00, purchasePrice: 3000.00, category: "chicha", image: "🍍", stock: 99, minThreshold: 5 }
+  { id: 127, name: "Chicha Double Pomme", price: 10000.00, purchasePrice: 0, category: "chicha", image: "💨", stock: 99, minThreshold: 5 },
+  { id: 128, name: "Chicha Menthe-Myrtille", price: 10000.00, purchasePrice: 0, category: "chicha", image: "🫐", stock: 99, minThreshold: 5 },
+  { id: 129, name: "Chicha Love 66", price: 12000.00, purchasePrice: 0, category: "chicha", image: "❤️", stock: 99, minThreshold: 5 },
+  { id: 130, name: "Chicha Hawai", price: 12000.00, purchasePrice: 0, category: "chicha", image: "🍍", stock: 99, minThreshold: 5 }
 ];
 
 export const initialStats = {

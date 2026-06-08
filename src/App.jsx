@@ -4161,7 +4161,6 @@ export default function App() {
               </div>
             )}
 
-
             {/* ==================== VUE 2 : GESTION DES CONSOLES ==================== */}
             {activeTab === "consoles" && (
               <div className="space-y-6 graffiti-spray-red">
@@ -4173,54 +4172,6 @@ export default function App() {
                   renderCaisseFermeeLock("Gestion des Consoles")
                 ) : (
                   <>
-                
-                {/* Rates & Actions panel for Admins */}
-                <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 p-4 rounded-xl bg-zinc-900 border border-zinc-800">
-                  <div>
-                    <h3 className="text-sm font-bold text-white">Console Command Station</h3>
-                    <p className="text-xs text-zinc-400">Gérez le statut des postes de jeu et encaissez les sessions en cours.</p>
-                  </div>
-
-                  {role === "admin" ? (
-                    <div className="flex items-center gap-3 w-full lg:w-auto">
-                      {editingRates ? (
-                        <div className="flex flex-wrap items-center gap-2 text-xs bg-zinc-950 p-2 rounded-lg border border-zinc-800">
-                          {Object.keys(customRates).map(type => (
-                            <div key={type} className="flex items-center gap-1">
-                              <span className="text-zinc-400 font-bold text-[10px]">{type}:</span>
-                              <input 
-                                type="number" 
-                                value={customRates[type]} 
-                                onChange={(e) => setCustomRates({ ...customRates, [type]: Number(e.target.value) })}
-                                className="w-14 bg-zinc-900 border border-zinc-850 px-1 py-0.5 rounded text-white font-bold"
-                              />
-                              <span className="text-zinc-600">FCFA/h</span>
-                            </div>
-                          ))}
-                          <button 
-                            onClick={handleUpdateRates}
-                            className="bg-purple-600 hover:bg-purple-500 px-3 py-1 rounded text-white font-bold transition-all text-[11px]"
-                          >
-                            Valider
-                          </button>
-                        </div>
-                      ) : (
-                        <button 
-                          onClick={() => setEditingRates(true)}
-                          className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold px-4 py-2.5 rounded-lg border border-zinc-700/40 transition-all ml-auto"
-                        >
-                          <Settings className="w-4 h-4" />
-                          Modifier les Tarifs (/h)
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-xs bg-zinc-950 px-3 py-2 rounded-lg border border-zinc-800 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-500" />
-                      <span className="text-zinc-400">Modifications de tarifs restreintes (Admin requis)</span>
-                    </div>
-                  )}
-                </div>
 
                 {/* Console Grid – grouped by Zone */}
                 {["A", "B", "C"].map(zone => {
@@ -4994,7 +4945,9 @@ export default function App() {
                                   <td className="p-4">
                                     <span className="px-2 py-0.5 rounded bg-zinc-950 border border-zinc-800 text-[10px] text-zinc-400 capitalize font-medium">{p.category}</span>
                                   </td>
-                                  <td className="p-4 text-right font-mono text-zinc-400">{purchase.toLocaleString('fr-FR')} FCFA</td>
+                                  <td className="p-4 text-right font-mono text-zinc-400">
+                                    {p.category === 'chicha' ? '—' : `${purchase.toLocaleString('fr-FR')} FCFA`}
+                                  </td>
                                   <td className="p-4 text-right font-mono text-white font-semibold">{p.price.toLocaleString('fr-FR')} FCFA</td>
                                   <td className="p-4 text-right font-mono">
                                     <span className="text-emerald-400 font-semibold block">{margin.toLocaleString('fr-FR')} FCFA</span>
@@ -8932,7 +8885,7 @@ export default function App() {
               <div className="grid grid-cols-3 gap-3 text-xs">
                 <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
                   <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Prix d'Achat</span>
-                  <span className="text-zinc-300 font-bold font-mono">{formatPrice(purchase)}</span>
+                  <span className="text-zinc-300 font-bold font-mono">{p.category === 'chicha' ? '—' : formatPrice(purchase)}</span>
                 </div>
                 <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
                   <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Prix de Vente</span>
@@ -10261,7 +10214,13 @@ export default function App() {
                   <label className="text-[10px] font-bold text-zinc-400 uppercase block">Catégorie :</label>
                   <select
                     value={editProdCategory}
-                    onChange={(e) => setEditProdCategory(e.target.value)}
+                    onChange={(e) => {
+                      const newCat = e.target.value;
+                      setEditProdCategory(newCat);
+                      if (newCat === "chicha") {
+                        setEditProdPurchasePrice(0);
+                      }
+                    }}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-violet-500"
                   >
                     {productCategories.map(cat => (
@@ -10282,16 +10241,25 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Prix d'achat (FCFA) :</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editProdPurchasePrice}
-                    onChange={(e) => setEditProdPurchasePrice(Math.max(0, Number(e.target.value)))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-violet-500"
-                  />
-                </div>
+                {editProdCategory !== "chicha" ? (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block">Prix d'achat (FCFA) :</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={editProdPurchasePrice}
+                      onChange={(e) => setEditProdPurchasePrice(Math.max(0, Number(e.target.value)))}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block">Prix d'achat (FCFA) :</label>
+                    <div className="w-full bg-zinc-950/40 border border-zinc-900 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-zinc-650 select-none flex items-center h-[38px]">
+                      Non applicable
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase block">Prix de vente (FCFA) :</label>
                   <input
@@ -10382,7 +10350,13 @@ export default function App() {
                   <label className="text-[10px] font-bold text-zinc-400 uppercase block">Catégorie :</label>
                   <select
                     value={addProdCategory}
-                    onChange={(e) => setAddProdCategory(e.target.value)}
+                    onChange={(e) => {
+                      const newCat = e.target.value;
+                      setAddProdCategory(newCat);
+                      if (newCat === "chicha") {
+                        setAddProdPurchasePrice(0);
+                      }
+                    }}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-violet-500"
                   >
                     {productCategories.map(cat => (
@@ -10413,16 +10387,25 @@ export default function App() {
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-violet-500"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Prix Achat :</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={addProdPurchasePrice}
-                    onChange={(e) => setAddProdPurchasePrice(Math.max(0, Number(e.target.value)))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-violet-500"
-                  />
-                </div>
+                {addProdCategory !== "chicha" ? (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block">Prix Achat :</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={addProdPurchasePrice}
+                      onChange={(e) => setAddProdPurchasePrice(Math.max(0, Number(e.target.value)))}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-violet-500"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block">Prix Achat :</label>
+                    <div className="w-full bg-zinc-950/40 border border-zinc-900 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-zinc-650 select-none flex items-center h-[38px]">
+                      N/A
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase block">Prix Vente :</label>
                   <input
