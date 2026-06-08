@@ -272,6 +272,15 @@ export default function App() {
   const [addConsoleZone, setAddConsoleZone] = useState("A");
   const [addConsoleType, setAddConsoleType] = useState("PS5");
   const [addConsoleRate, setAddConsoleRate] = useState(1500);
+  const [addConsoleImage, setAddConsoleImage] = useState("");
+
+  // Edit Console Form State
+  const [showEditConsoleModal, setShowEditConsoleModal] = useState(null);
+  const [editConsoleName, setEditConsoleName] = useState("");
+  const [editConsoleZone, setEditConsoleZone] = useState("A");
+  const [editConsoleType, setEditConsoleType] = useState("PS5");
+  const [editConsoleRate, setEditConsoleRate] = useState(1500);
+  const [editConsoleImage, setEditConsoleImage] = useState("");
 
   // Expenses management states
   const [expenses, setExpenses] = useState(initialExpenses);
@@ -487,6 +496,19 @@ export default function App() {
     addLog("stock_add", `Nouveau produit ajouté au stock : ${newProduct.name} (Stock : ${newProduct.initialStock} unités)`, "snack");
   };
 
+  const handleImageUpload = (file, callback) => {
+    if (!file) return;
+    if (file.size > 500 * 1024) {
+      alert("L'image est trop volumineuse. Veuillez choisir une image de moins de 500 Ko.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      callback(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAddConsole = () => {
     if (!addConsoleName.trim()) return;
     const nextId = consoles.length > 0 ? Math.max(...consoles.map(c => c.id)) + 1 : 1;
@@ -497,6 +519,7 @@ export default function App() {
       type: addConsoleType,
       status: "libre",
       ratePerHour: Number(addConsoleRate),
+      image: addConsoleImage || "",
       totalSessions: 0,
       totalRevenue: 0,
       totalTimeSeconds: 0,
@@ -510,9 +533,40 @@ export default function App() {
     setAddConsoleZone(zones[0] || "A");
     setAddConsoleType("PS5");
     setAddConsoleRate(1500);
+    setAddConsoleImage("");
     setShowAddConsoleModal(false);
 
     setToastText(`Console ${newConsole.name} ajoutée avec succès !`);
+    gsap.fromTo(
+      ".notification-toast",
+      { opacity: 0, y: -20 },
+      { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+        setTimeout(() => {
+          gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+        }, 3500);
+      }}
+    );
+  };
+
+  const handleUpdateConsole = (consoleId) => {
+    if (!editConsoleName.trim()) return;
+    setConsoles(prev => prev.map(c => {
+      if (c.id === consoleId) {
+        return {
+          ...c,
+          name: editConsoleName.trim().toUpperCase(),
+          zone: editConsoleZone,
+          type: editConsoleType,
+          ratePerHour: Number(editConsoleRate),
+          image: editConsoleImage
+        };
+      }
+      return c;
+    }));
+    addLog("settings_update", `Console modifiée : ${editConsoleName.toUpperCase()} (${editConsoleType}, Zone ${editConsoleZone}, Tarif: ${editConsoleRate} FCFA/h)`, "console");
+    setShowEditConsoleModal(null);
+    
+    setToastText(`Console ${editConsoleName.toUpperCase()} modifiée avec succès !`);
     gsap.fromTo(
       ".notification-toast",
       { opacity: 0, y: -20 },
@@ -4302,14 +4356,14 @@ export default function App() {
                             </span>
                           </div>
 
-                          {/* Stadium name + club logo */}
+                          {/* Stadium name + club logo / custom image */}
                           <div className="flex items-center gap-3 mt-3">
-                            {club?.logo && (
+                            {(c.image || club?.logo) && (
                               <div className="w-11 h-11 rounded-xl flex-shrink-0 bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden p-1 shadow-md">
                                 <img
-                                  src={club.logo}
-                                  alt={club.club}
-                                  className="w-9 h-9 object-contain"
+                                  src={c.image || club.logo}
+                                  alt={c.name}
+                                  className="w-9 h-9 object-contain rounded-lg"
                                   onError={(e) => { e.target.style.display='none'; }}
                                 />
                               </div>
@@ -6910,54 +6964,68 @@ export default function App() {
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {consoles.map(consoleObj => (
-                      <div key={consoleObj.id} className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 space-y-3 relative overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`Voulez-vous vraiment supprimer la console ${consoleObj.name} ?`)) {
-                              setConsoles(prev => prev.filter(c => c.id !== consoleObj.id));
-                              addLog("settings_update", `Console supprimée : ${consoleObj.name}`, "console");
-                              
-                              setToastText(`Console ${consoleObj.name} supprimée !`);
-                              gsap.fromTo(
-                                ".notification-toast",
-                                { opacity: 0, y: -20 },
-                                { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
-                                  setTimeout(() => {
-                                    gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
-                                  }, 3500);
-                                }}
-                              );
-                            }
-                          }}
-                          className="absolute top-2.5 right-2.5 text-zinc-600 hover:text-rose-400 transition-colors p-1"
-                          title="Supprimer la console"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                        <div className="absolute top-0 right-0 w-8 h-8 opacity-[0.03] text-white pointer-events-none">
-                          <Gamepad2 className="w-full h-full" />
-                        </div>
-                        <div className="space-y-0.5 pr-6">
-                          <h4 className="text-xs font-extrabold text-white">{consoleObj.name}</h4>
-                          <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{consoleObj.type} • Zone {consoleObj.zone}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] font-bold text-zinc-500 uppercase">Tarif horaire ({systemSettings.currency}) :</label>
-                          <div className="flex items-center gap-2">
-                            <input 
-                              type="number"
-                              min="0"
-                              step="100"
-                              value={consoleObj.ratePerHour}
-                              onChange={(e) => {
-                                const val = Math.max(0, Number(e.target.value));
-                                setConsoles(prev => prev.map(c => c.id === consoleObj.id ? { ...c, ratePerHour: val } : c));
-                              }}
-                              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:outline-none focus:border-blue-500"
-                            />
-                            <span className="text-[10px] text-zinc-500 font-semibold">/h</span>
+                      <div key={consoleObj.id} className="bg-zinc-950 border border-zinc-900 rounded-xl p-4 space-y-3 relative overflow-hidden flex flex-col justify-between min-h-[140px]">
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                              {consoleObj.image ? (
+                                <img src={consoleObj.image} className="w-full h-full object-cover" alt="" />
+                              ) : (
+                                <Gamepad2 className="w-5 h-5 text-zinc-650" />
+                              )}
+                            </div>
+                            <div className="space-y-0.5">
+                              <h4 className="text-xs font-extrabold text-white">{consoleObj.name}</h4>
+                              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">{consoleObj.type} • Zone {consoleObj.zone}</p>
+                            </div>
                           </div>
+                          
+                          <div className="flex items-center gap-1.5 z-10">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditConsoleName(consoleObj.name);
+                                setEditConsoleZone(consoleObj.zone);
+                                setEditConsoleType(consoleObj.type);
+                                setEditConsoleRate(consoleObj.ratePerHour);
+                                setEditConsoleImage(consoleObj.image || "");
+                                setShowEditConsoleModal(consoleObj);
+                              }}
+                              className="text-zinc-600 hover:text-blue-400 transition-colors p-1 cursor-pointer"
+                              title="Modifier la console"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Voulez-vous vraiment supprimer la console ${consoleObj.name} ?`)) {
+                                  setConsoles(prev => prev.filter(c => c.id !== consoleObj.id));
+                                  addLog("settings_update", `Console supprimée : ${consoleObj.name}`, "console");
+                                  
+                                  setToastText(`Console ${consoleObj.name} supprimée !`);
+                                  gsap.fromTo(
+                                    ".notification-toast",
+                                    { opacity: 0, y: -20 },
+                                    { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+                                      setTimeout(() => {
+                                        gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+                                      }, 3500);
+                                    }}
+                                  );
+                                }
+                              }}
+                              className="text-zinc-600 hover:text-rose-400 transition-colors p-1 cursor-pointer"
+                              title="Supprimer la console"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-zinc-900/60 flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-500 font-semibold uppercase tracking-wider text-[9px]">Tarif Horaire :</span>
+                          <span className="font-mono font-bold text-white bg-zinc-900 px-2 py-1 rounded-lg border border-zinc-800">{consoleObj.ratePerHour.toLocaleString('fr-FR')} {systemSettings.currency}/h</span>
                         </div>
                       </div>
                     ))}
@@ -10916,6 +10984,7 @@ export default function App() {
                 onClick={() => {
                   setShowAddConsoleModal(false);
                   setAddConsoleName("");
+                  setAddConsoleImage("");
                 }}
                 className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
               >
@@ -10976,6 +11045,43 @@ export default function App() {
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Image de profil de la console :</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-zinc-950 border border-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+                    {addConsoleImage ? (
+                      <img src={addConsoleImage} className="w-full h-full object-cover" alt="Prévisualisation" />
+                    ) : (
+                      <span className="text-zinc-600 text-xs">Aucune</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={(e) => handleImageUpload(e.target.files[0], setAddConsoleImage)}
+                      className="hidden" 
+                      id="add-console-file-input"
+                    />
+                    <label 
+                      htmlFor="add-console-file-input"
+                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-bold rounded-lg border border-zinc-700/40 cursor-pointer transition-all inline-block select-none"
+                    >
+                      Choisir un fichier
+                    </label>
+                    {addConsoleImage && (
+                      <button
+                        type="button"
+                        onClick={() => setAddConsoleImage("")}
+                        className="text-[10px] text-rose-400 font-bold ml-3 hover:underline cursor-pointer"
+                      >
+                        Effacer
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center gap-3 pt-2">
@@ -10983,6 +11089,7 @@ export default function App() {
                 onClick={() => {
                   setShowAddConsoleModal(false);
                   setAddConsoleName("");
+                  setAddConsoleImage("");
                 }}
                 className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
               >
@@ -10994,6 +11101,140 @@ export default function App() {
                 className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-950/20 active:scale-95 transition-all"
               >
                 Ajouter la station
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal Modifier une Console Existante */}
+      {showEditConsoleModal && role === "admin" && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-6 animate-scale-up">
+            
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-4">
+              <div className="flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-blue-400" />
+                <h3 className="text-base font-bold text-white">Modifier la Station / Console</h3>
+              </div>
+              <button 
+                onClick={() => {
+                  setShowEditConsoleModal(null);
+                }}
+                className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
+              >
+                ✖
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom de la station :</label>
+                <input
+                  type="text"
+                  placeholder="ex: STADE VELODROME"
+                  value={editConsoleName}
+                  onChange={(e) => setEditConsoleName(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-blue-500 uppercase"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Zone :</label>
+                  <select
+                    value={editConsoleZone}
+                    onChange={(e) => setEditConsoleZone(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
+                  >
+                    {zones.map(z => (
+                      <option key={z} value={z}>Zone {z}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Type :</label>
+                  <select
+                    value={editConsoleType}
+                    onChange={(e) => setEditConsoleType(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="PS5">PS5</option>
+                    <option value="PS4">PS4</option>
+                    <option value="PC Gaming">PC Gaming</option>
+                    <option value="Xbox Series">Xbox Series</option>
+                    <option value="Nintendo Switch">Nintendo Switch</option>
+                    <option value="Autre">Autre</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Tarif Horaire (FCFA/h) :</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  value={editConsoleRate}
+                  onChange={(e) => setEditConsoleRate(Math.max(0, Number(e.target.value)))}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-mono font-bold text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Image de profil de la console :</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-zinc-950 border border-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0">
+                    {editConsoleImage ? (
+                      <img src={editConsoleImage} className="w-full h-full object-cover" alt="Prévisualisation" />
+                    ) : (
+                      <span className="text-zinc-650 text-xs">Aucune</span>
+                    )}
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={(e) => handleImageUpload(e.target.files[0], setEditConsoleImage)}
+                      className="hidden" 
+                      id="edit-console-file-input"
+                    />
+                    <label 
+                      htmlFor="edit-console-file-input"
+                      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[10px] font-bold rounded-lg border border-zinc-700/40 cursor-pointer transition-all inline-block select-none"
+                    >
+                      Choisir un fichier
+                    </label>
+                    {editConsoleImage && (
+                      <button
+                        type="button"
+                        onClick={() => setEditConsoleImage("")}
+                        className="text-[10px] text-rose-400 font-bold ml-3 hover:underline cursor-pointer"
+                      >
+                        Effacer
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button 
+                onClick={() => {
+                  setShowEditConsoleModal(null);
+                }}
+                className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
+              >
+                Annuler
+              </button>
+              <button 
+                disabled={!editConsoleName.trim()}
+                onClick={() => handleUpdateConsole(showEditConsoleModal.id)}
+                className="flex-1 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-950/20 active:scale-95 transition-all"
+              >
+                Enregistrer
               </button>
             </div>
 
