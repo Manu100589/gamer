@@ -2184,8 +2184,7 @@ export default function App() {
     });
 
     // Reset forms and close modal
-    setNewPlayerFirstName("");
-    setNewPlayerLastName("");
+    setNewPlayerPseudo("");
     setNewPlayerPhone("");
     setNewDurationType("unlimited");
     setNewDurationHours(1);
