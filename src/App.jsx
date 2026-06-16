@@ -4217,49 +4217,46 @@ export default function App() {
       <aside className="w-72 h-full glass-panel flex flex-col justify-between border-r border-zinc-800/60 z-20">
         <div className="flex-1 flex flex-col min-h-0">
           {/* Logo Brand */}
-          <div className="p-4 flex flex-col items-center justify-center border-b border-zinc-800/40 gap-2 shrink-0">
-            <div className="w-24 h-24 rounded-2xl overflow-hidden border border-zinc-800 shadow-xl relative group">
+          <div className="p-3 flex items-center gap-3 border-b border-zinc-800/40 shrink-0">
+            <div className="w-12 h-12 rounded-xl overflow-hidden border border-zinc-800 shadow-lg relative group flex-shrink-0">
               <img src={systemSettings.logoUrl || "/logo.jpg"} alt={`${systemSettings.companyName || "HOUSEPUB"} Logo`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center p-1.5">
-                <span className="text-[8px] text-zinc-300 font-extrabold uppercase tracking-widest text-center">{systemSettings.companyName || "HOUSEPUB"}</span>
-              </div>
             </div>
-            <div className="text-center space-y-0.5">
-              <h1 className="text-xl font-black tracking-tight graffiti-tag italic">
+            <div className="min-w-0">
+              <h1 className="text-base font-black tracking-tight graffiti-tag italic truncate">
                 {systemSettings.companyName || "HOUSEPUB"}
               </h1>
-              <p className="text-[9px] text-zinc-400 font-extrabold tracking-widest uppercase">
+              <p className="text-[9px] text-zinc-400 font-extrabold tracking-widest uppercase truncate">
                 {systemSettings.companySubtitle || "PS LOUNGE"}
               </p>
-              <p className="text-[8px] text-zinc-500 font-bold italic tracking-normal">
-                {systemSettings.companySlogan || "\"La Maison du Bonheur\""}
+              <p className="text-[8px] text-zinc-500 font-bold italic truncate">
+                {systemSettings.companySlogan || '"La Maison du Bonheur"'}
               </p>
             </div>
           </div>
 
           {/* Navigation Links */}
-          <nav className="flex-1 p-4 space-y-1 overflow-y-auto min-h-0">
+          <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto min-h-0">
             <button
               onClick={() => setActiveTab("dashboard")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "dashboard"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <LayoutDashboard className="w-5 h-5" />
+              <LayoutDashboard className="w-4 h-4" />
               Tableau de Bord
             </button>
 
             <button
               onClick={() => setActiveTab("consoles")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "consoles"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <Gamepad2 className="w-5 h-5" />
+              <Gamepad2 className="w-4 h-4" />
               Gestion Consoles
               {consoles.filter(c => c.status === "occupée").length > 0 && (
                 <span className="ml-auto bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
@@ -4270,14 +4267,14 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("snack")}
-              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "snack"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
               <div className="flex items-center gap-3">
-                <GlassWater className="w-5 h-5" />
+                <GlassWater className="w-4 h-4" />
                 Point de Vente POS
               </div>
               {cart.length > 0 && (
@@ -4289,14 +4286,14 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("stocks")}
-              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "stocks"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
               <div className="flex items-center gap-3">
-                <Package className="w-5 h-5" />
+                <Package className="w-4 h-4" />
                 Gestion des Stocks
               </div>
               {products.filter(p => p.stock <= p.minThreshold).length > 0 && (
@@ -4308,37 +4305,37 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("expenses")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "expenses"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <TrendingDown className="w-5 h-5 text-rose-500" />
+              <TrendingDown className="w-4 h-4 text-rose-500" />
               Gestion Dépenses
             </button>
 
             <button
               onClick={() => setActiveTab("purchases")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "purchases"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <ShoppingCart className="w-5 h-5 text-emerald-500" />
+              <ShoppingCart className="w-4 h-4 text-emerald-500" />
               Gestion Achats
             </button>
 
             <button
               onClick={() => setActiveTab("fournisseurs")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "fournisseurs"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <Building2 className="w-5 h-5 text-teal-400" />
+              <Building2 className="w-4 h-4 text-teal-400" />
               Fournisseurs
               <span className="ml-auto bg-teal-900/60 text-teal-400 border border-teal-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full">
                 {suppliers.length}
@@ -4347,13 +4344,13 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("players")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "players"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <User className="w-5 h-5 text-fuchsia-400" />
+              <User className="w-4 h-4 text-fuchsia-400" />
               Gestion Joueurs
               <span className="ml-auto bg-fuchsia-900/60 text-fuchsia-400 border border-fuchsia-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full">
                 {players.length}
@@ -4362,37 +4359,37 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("dailyReport")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "dailyReport"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <BarChart3 className="w-5 h-5 text-amber-400" />
+              <BarChart3 className="w-4 h-4 text-amber-400" />
               Rapport Journalier
             </button>
 
             <button
               onClick={() => setActiveTab("comptabilite")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "comptabilite"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <Coins className="w-5 h-5 text-emerald-400" />
+              <Coins className="w-4 h-4 text-emerald-400" />
               Comptabilité & Stock
             </button>
 
             <button
               onClick={() => setActiveTab("invoices")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "invoices"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <FileText className="w-5 h-5 text-indigo-400" />
+              <FileText className="w-4 h-4 text-indigo-400" />
               Factures en cours
               <span className="ml-auto bg-indigo-900/60 text-indigo-400 border border-indigo-500/30 text-[9px] font-bold px-2 py-0.5 rounded-full">
                 {tickets.length + consoles.filter(c => c.status === "occupée").length}
@@ -4401,26 +4398,26 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("caisse")}
-              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "caisse"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
-              <Wallet className="w-5 h-5 text-amber-500" />
+              <Wallet className="w-4 h-4 text-amber-500" />
               Gestion Caisse
             </button>
 
             {role === "admin" && (
               <button
                 onClick={() => setActiveTab("settings")}
-                className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                   activeTab === "settings"
                     ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                     : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
                 }`}
               >
-                <Sliders className="w-5 h-5 text-violet-400" />
+                <Sliders className="w-4 h-4 text-violet-400" />
                 Paramètres Système
               </button>
             )}
