@@ -79,61 +79,7 @@ import {
 } from "./mockData";
 
 const generateMockSales = () => {
-  const list = [];
-  const playersList = ["Kevin Nguemo", "Marc Etoa", "Junior Tchakounté", "Sofiane Zidane", "Karim Belhadj", "Amine El Amrani", "Lucas Martin", "Tagne Paul", "Client Comptant"];
-  const operators = ["Gérant", "Administrateur"];
-  const paymentMethods = ["espèces", "mobile money", "Wave", "espèces + mobile"];
-
-  const baseDate = new Date();
-  baseDate.setDate(baseDate.getDate() - 45);
-
-  for (let i = 0; i < 75; i++) {
-    const saleDate = new Date(baseDate.getTime() + i * 14.5 * 3600 * 1000 + Math.random() * 6 * 3600 * 1000);
-    if (saleDate > new Date()) continue;
-
-    const customer = playersList[Math.floor(Math.random() * playersList.length)];
-    const seller = operators[Math.random() > 0.3 ? 0 : 1];
-    
-    const itemsCount = Math.floor(Math.random() * 3) + 1;
-    const itemsList = [];
-    let snackCost = 0;
-    
-    for (let j = 0; j < itemsCount; j++) {
-      const prod = snackProducts[Math.floor(Math.random() * snackProducts.length)];
-      const qty = Math.floor(Math.random() * 2) + 1;
-      itemsList.push({
-        product: prod,
-        quantity: qty
-      });
-      snackCost += prod.price * qty;
-    }
-
-    const gameCost = Math.random() > 0.5 ? (Math.floor(Math.random() * 4) + 1) * 1000 : 0;
-    const total = snackCost + gameCost;
-    
-    const isPartial = Math.random() > 0.9 && total > 5000;
-    const paid = isPartial ? Math.floor(total * 0.8 / 1000) * 1000 : total;
-    const status = isPartial ? "Partiel" : "Terminée";
-    
-    const id = `VTE-${saleDate.toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    list.push({
-      id,
-      customer,
-      seller,
-      total,
-      paid,
-      itemsList,
-      gameCost,
-      snackCost,
-      date: saleDate.toISOString(),
-      status,
-      paymentMethod: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
-      type: gameCost > 0 ? "console" : "pos"
-    });
-  }
-
-  return list.sort((a, b) => new Date(b.date) - new Date(a.date));
+  return [];
 };
 
 // ============================================================
@@ -1290,8 +1236,20 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [role, setRole] = useState("admin"); // 'admin' or 'gerant'
   const [consoles, setConsoles] = useState(() => {
+    const initializedTest = localStorage.getItem("system_test_reset_v5_zero_stats");
     const saved = localStorage.getItem("system_consoles");
-    return saved ? JSON.parse(saved) : initialConsoles;
+    const list = saved ? JSON.parse(saved) : initialConsoles;
+    if (!initializedTest) {
+      return list.map(c => ({
+        ...c,
+        status: "libre",
+        totalSessions: 0,
+        totalRevenue: 0,
+        totalTimeSeconds: 0,
+        activeSession: null
+      }));
+    }
+    return list;
   });
   const [products, setProducts] = useState(() => {
     const saved = localStorage.getItem("system_products");
@@ -1347,8 +1305,18 @@ export default function App() {
   });
 
   const [players, setPlayers] = useState(() => {
+    const initializedTest = localStorage.getItem("system_test_reset_v5_zero_stats");
     const saved = localStorage.getItem("system_players");
-    return saved ? JSON.parse(saved) : initialPlayers;
+    const list = saved ? JSON.parse(saved) : initialPlayers;
+    if (!initializedTest) {
+      return list.map(p => ({
+        ...p,
+        totalSessions: 0,
+        totalSpent: 0,
+        totalTimeMinutes: 0
+      }));
+    }
+    return list;
   });
 
   const [zones, setZones] = useState(() => {
@@ -1382,19 +1350,53 @@ export default function App() {
   }, [systemSettings.theme]);
 
   useEffect(() => {
-    const initializedTest = localStorage.getItem("system_test_reset_v3");
+    const initializedTest = localStorage.getItem("system_test_reset_v5_zero_stats");
     if (!initializedTest) {
-      localStorage.removeItem("system_consoles");
-      localStorage.removeItem("system_players");
       localStorage.removeItem("system_pos_tickets");
       localStorage.removeItem("system_active_caisse_session");
       localStorage.removeItem("system_expenses");
       localStorage.removeItem("system_purchases");
       localStorage.removeItem("system_activity_log");
       localStorage.removeItem("system_stock_movements");
-      localStorage.removeItem("system_settings");
       localStorage.removeItem("system_sales");
-      localStorage.setItem("system_test_reset_v3", "true");
+
+      // Reset consoles statistics but keep their configurations
+      const savedConsoles = localStorage.getItem("system_consoles");
+      if (savedConsoles) {
+        try {
+          const parsed = JSON.parse(savedConsoles);
+          const resetConsoles = parsed.map(c => ({
+            ...c,
+            status: "libre",
+            totalSessions: 0,
+            totalRevenue: 0,
+            totalTimeSeconds: 0,
+            activeSession: null
+          }));
+          localStorage.setItem("system_consoles", JSON.stringify(resetConsoles));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Reset players statistics but keep their profiles
+      const savedPlayers = localStorage.getItem("system_players");
+      if (savedPlayers) {
+        try {
+          const parsed = JSON.parse(savedPlayers);
+          const resetPlayers = parsed.map(p => ({
+            ...p,
+            totalSessions: 0,
+            totalSpent: 0,
+            totalTimeMinutes: 0
+          }));
+          localStorage.setItem("system_players", JSON.stringify(resetPlayers));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      localStorage.setItem("system_test_reset_v5_zero_stats", "true");
       window.location.reload();
     }
   }, []);
@@ -1425,6 +1427,10 @@ export default function App() {
   const [activityLog, setActivityLog] = useState(initialActivityLog);
 
   const [sales, setSales] = useState(() => {
+    const initializedTest = localStorage.getItem("system_test_reset_v5_zero_stats");
+    if (!initializedTest) {
+      return [];
+    }
     const saved = localStorage.getItem("system_sales");
     if (saved) {
       try {
