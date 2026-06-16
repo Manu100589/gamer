@@ -58,7 +58,8 @@ import {
   Tag,
   Bell,
   LogOut,
-  RefreshCw
+  RefreshCw,
+  Share2
 } from "lucide-react";
 import { 
   initialConsoles,
@@ -641,13 +642,529 @@ function ComptabiliteView({
 }
 
 // ============================================================
+// SALES HISTORY VIEW COMPONENT
+// ============================================================
+function SalesHistoryView({
+  sales, formatPrice,
+  salesHistStartDate, salesHistEndDate, setSalesHistStartDate, setSalesHistEndDate,
+  salesHistFilterTab, setSalesHistFilterTab,
+  salesHistShowFilters, setSalesHistShowFilters,
+  salesHistSearchQuery, setSalesHistSearchQuery,
+  salesHistSellerFilter, setSalesHistSellerFilter,
+  salesHistPaymentFilter, setSalesHistPaymentFilter,
+  setShowCancelSaleModal, setShowReceiptModal
+}) {
+  const start = React.useMemo(() => {
+    const d = new Date(salesHistStartDate);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [salesHistStartDate]);
+
+  const end = React.useMemo(() => {
+    const d = new Date(salesHistEndDate);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }, [salesHistEndDate]);
+
+  const formatDateStr = (dateStr) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const handleQuickPeriod = (period) => {
+    const today = new Date();
+    let s = new Date();
+    let e = new Date();
+    switch (period) {
+      case "today": s = today; e = today; break;
+      case "yesterday": {
+        s = new Date(today); s.setDate(today.getDate() - 1);
+        e = new Date(s); break;
+      }
+      case "this_week": {
+        const cd = today.getDay();
+        const dist = cd === 0 ? 6 : cd - 1;
+        s = new Date(today); s.setDate(today.getDate() - dist);
+        e = today; break;
+      }
+      case "last_week": {
+        const cd2 = today.getDay();
+        const dist2 = cd2 === 0 ? 6 : cd2 - 1;
+        s = new Date(today); s.setDate(today.getDate() - dist2 - 7);
+        e = new Date(s); e.setDate(s.getDate() + 6); break;
+      }
+      case "this_month":
+        s = new Date(today.getFullYear(), today.getMonth(), 1);
+        e = today; break;
+      case "last_month":
+        s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        e = new Date(today.getFullYear(), today.getMonth(), 0); break;
+      default: break;
+    }
+    setSalesHistStartDate(s.toISOString().slice(0, 10));
+    setSalesHistEndDate(e.toISOString().slice(0, 10));
+  };
+
+  const filteredPeriodSales = React.useMemo(() => {
+    return (sales || []).filter(s => {
+      if (!s) return false;
+      const saleDate = new Date(s.date || Date.now());
+      const inDateRange = saleDate >= start && saleDate <= end;
+      if (!inDateRange) return false;
+      
+      const customerName = s.customer || "Client Comptant";
+      const saleId = s.id || "";
+      
+      // Items description search
+      const itemsList = s.itemsList || [];
+      const matchesItems = itemsList.some(item => 
+        item && item.product && item.product.name.toLowerCase().includes(salesHistSearchQuery.toLowerCase())
+      );
+      
+      const matchesSearch = customerName.toLowerCase().includes(salesHistSearchQuery.toLowerCase()) ||
+                            saleId.toLowerCase().includes(salesHistSearchQuery.toLowerCase()) ||
+                            matchesItems;
+      if (!matchesSearch) return false;
+      
+      const sellerName = s.seller || "Gérant";
+      const matchesSeller = salesHistSellerFilter === "all" || sellerName.toLowerCase() === salesHistSellerFilter.toLowerCase();
+      if (!matchesSeller) return false;
+      
+      const pMethod = (s.paymentMethod || "espèces").toLowerCase();
+      const matchesPayment = salesHistPaymentFilter === "all" || 
+                             pMethod.includes(salesHistPaymentFilter.toLowerCase());
+      return matchesPayment;
+    });
+  }, [sales, start, end, salesHistSearchQuery, salesHistSellerFilter, salesHistPaymentFilter]);
+
+  // Active vs Cancelled counts
+  const activeSales = React.useMemo(() => filteredPeriodSales.filter(s => s.status !== "annulée"), [filteredPeriodSales]);
+  const cancelledSales = React.useMemo(() => filteredPeriodSales.filter(s => s.status === "annulée"), [filteredPeriodSales]);
+
+  // Feed list based on filter tab selection
+  const feedSales = React.useMemo(() => {
+    return salesHistFilterTab === "annulees" ? cancelledSales : filteredPeriodSales;
+  }, [salesHistFilterTab, filteredPeriodSales, cancelledSales]);
+
+  // KPI calculations
+  const caTotal = React.useMemo(() => activeSales.reduce((sum, s) => sum + (s.total || 0), 0), [activeSales]);
+  const activeSalesCount = activeSales.length;
+  const panierMoyen = activeSalesCount > 0 ? caTotal / activeSalesCount : 0;
+  const cancelledSalesCount = cancelledSales.length;
+
+  const cashSalesTotal = React.useMemo(() => {
+    return activeSales.filter(s => {
+      const method = (s.paymentMethod || "espèces").toLowerCase();
+      return method === "espèces" || method === "especes" || method.includes("espèces + mobile");
+    }).reduce((sum, s) => {
+      if ((s.paymentMethod || "").toLowerCase().includes("espèces + mobile") || (s.paymentMethod || "").toLowerCase().includes("mixte")) {
+        return sum + (s.cashUsed || (s.total / 2));
+      }
+      return sum + (s.total || 0);
+    }, 0);
+  }, [activeSales]);
+
+  // Get unique operators for selection dropdown
+  const uniqueSellers = React.useMemo(() => {
+    return [...new Set((sales || []).map(s => s.seller || "Gérant").filter(Boolean))];
+  }, [sales]);
+
+  const handleWhatsAppShare = (sale) => {
+    const customerName = sale.customer || "Client Comptant";
+    const saleId = sale.id || "";
+    const dateFormatted = new Date(sale.date).toLocaleDateString('fr-FR', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    let itemsText = "";
+    if (sale.gameCost > 0) {
+      itemsText += `• Session Station: ${formatPrice(sale.gameCost)}\n`;
+    }
+    (sale.itemsList || []).forEach(item => {
+      if (item && item.product) {
+        itemsText += `• ${item.product.name} x${item.quantity}: ${formatPrice(item.product.price * item.quantity)}\n`;
+      }
+    });
+    
+    const message = `*PS LOUNGE - Reçu de Vente*\n` +
+                    `--------------------------------\n` +
+                    `*Ticket :* #${saleId}\n` +
+                    `*Client :* ${customerName}\n` +
+                    `*Date :* ${dateFormatted}\n` +
+                    `*Statut :* ${sale.status || "Terminée"}\n` +
+                    `--------------------------------\n` +
+                    `*Détails :*\n${itemsText}` +
+                    `--------------------------------\n` +
+                    `*TOTAL :* ${formatPrice(sale.total)}\n` +
+                    `*Moyen de Paiement :* ${sale.paymentMethod || "Espèces"}\n` +
+                    `--------------------------------\n` +
+                    `Merci de votre confiance ! ⚡`;
+                    
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  const triggerRefreshAnimation = () => {
+    gsap.fromTo(
+      ".refresh-icon",
+      { rotate: 0 },
+      { rotate: 360, duration: 0.6, ease: "power2.out" }
+    );
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in pb-12 max-w-4xl mx-auto font-sans">
+      {/* Header section */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span className="sticker-badge bg-zinc-900 border border-zinc-800 text-zinc-400 font-extrabold px-3 py-1 text-[9px] uppercase tracking-widest inline-block rounded-md">
+            ps lounge – ps lounge
+          </span>
+          <h2 className="text-xl font-black text-white tracking-wide uppercase mt-1">Historique des ventes</h2>
+        </div>
+        <button 
+          onClick={triggerRefreshAnimation}
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition-all self-start"
+        >
+          <RefreshCw className="w-3.5 h-3.5 refresh-icon" />
+          Actualiser
+        </button>
+      </div>
+
+      {/* KPI Cards Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* CA TOTAL */}
+        <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+          <div className="flex justify-between items-start text-zinc-500 mb-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">CA TOTAL</span>
+            <span className="text-sm bg-emerald-500/10 p-1.5 rounded-lg font-bold">💰</span>
+          </div>
+          <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(caTotal)}</p>
+          <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">{activeSalesCount} ventes actives</span>
+        </div>
+
+        {/* PANIER MOYEN */}
+        <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+          <div className="flex justify-between items-start text-zinc-500 mb-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">PANIER MOYEN</span>
+            <span className="text-sm bg-violet-500/10 p-1.5 rounded-lg font-bold">🛒</span>
+          </div>
+          <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(panierMoyen)}</p>
+          <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Valeur moyenne</span>
+        </div>
+
+        {/* ANNULÉES */}
+        <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+          <div className="flex justify-between items-start text-zinc-500 mb-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">ANNULÉES</span>
+            <span className="text-sm bg-rose-500/10 p-1.5 rounded-lg font-bold">❌</span>
+          </div>
+          <p className="text-base font-black text-rose-500 font-mono tracking-tight">{cancelledSalesCount}</p>
+          <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Ventes annulées</span>
+        </div>
+
+        {/* ESPÈCES */}
+        <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+          <div className="flex justify-between items-start text-zinc-500 mb-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">ESPÈCES</span>
+            <span className="text-sm bg-amber-500/10 p-1.5 rounded-lg font-bold">💵</span>
+          </div>
+          <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(cashSalesTotal)}</p>
+          <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Ventes en espèces</span>
+        </div>
+      </div>
+
+      {/* Filters and Navigation Tabs */}
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-between items-center bg-zinc-950/60 p-2 border border-zinc-900 rounded-2xl">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setSalesHistFilterTab("toutes")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                salesHistFilterTab === "toutes" 
+                  ? "bg-zinc-800 text-white" 
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              Toutes
+            </button>
+            <button
+              onClick={() => setSalesHistFilterTab("annulees")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                salesHistFilterTab === "annulees" 
+                  ? "bg-zinc-800 text-white" 
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              Ventes annulées
+              {cancelledSalesCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  {cancelledSalesCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          <button
+            onClick={() => setSalesHistShowFilters(v => !v)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border ${
+              salesHistShowFilters 
+                ? "bg-violet-600 border-violet-500 text-white" 
+                : "bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white"
+            }`}
+          >
+            🔍 Filtres
+          </button>
+        </div>
+
+        {/* Advanced Filters Panel */}
+        {salesHistShowFilters && (
+          <div className="bg-zinc-950/40 border border-zinc-850 p-5 rounded-2xl space-y-4 animate-slide-down">
+            <div className="flex items-center gap-2 border-b border-zinc-900 pb-2">
+              <Calendar className="w-4 h-4 text-violet-400" />
+              <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Filtres avancés</span>
+            </div>
+
+            {/* Quick periods */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: "today", label: "Aujourd'hui" },
+                { key: "yesterday", label: "Hier" },
+                { key: "this_week", label: "Cette semaine" },
+                { key: "last_week", label: "Semaine passée" },
+                { key: "this_month", label: "Ce mois" }
+              ].map(p => (
+                <button key={p.key} onClick={() => handleQuickPeriod(p.key)}
+                  className="px-3 py-1.5 text-[9px] font-bold rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white transition-all">
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Du</label>
+                <input type="date" value={salesHistStartDate} onChange={e => setSalesHistStartDate(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-violet-600/50 rounded-xl px-3 py-2 text-xs text-white outline-none transition-all" />
+              </div>
+              <div>
+                <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Au</label>
+                <input type="date" value={salesHistEndDate} onChange={e => setSalesHistEndDate(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-violet-600/50 rounded-xl px-3 py-2 text-xs text-white outline-none transition-all" />
+              </div>
+              <div>
+                <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Moyen de paiement</label>
+                <select value={salesHistPaymentFilter} onChange={e => setSalesHistPaymentFilter(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-violet-600/50 rounded-xl px-3 py-2 text-xs text-white outline-none transition-all cursor-pointer">
+                  <option value="all">Tous</option>
+                  <option value="espèces">Espèces</option>
+                  <option value="mobile money">Mobile Money</option>
+                  <option value="Wave">Wave</option>
+                  <option value="espèces + mobile">Espèces + Mobile</option>
+                  <option value="Mixte">Mixte</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Opérateur</label>
+                <select value={salesHistSellerFilter} onChange={e => setSalesHistSellerFilter(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-violet-600/50 rounded-xl px-3 py-2 text-xs text-white outline-none transition-all cursor-pointer">
+                  <option value="all">Tous</option>
+                  {uniqueSellers.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Recherche (Client, Produit, ID)</label>
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-zinc-600 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input 
+                  type="text" 
+                  value={salesHistSearchQuery} 
+                  onChange={e => setSalesHistSearchQuery(e.target.value)} 
+                  placeholder="Tapez le nom d'un client, d'un produit ou l'identifiant..."
+                  className="w-full bg-zinc-900 border border-zinc-800 focus:border-violet-600/50 rounded-xl pl-9 pr-4 py-2 text-xs text-white outline-none transition-all" 
+                />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Feed List of Sales */}
+      <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+        {feedSales.length === 0 ? (
+          <div className="glass-panel text-center py-12 border border-zinc-900 text-zinc-500 text-xs font-semibold rounded-2xl bg-zinc-950/20">
+            Aucune vente trouvée correspondant aux critères.
+          </div>
+        ) : (
+          feedSales.map((sale, index) => {
+            const formattedDate = new Date(sale.date).toLocaleDateString('fr-FR', {
+              day: 'numeric',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+
+            // Parse items list representation
+            const items = (sale.itemsList || []).map(item => {
+              if (!item || !item.product) return "";
+              return `${item.product.name} ×${item.quantity}`;
+            }).filter(Boolean);
+            
+            if (sale.gameCost > 0) {
+              items.unshift("🕹️ Session Console");
+            }
+            
+            const itemsDetailText = items.join(", ");
+            const isCancelled = sale.status === "annulée";
+
+            // Payment badge color
+            const payMethod = (sale.paymentMethod || "espèces").toLowerCase();
+            let payBadgeColor = "bg-emerald-500/10 border-emerald-500/20 text-emerald-400";
+            if (payMethod.includes("mobile money") || payMethod.includes("momo")) {
+              payBadgeColor = "bg-amber-500/10 border-amber-500/20 text-amber-400";
+            } else if (payMethod.includes("wave")) {
+              payBadgeColor = "bg-sky-500/10 border-sky-500/20 text-sky-400";
+            } else if (payMethod.includes("mixte") || payMethod.includes("espèces + mobile")) {
+              payBadgeColor = "bg-purple-500/10 border-purple-500/20 text-purple-400";
+            }
+
+            return (
+              <div 
+                key={sale.id}
+                className={`bg-zinc-950/20 border p-4 rounded-2xl flex flex-col gap-3 transition-all duration-300 relative overflow-hidden ${
+                  isCancelled 
+                    ? "border-rose-950/40 bg-rose-950/5 shadow-rose-950/5 opacity-85" 
+                    : "border-zinc-900 hover:border-zinc-800 bg-zinc-950/10 hover:bg-zinc-950/20 shadow-lg"
+                }`}
+              >
+                {/* Row 1: Header (Index + Type & Status) */}
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-zinc-500 font-bold font-mono">#{filteredPeriodSales.length - index}</span>
+                    <span className="text-[10px] text-amber-400 italic font-black uppercase tracking-wider font-mono">
+                      {sale.gameCost > 0 ? "station" : "local"}
+                    </span>
+                  </div>
+                  
+                  {isCancelled ? (
+                    <span className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full flex items-center gap-1">
+                      ❌ Annulée
+                    </span>
+                  ) : (
+                    <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full flex items-center gap-1">
+                      ✓ OK
+                    </span>
+                  )}
+                </div>
+
+                {/* Row 2: Date, Time & Seller */}
+                <div className="text-[11px] text-zinc-400 font-bold flex justify-between items-center">
+                  <span>{formattedDate}</span>
+                  <span className="flex items-center gap-1 bg-zinc-900/60 border border-zinc-800 text-[10px] font-bold px-2 py-0.5 rounded-md text-zinc-300">
+                    👤 {sale.seller || "Gérant"}
+                  </span>
+                </div>
+
+                {/* Row 3: Customer Icon & Name */}
+                <div className="flex items-center gap-1.5 text-xs font-black text-white tracking-wide">
+                  <User className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>{sale.customer || "Client Comptant"}</span>
+                </div>
+
+                {/* Row 4: Items sold description */}
+                <div className="text-[11px] text-zinc-400 font-semibold italic leading-relaxed bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-900/40">
+                  {itemsDetailText || "Aucun article"}
+                </div>
+
+                {/* Row 5: Total Amount and Payment badge */}
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-sm font-black text-white font-mono tracking-tight">{formatPrice(sale.total)}</span>
+                  <span className={`text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-lg border ${payBadgeColor}`}>
+                    {sale.paymentMethod || "Espèces"}
+                  </span>
+                </div>
+
+                {/* Row 6: Action Buttons */}
+                <div className="flex gap-2 pt-2 border-t border-zinc-900/40">
+                  <button
+                    onClick={() => handleWhatsAppShare(sale)}
+                    className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 text-zinc-300 hover:text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Share2 className="w-3 h-3 text-emerald-400" />
+                    WhatsApp
+                  </button>
+                  <button
+                    onClick={() => setShowReceiptModal({
+                      id: `REC-${sale.id.slice(-6)}`,
+                      customer: sale.customer,
+                      itemsList: sale.itemsList,
+                      gameCost: sale.gameCost || 0,
+                      snackCost: sale.snackCost || 0,
+                      total: sale.total,
+                      date: new Date(sale.date).toLocaleTimeString(),
+                      type: sale.gameCost > 0 ? "Clôture Station & Snacks" : "Facture Directe",
+                      paymentMethod: sale.paymentMethod
+                    })}
+                    className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 text-zinc-300 hover:text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Printer className="w-3 h-3 text-violet-400" />
+                    Imprimer
+                  </button>
+                  {!isCancelled && (
+                    <button
+                      onClick={() => setShowCancelSaleModal(sale)}
+                      className="flex-1 py-2 bg-zinc-900 hover:bg-rose-950/20 border border-zinc-850 hover:border-rose-900/30 text-rose-400 hover:text-rose-305 rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <XCircle className="w-3 h-3 text-rose-500" />
+                      Annuler
+                    </button>
+                  )}
+                </div>
+
+                {/* Row 7: Cancellation reason (if cancelled) */}
+                {isCancelled && sale.cancelReason && (
+                  <div className="text-[10px] text-rose-400 font-bold bg-rose-500/5 p-2 rounded-lg border border-rose-900/10 italic">
+                    Motif : {sale.cancelReason}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // CANCEL SALE MODAL COMPONENT
 // ============================================================
 function CancelSaleModal({ sale, onClose, onConfirm }) {
-  const [localReason, setLocalReason] = React.useState("Erreur de saisie");
+  const [localReason, setLocalReason] = React.useState("");
   const [localCustom, setLocalCustom] = React.useState("");
-  const [localReturnStock, setLocalReturnStock] = React.useState(false);
+  const [localReturnStock, setLocalReturnStock] = React.useState(true);
   const hasStock = sale.itemsList && sale.itemsList.length > 0;
+
+  const itemsSummary = React.useMemo(() => {
+    if (sale.gameCost > 0 && (!sale.itemsList || sale.itemsList.length === 0)) {
+      return "Session Station Console";
+    }
+    const items = (sale.itemsList || []).map(item => {
+      if (!item || !item.product) return "";
+      return `"${item.product.name}" × ${item.quantity}`;
+    }).filter(Boolean);
+    
+    if (sale.gameCost > 0) {
+      items.unshift("Session Station");
+    }
+    return items.join(", ");
+  }, [sale]);
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{background:'rgba(0,0,0,0.85)'}}>
@@ -660,53 +1177,59 @@ function CancelSaleModal({ sale, onClose, onConfirm }) {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <div className="w-7 h-7 rounded-lg bg-rose-500/20 border border-rose-500/30 flex items-center justify-center">
-                <X className="w-4 h-4 text-rose-400" />
+                <XCircle className="w-4 h-4 text-rose-400" />
               </div>
-              <h3 className="text-sm font-black text-white tracking-tight">Annulation de Vente</h3>
+              <h3 className="text-sm font-black text-white tracking-tight">Annuler la vente</h3>
             </div>
-            <p className="text-[10px] text-zinc-400">Vente <span className="font-mono text-rose-300">{sale.id}</span> &mdash; {sale.customer}</p>
+            <p className="text-[10px] text-zinc-400">ID Vente &mdash; <span className="font-mono text-rose-300">{sale.id}</span></p>
           </div>
           <button onClick={onClose} className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all">
-            <X className="w-3.5 h-3.5" />
+            <XCircle className="w-3.5 h-3.5" />
           </button>
         </div>
 
         {/* Body */}
         <div className="p-5 space-y-4">
-          {/* Sale summary */}
-          <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 flex items-center justify-between">
-            <div className="text-xs text-zinc-400">
-              <span className="text-zinc-300 font-bold">{new Date(sale.date).toLocaleDateString('fr-FR')}</span>
-              <span className="mx-2 text-zinc-700">&bull;</span>
-              <span>{sale.paymentMethod || 'Espèces'}</span>
+          {/* Sale details card */}
+          <div className="bg-zinc-900/40 border border-zinc-850 p-4 rounded-xl space-y-1.5">
+            <div className="text-[10px] text-zinc-500 font-mono">#{sale.id}</div>
+            <div className="text-xl font-black text-emerald-400 font-mono">
+              {sale.total ? sale.total.toLocaleString('fr-FR') : 0} FCFA
             </div>
-            <span className="text-sm font-black text-white font-mono">{(sale.total || 0).toLocaleString('fr-FR')} FCFA</span>
+            <div className="text-xs text-zinc-400 italic font-medium">
+              {itemsSummary || "Aucun article"}
+            </div>
           </div>
 
-          {/* Motif */}
+          {/* Motif Selector */}
           <div className="space-y-2">
-            <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Motif d'annulation</label>
-            <div className="grid grid-cols-2 gap-2">
-              {["Erreur de saisie", "Commande annulée", "Remboursement client", "Doublon", "Autre"].map(r => (
-                <button
-                  key={r}
-                  onClick={() => setLocalReason(r)}
-                  className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
-                    localReason === r
-                      ? 'bg-rose-900/50 border-rose-500/60 text-rose-300'
-                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
+            <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider block">
+              MOTIF <span className="text-rose-500">*</span>
+            </label>
+            <select
+              value={localReason}
+              onChange={e => {
+                setLocalReason(e.target.value);
+                if (e.target.value !== "Autre") setLocalCustom("");
+              }}
+              className="w-full bg-zinc-900 border border-zinc-800 focus:border-rose-500/50 rounded-xl px-3 py-2.5 text-xs text-white outline-none transition-all cursor-pointer"
+            >
+              <option value="" disabled>- Sélectionner -</option>
+              <option value="Erreur de saisie">Erreur de saisie</option>
+              <option value="Produit défectueux">Produit défectueux</option>
+              <option value="Produit cassé">Produit cassé</option>
+              <option value="Client a annulé">Client a annulé</option>
+              <option value="Doublon">Doublon</option>
+              <option value="Retour produit">Retour produit</option>
+              <option value="Autre">Autre</option>
+            </select>
+
             {localReason === "Autre" && (
               <textarea
                 value={localCustom}
                 onChange={e => setLocalCustom(e.target.value)}
                 placeholder="Décrivez le motif d'annulation..."
-                className="w-full bg-zinc-900 border border-zinc-800 focus:border-rose-600/50 rounded-xl p-3 text-xs text-white placeholder-zinc-600 resize-none h-20 outline-none transition-all"
+                className="w-full bg-zinc-900 border border-zinc-800 focus:border-rose-600/50 rounded-xl p-3 text-xs text-white placeholder-zinc-600 resize-none h-20 outline-none transition-all mt-2"
               />
             )}
           </div>
@@ -732,10 +1255,10 @@ function CancelSaleModal({ sale, onClose, onConfirm }) {
           )}
 
           {/* Warning */}
-          <div className="bg-amber-950/30 border border-amber-900/40 rounded-xl p-3 flex gap-2">
+          <div className="bg-amber-950/20 border border-amber-900/30 rounded-xl p-3 flex gap-2">
             <span className="text-amber-400 text-sm mt-0.5">⚠️</span>
             <p className="text-[10px] text-amber-300/80 leading-relaxed">
-              Cette action est <strong>irréversible</strong>. La vente sera marquée comme annulée et les montants correspondants seront retirés des statistiques de caisse.
+              Cette action est <strong>irréversible</strong>. La vente sera marquée comme annulée et les montants correspondants seront retirés de la caisse.
             </p>
           </div>
         </div>
@@ -746,14 +1269,15 @@ function CancelSaleModal({ sale, onClose, onConfirm }) {
             onClick={onClose}
             className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all"
           >
-            Fermer
+            Annuler
           </button>
           <button
             onClick={() => onConfirm(sale.id, localReason, localCustom, localReturnStock)}
-            disabled={localReason === "Autre" && !localCustom.trim()}
-            className="flex-1 py-2.5 bg-gradient-to-r from-rose-700 to-rose-600 hover:from-rose-600 hover:to-rose-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/30 active:scale-95 transition-all"
+            disabled={!localReason || (localReason === "Autre" && !localCustom.trim())}
+            className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 disabled:bg-zinc-900 disabled:text-zinc-650 disabled:border-zinc-850 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/30 active:scale-95 transition-all border border-transparent flex items-center justify-center gap-1.5"
           >
-            ✗ Confirmer l'annulation
+            <XCircle className="w-3.5 h-3.5" />
+            Confirmer
           </button>
         </div>
       </div>
@@ -1044,6 +1568,20 @@ export default function App() {
   const [comptaSellerFilter, setComptaSellerFilter] = useState("all");
   const [comptaPeriodFilterToggled, setComptaPeriodFilterToggled] = useState(false);
   const [comptaExpandedSaleId, setComptaExpandedSaleId] = useState(null);
+
+  // Sales History states
+  const [salesHistStartDate, setSalesHistStartDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  });
+  const [salesHistEndDate, setSalesHistEndDate] = useState(() => {
+    return new Date().toISOString().slice(0, 10);
+  });
+  const [salesHistFilterTab, setSalesHistFilterTab] = useState("toutes"); // "toutes" or "annulees"
+  const [salesHistShowFilters, setSalesHistShowFilters] = useState(false);
+  const [salesHistSearchQuery, setSalesHistSearchQuery] = useState("");
+  const [salesHistSellerFilter, setSalesHistSellerFilter] = useState("all");
+  const [salesHistPaymentFilter, setSalesHistPaymentFilter] = useState("all");
 
   // States for sale cancellation
   const [showCancelSaleModal, setShowCancelSaleModal] = useState(null);
@@ -4889,6 +5427,18 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab("salesHistory")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "salesHistory"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <History className="w-4 h-4 text-pink-400" />
+              Historique des Ventes
+            </button>
+
+            <button
               onClick={() => setActiveTab("invoices")}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "invoices"
@@ -4999,7 +5549,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : activeTab === "comptabilite" ? "Comptabilité & Stock" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : activeTab === "comptabilite" ? "Comptabilité & Stock" : activeTab === "salesHistory" ? "Historique des Ventes" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -7893,6 +8443,29 @@ export default function App() {
                 setComptaPeriodFilterToggled={setComptaPeriodFilterToggled}
                 comptaExpandedSaleId={comptaExpandedSaleId}
                 setComptaExpandedSaleId={setComptaExpandedSaleId}
+                setShowCancelSaleModal={setShowCancelSaleModal}
+                setShowReceiptModal={setShowReceiptModal}
+              />
+            )}
+
+            {activeTab === "salesHistory" && (
+              <SalesHistoryView
+                sales={sales}
+                formatPrice={formatPrice}
+                salesHistStartDate={salesHistStartDate}
+                salesHistEndDate={salesHistEndDate}
+                setSalesHistStartDate={setSalesHistStartDate}
+                setSalesHistEndDate={setSalesHistEndDate}
+                salesHistFilterTab={salesHistFilterTab}
+                setSalesHistFilterTab={setSalesHistFilterTab}
+                salesHistShowFilters={salesHistShowFilters}
+                setSalesHistShowFilters={setSalesHistShowFilters}
+                salesHistSearchQuery={salesHistSearchQuery}
+                setSalesHistSearchQuery={setSalesHistSearchQuery}
+                salesHistSellerFilter={salesHistSellerFilter}
+                setSalesHistSellerFilter={setSalesHistSellerFilter}
+                salesHistPaymentFilter={salesHistPaymentFilter}
+                setSalesHistPaymentFilter={setSalesHistPaymentFilter}
                 setShowCancelSaleModal={setShowCancelSaleModal}
                 setShowReceiptModal={setShowReceiptModal}
               />
