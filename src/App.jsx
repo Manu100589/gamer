@@ -55,7 +55,9 @@ import {
   RotateCcw,
   CreditCard,
   Tag,
-  Bell
+  Bell,
+  LogOut,
+  RefreshCw
 } from "lucide-react";
 import { 
   initialConsoles,
@@ -131,6 +133,126 @@ const generateMockSales = () => {
 
   return list.sort((a, b) => new Date(b.date) - new Date(a.date));
 };
+// ============================================================
+// CANCEL SALE MODAL COMPONENT
+// ============================================================
+function CancelSaleModal({ sale, onClose, onConfirm }) {
+  const [localReason, setLocalReason] = React.useState("Erreur de saisie");
+  const [localCustom, setLocalCustom] = React.useState("");
+  const [localReturnStock, setLocalReturnStock] = React.useState(false);
+  const hasStock = sale.itemsList && sale.itemsList.length > 0;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{background:'rgba(0,0,0,0.85)'}}>
+      <div
+        className="relative w-full max-w-md bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden"
+        style={{boxShadow:'0 0 60px rgba(239,68,68,0.15)'}}
+      >
+        {/* Header */}
+        <div className="bg-gradient-to-r from-rose-950/80 to-zinc-950 border-b border-rose-900/40 p-5 flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-7 h-7 rounded-lg bg-rose-500/20 border border-rose-500/30 flex items-center justify-center">
+                <X className="w-4 h-4 text-rose-400" />
+              </div>
+              <h3 className="text-sm font-black text-white tracking-tight">Annulation de Vente</h3>
+            </div>
+            <p className="text-[10px] text-zinc-400">Vente <span className="font-mono text-rose-300">{sale.id}</span> &mdash; {sale.customer}</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-500 hover:text-white hover:bg-zinc-800 transition-all">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          {/* Sale summary */}
+          <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-3 flex items-center justify-between">
+            <div className="text-xs text-zinc-400">
+              <span className="text-zinc-300 font-bold">{new Date(sale.date).toLocaleDateString('fr-FR')}</span>
+              <span className="mx-2 text-zinc-700">&bull;</span>
+              <span>{sale.paymentMethod || 'Espèces'}</span>
+            </div>
+            <span className="text-sm font-black text-white font-mono">{(sale.total || 0).toLocaleString('fr-FR')} FCFA</span>
+          </div>
+
+          {/* Motif */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">Motif d'annulation</label>
+            <div className="grid grid-cols-2 gap-2">
+              {["Erreur de saisie", "Commande annulée", "Remboursement client", "Doublon", "Autre"].map(r => (
+                <button
+                  key={r}
+                  onClick={() => setLocalReason(r)}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all ${
+                    localReason === r
+                      ? 'bg-rose-900/50 border-rose-500/60 text-rose-300'
+                      : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-zinc-700 hover:text-white'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+            {localReason === "Autre" && (
+              <textarea
+                value={localCustom}
+                onChange={e => setLocalCustom(e.target.value)}
+                placeholder="Décrivez le motif d'annulation..."
+                className="w-full bg-zinc-900 border border-zinc-800 focus:border-rose-600/50 rounded-xl p-3 text-xs text-white placeholder-zinc-600 resize-none h-20 outline-none transition-all"
+              />
+            )}
+          </div>
+
+          {/* Stock return option */}
+          {hasStock && (
+            <label className="flex items-center gap-3 p-3 bg-zinc-900/60 border border-zinc-800 rounded-xl cursor-pointer hover:border-zinc-700 transition-all">
+              <div
+                onClick={() => setLocalReturnStock(v => !v)}
+                className={`w-10 h-5 rounded-full border transition-all relative flex-shrink-0 ${
+                  localReturnStock ? 'bg-emerald-600 border-emerald-500' : 'bg-zinc-800 border-zinc-700'
+                }`}
+              >
+                <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${
+                  localReturnStock ? 'left-5' : 'left-0.5'
+                }`} />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-zinc-200">Retourner au stock</span>
+                <p className="text-[10px] text-zinc-500">Les articles vendus seront remis en inventaire</p>
+              </div>
+            </label>
+          )}
+
+          {/* Warning */}
+          <div className="bg-amber-950/30 border border-amber-900/40 rounded-xl p-3 flex gap-2">
+            <span className="text-amber-400 text-sm mt-0.5">⚠️</span>
+            <p className="text-[10px] text-amber-300/80 leading-relaxed">
+              Cette action est <strong>irréversible</strong>. La vente sera marquée comme annulée et les montants correspondants seront retirés des statistiques de caisse.
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 pb-5 flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all"
+          >
+            Fermer
+          </button>
+          <button
+            onClick={() => onConfirm(sale.id, localReason, localCustom, localReturnStock)}
+            disabled={localReason === "Autre" && !localCustom.trim()}
+            className="flex-1 py-2.5 bg-gradient-to-r from-rose-700 to-rose-600 hover:from-rose-600 hover:to-rose-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/30 active:scale-95 transition-all"
+          >
+            ✗ Confirmer l'annulation
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   // App states
@@ -416,6 +538,12 @@ export default function App() {
   const [comptaPeriodFilterToggled, setComptaPeriodFilterToggled] = useState(false);
   const [comptaExpandedSaleId, setComptaExpandedSaleId] = useState(null);
 
+  // States for sale cancellation
+  const [showCancelSaleModal, setShowCancelSaleModal] = useState(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [customCancelReason, setCustomCancelReason] = useState("");
+  const [reputInStock, setReputInStock] = useState(true);
+
   // Sync purchaseTotalAmount on quantity or price change
   useEffect(() => {
     const qty = Number(purchaseQuantity || 0);
@@ -436,12 +564,49 @@ export default function App() {
     expensesMaintenance: 0,
     expensesDiverses: 0,
     purchases: 0,
-    refunds: 0
+    purchasesCash: 0,
+    refunds: 0,
+    paymentEspèces: 0,
+    paymentMobileMoney: 0,
+    paymentCarte: 0,
+    transactionsCount: 0,
+    movements: []
   });
   const [caisseSubTab, setCaisseSubTab] = useState("suivi"); // 'suivi' or 'historique'
   const [reportSubTab, setReportSubTab] = useState("journalier"); // 'journalier', 'hebdomadaire', 'mensuel'
   const [showOpenCaisseModal, setShowOpenCaisseModal] = useState(false);
   const [showCloseCaisseModal, setShowCloseCaisseModal] = useState(false);
+  const [showAddMovementModal, setShowAddMovementModal] = useState(false);
+  const [movementType, setMovementType] = useState("entrée"); // 'entrée' or 'sortie'
+  const [movementAmount, setMovementAmount] = useState("");
+  const [movementReason, setMovementReason] = useState("");
+  const [movementOperator, setMovementOperator] = useState("");
+
+  const [caisseTimerTick, setCaisseTimerTick] = useState(0);
+  useEffect(() => {
+    let interval;
+    if (caisseStatus === "ouverte") {
+      interval = setInterval(() => {
+        setCaisseTimerTick(prev => prev + 1);
+      }, 60000);
+    }
+    return () => clearInterval(interval);
+  }, [caisseStatus]);
+
+  const getSessionDuration = () => {
+    if (!activeCaisseSession || !activeCaisseSession.dateOpen) return "0 min";
+    const start = new Date(activeCaisseSession.dateOpen);
+    const now = new Date();
+    const diffMs = Math.abs(now - start);
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    
+    if (diffMins < 60) {
+      return `${diffMins} min`;
+    }
+    const hrs = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+    return `${hrs}h ${mins}min`;
+  };
 
   // Form states for open/close caisse
   const [openCaisseBalance, setOpenCaisseBalance] = useState("");
@@ -739,10 +904,14 @@ export default function App() {
     }));
 
     if (caisseStatus === "ouverte") {
-      setActiveCaisseSession(prev => ({
-        ...prev,
-        expenses: prev.expenses + amt
-      }));
+      setActiveCaisseSession(prev => {
+        const isMaintenance = category.toLowerCase().includes("maintenance") || category.toLowerCase().includes("technique");
+        return {
+          ...prev,
+          expensesMaintenance: isMaintenance ? (prev.expensesMaintenance || 0) + amt : (prev.expensesMaintenance || 0),
+          expensesDiverses: !isMaintenance ? (prev.expensesDiverses || 0) + amt : (prev.expensesDiverses || 0)
+        };
+      });
     }
 
     addLog(
@@ -788,10 +957,14 @@ export default function App() {
     }));
 
     if (caisseStatus === "ouverte") {
-      setActiveCaisseSession(prev => ({
-        ...prev,
-        expenses: Math.max(0, prev.expenses - target.amount)
-      }));
+      setActiveCaisseSession(prev => {
+        const isMaintenance = target.category.toLowerCase().includes("maintenance") || target.category.toLowerCase().includes("technique");
+        return {
+          ...prev,
+          expensesMaintenance: isMaintenance ? Math.max(0, (prev.expensesMaintenance || 0) - target.amount) : (prev.expensesMaintenance || 0),
+          expensesDiverses: !isMaintenance ? Math.max(0, (prev.expensesDiverses || 0) - target.amount) : (prev.expensesDiverses || 0)
+        };
+      });
     }
 
     addLog(
@@ -841,10 +1014,31 @@ export default function App() {
     }));
 
     if (caisseStatus === "ouverte") {
-      setActiveCaisseSession(prev => ({
-        ...prev,
-        expenses: Math.max(0, prev.expenses + diff)
-      }));
+      setActiveCaisseSession(prev => {
+        const isMaintenance = category.toLowerCase().includes("maintenance") || category.toLowerCase().includes("technique");
+        const wasMaintenance = target.category.toLowerCase().includes("maintenance") || target.category.toLowerCase().includes("technique");
+        
+        let nextMaintenance = prev.expensesMaintenance || 0;
+        let nextDiverses = prev.expensesDiverses || 0;
+        
+        if (wasMaintenance) {
+          nextMaintenance = Math.max(0, nextMaintenance - target.amount);
+        } else {
+          nextDiverses = Math.max(0, nextDiverses - target.amount);
+        }
+        
+        if (isMaintenance) {
+          nextMaintenance += newAmt;
+        } else {
+          nextDiverses += newAmt;
+        }
+        
+        return {
+          ...prev,
+          expensesMaintenance: nextMaintenance,
+          expensesDiverses: nextDiverses
+        };
+      });
     }
 
     addLog(
@@ -875,6 +1069,134 @@ export default function App() {
         "console"
       );
     }
+  };
+
+  const handleCancelSale = (saleId, reason, customReason, returnToStock) => {
+    const targetReason = reason === "Autre" ? customReason.trim() : reason;
+    if (!targetReason) {
+      alert("Veuillez spécifier un motif d'annulation.");
+      return;
+    }
+
+    const sale = sales.find(s => s.id === saleId);
+    if (!sale) return;
+
+    if (sale.status === "annulée") {
+      alert("Cette vente est déjà annulée.");
+      return;
+    }
+
+    setSales(prev => prev.map(s => {
+      if (s.id === saleId) {
+        return {
+          ...s,
+          status: "annulée",
+          cancelReason: targetReason,
+          cancelledAt: new Date().toISOString()
+        };
+      }
+      return s;
+    }));
+
+    // Refund amounts
+    setStats(prev => {
+      const newGamesRev = Math.max(0, prev.gamesRevenue - (sale.gameCost || 0));
+      const newSnacksRev = Math.max(0, prev.snackRevenue - (sale.snackCost || (sale.total - (sale.gameCost || 0))));
+      const newCash = prev.cashBalance - (sale.paid || sale.total);
+      return {
+        ...prev,
+        gamesRevenue: newGamesRev,
+        snackRevenue: newSnacksRev,
+        cashBalance: newCash
+      };
+    });
+
+    // Stock return
+    if (returnToStock && sale.itemsList && sale.itemsList.length > 0) {
+      setProducts(prev => {
+        return prev.map(p => {
+          const soldItem = sale.itemsList.find(item => item.product && item.product.id === p.id);
+          if (soldItem) {
+            return {
+              ...p,
+              stock: p.stock + soldItem.quantity
+            };
+          }
+          return p;
+        });
+      });
+
+      // Stock movement log
+      setStockMovements(prev => [
+        {
+          id: Date.now(),
+          productId: "ALL",
+          productName: "Annulation Vente " + sale.id,
+          type: "entrée",
+          quantity: sale.itemsList.reduce((sum, item) => sum + (item.quantity || 0), 0),
+          reason: `Annulation vente: ${targetReason}`,
+          responsible: role === "admin" ? "Administrateur" : "Gérant",
+          date: new Date().toISOString()
+        },
+        ...prev
+      ]);
+    }
+
+    // Active Caisse Session Adjustments
+    if (caisseStatus === "ouverte" && activeCaisseSession) {
+      const saleDate = new Date(sale.date || Date.now());
+      const sessionOpenDate = new Date(activeCaisseSession.dateOpen);
+      if (saleDate >= sessionOpenDate) {
+        // Adjust payment types
+        let cashDeduct = 0;
+        let mmDeduct = 0;
+        let cardDeduct = 0;
+        const totalPaid = sale.paid || sale.total || 0;
+
+        const method = (sale.paymentMethod || "espèces").toLowerCase();
+        if (method === "espèces" || method === "especes") {
+          cashDeduct = totalPaid;
+        } else if (method === "mobile money" || method === "momo") {
+          mmDeduct = totalPaid;
+        } else if (method === "mixte") {
+          cashDeduct = sale.cashUsed || (totalPaid / 2);
+          mmDeduct = sale.mobileUsed || (totalPaid / 2);
+        } else {
+          cardDeduct = totalPaid;
+        }
+
+        setActiveCaisseSession(prev => ({
+          ...prev,
+          gamesRevenue: Math.max(0, prev.gamesRevenue - (sale.gameCost || 0)),
+          snackRevenue: Math.max(0, prev.snackRevenue - (sale.snackCost || (sale.total - (sale.gameCost || 0)))),
+          paymentEspèces: Math.max(0, (prev.paymentEspèces || 0) - cashDeduct),
+          paymentMobileMoney: Math.max(0, (prev.paymentMobileMoney || 0) - mmDeduct),
+          paymentCarte: Math.max(0, (prev.paymentCarte || 0) - cardDeduct),
+          refunds: (prev.refunds || 0) + totalPaid,
+          transactionsCount: Math.max(0, (prev.transactionsCount || 0) - 1)
+        }));
+      }
+    }
+
+    addLog(
+      "sale_cancel",
+      `Vente ${saleId} annulée pour motif : ${targetReason}`,
+      "console"
+    );
+
+    // Toast alert
+    setToastText(`⚠️ Vente ${saleId} annulée avec succès.`);
+    gsap.fromTo(
+      ".notification-toast",
+      { opacity: 0, y: -20 },
+      { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+        setTimeout(() => {
+          gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+        }, 3000);
+      }}
+    );
+
+    setShowCancelSaleModal(null);
   };
 
   // Purchase operations helpers
@@ -909,9 +1231,11 @@ export default function App() {
     }));
 
     if (caisseStatus === "ouverte") {
+      const isCash = paymentMethod.toLowerCase() === "espèces" || paymentMethod.toLowerCase() === "especes";
       setActiveCaisseSession(prev => ({
         ...prev,
-        purchases: prev.purchases + total
+        purchases: prev.purchases + total,
+        purchasesCash: isCash ? (prev.purchasesCash || 0) + total : (prev.purchasesCash || 0)
       }));
     }
 
@@ -973,10 +1297,23 @@ export default function App() {
     }));
 
     if (caisseStatus === "ouverte") {
-      setActiveCaisseSession(prev => ({
-        ...prev,
-        purchases: Math.max(0, prev.purchases - oldPurchase.totalAmount + total)
-      }));
+      const isCash = paymentMethod.toLowerCase() === "espèces" || paymentMethod.toLowerCase() === "especes";
+      const wasCash = oldPurchase.paymentMethod.toLowerCase() === "espèces" || oldPurchase.paymentMethod.toLowerCase() === "especes";
+      
+      setActiveCaisseSession(prev => {
+        let nextPurchasesCash = prev.purchasesCash || 0;
+        if (wasCash) {
+          nextPurchasesCash = Math.max(0, nextPurchasesCash - oldPurchase.totalAmount);
+        }
+        if (isCash) {
+          nextPurchasesCash += total;
+        }
+        return {
+          ...prev,
+          purchases: Math.max(0, prev.purchases - oldPurchase.totalAmount + total),
+          purchasesCash: nextPurchasesCash
+        };
+      });
     }
 
     // 2. Adjust stock if products or quantities changed
@@ -1109,9 +1446,11 @@ export default function App() {
     }));
 
     if (caisseStatus === "ouverte") {
+      const wasCash = target.paymentMethod.toLowerCase() === "espèces" || target.paymentMethod.toLowerCase() === "especes";
       setActiveCaisseSession(prev => ({
         ...prev,
-        purchases: Math.max(0, prev.purchases - target.totalAmount)
+        purchases: Math.max(0, prev.purchases - target.totalAmount),
+        purchasesCash: wasCash ? Math.max(0, (prev.purchasesCash || 0) - target.totalAmount) : (prev.purchasesCash || 0)
       }));
     }
 
@@ -1165,7 +1504,13 @@ export default function App() {
       expensesMaintenance: 0,
       expensesDiverses: 0,
       purchases: 0,
-      refunds: 0
+      purchasesCash: 0,
+      refunds: 0,
+      paymentEspèces: 0,
+      paymentMobileMoney: 0,
+      paymentCarte: 0,
+      transactionsCount: 0,
+      movements: []
     };
 
     setActiveCaisseSession(newSession);
@@ -1189,19 +1534,64 @@ export default function App() {
     setShowOpenCaisseModal(false);
   };
 
+  const handleAddCaisseMovement = (type, amount, reason, operatorName) => {
+    const amt = parseFloat(amount) || 0;
+    if (amt <= 0) return;
+    const op = operatorName.trim() || activeCaisseSession.openedBy;
+    const newMovement = {
+      id: Date.now(),
+      type, // "entrée" or "sortie"
+      amount: amt,
+      reason: reason.trim(),
+      operator: op,
+      date: new Date().toISOString()
+    };
+
+    setActiveCaisseSession(prev => ({
+      ...prev,
+      movements: [...(prev.movements || []), newMovement]
+    }));
+
+    // If it's a cash movement, it also updates stats.cashBalance!
+    setStats(prev => ({
+      ...prev,
+      cashBalance: type === "entrée" ? prev.cashBalance + amt : prev.cashBalance - amt
+    }));
+
+    addLog(
+      type === "entrée" ? "caisse_in" : "caisse_out",
+      `Mouvement de caisse (${type === "entrée" ? "Entrée" : "Sortie"}) de ${amt.toLocaleString('fr-FR')} FCFA par ${op}. Motif : ${reason}`,
+      "console"
+    );
+
+    // Reset form states
+    setMovementAmount("");
+    setMovementReason("");
+    setMovementOperator("");
+    setShowAddMovementModal(false);
+  };
+
   const handleCloseCaisse = (realBalance, notes, operator) => {
     if (!activeCaisseSession) return;
 
     const realBal = parseFloat(realBalance) || 0;
     const closedBy = operator.trim() || (role === "admin" ? "Administrateur" : "Gérant");
     
+    const manualInflows = (activeCaisseSession.movements || [])
+      .filter(m => m.type === "entrée")
+      .reduce((sum, m) => sum + m.amount, 0);
+    const manualOutflows = (activeCaisseSession.movements || [])
+      .filter(m => m.type === "sortie")
+      .reduce((sum, m) => sum + m.amount, 0);
+
     const expectedBal = activeCaisseSession.openingBalance 
-      + activeCaisseSession.gamesRevenue 
-      + activeCaisseSession.snackRevenue 
-      - activeCaisseSession.expensesMaintenance
-      - activeCaisseSession.expensesDiverses
-      - activeCaisseSession.purchases
-      - activeCaisseSession.refunds;
+      + (activeCaisseSession.paymentEspèces || 0)
+      + manualInflows
+      - manualOutflows
+      - (activeCaisseSession.expensesMaintenance || 0)
+      - (activeCaisseSession.expensesDiverses || 0)
+      - (activeCaisseSession.purchasesCash || 0)
+      - (activeCaisseSession.refunds || 0);
     
     const variance = realBal - expectedBal;
 
@@ -1251,7 +1641,24 @@ export default function App() {
     const timeClose = session.dateClose ? new Date(session.dateClose).toLocaleTimeString(systemSettings.currencyLocale || 'fr-FR') : "En cours";
 
     const totalRevenue = session.gamesRevenue + session.snackRevenue;
-    const totalExpenses = session.expenses + session.purchases;
+    
+    const movements = session.movements || [];
+    const manualInflows = movements.filter(m => m.type === "entrée").reduce((sum, m) => sum + m.amount, 0);
+    const manualOutflows = movements.filter(m => m.type === "sortie").reduce((sum, m) => sum + m.amount, 0);
+
+    const expMaintenance = session.expensesMaintenance || 0;
+    const expDiverses = session.expensesDiverses || 0;
+    const purcCash = session.purchasesCash || 0;
+    const refunds = session.refunds || 0;
+    
+    const expectedCash = session.openingBalance 
+      + (session.paymentEspèces || 0) 
+      + manualInflows 
+      - manualOutflows 
+      - expMaintenance 
+      - expDiverses 
+      - purcCash 
+      - refunds;
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -1355,44 +1762,76 @@ export default function App() {
           </tr>
         </table>
 
-        <h3 style="margin-top: 30px; border-bottom: 1px solid #e4e4e7; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">Flux de Caisse</h3>
+        <h3 style="margin-top: 30px; border-bottom: 1px solid #e4e4e7; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">Répartition des Paiements Session</h3>
+        <table class="details-table">
+          <tr>
+            <td>Ventes Espèces</td>
+            <td style="text-align: right; font-weight: 600; color: #16a34a;">+${formatPrice(session.paymentEspèces || 0)}</td>
+          </tr>
+          <tr>
+            <td>Ventes Mobile Money</td>
+            <td style="text-align: right; font-weight: 600; color: #2563eb;">+${formatPrice(session.paymentMobileMoney || 0)}</td>
+          </tr>
+          <tr>
+            <td>Ventes Carte</td>
+            <td style="text-align: right; font-weight: 600; color: #0d9488;">+${formatPrice(session.paymentCarte || 0)}</td>
+          </tr>
+          <tr style="font-weight: bold; border-top: 1px solid #18181b;">
+            <td>Total Chiffre d'Affaires Session</td>
+            <td style="text-align: right; font-weight: 800;">${formatPrice(totalRevenue)}</td>
+          </tr>
+        </table>
+
+        <h3 style="margin-top: 30px; border-bottom: 1px solid #e4e4e7; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">Flux de Caisse Physique (Tiroir)</h3>
         
         <table class="details-table">
           <tr>
-            <td>Fond d'ouverture</td>
+            <td>Fond de caisse d'ouverture</td>
             <td style="text-align: right; font-weight: 600;">${formatPrice(session.openingBalance)}</td>
           </tr>
           <tr>
-            <td>(+) Recettes Jeux (Consoles)</td>
-            <td style="text-align: right; color: #16a34a;">+${formatPrice(session.gamesRevenue)}</td>
+            <td>(+) Ventes en espèces</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(session.paymentEspèces || 0)}</td>
           </tr>
           <tr>
-            <td>(+) Recettes Snack Bar</td>
-            <td style="text-align: right; color: #16a34a;">+${formatPrice(session.snackRevenue)}</td>
+            <td>(+) Entrées caisse (apports manuels)</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(manualInflows)}</td>
           </tr>
           <tr>
-            <td>(-) Dépenses directes (Shift)</td>
-            <td style="text-align: right; color: #dc2626;">-${formatPrice(session.expenses)}</td>
+            <td>(-) Dépenses Maintenance (espèces)</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(expMaintenance)}</td>
           </tr>
           <tr>
-            <td>(-) Achats Stocks (Shift)</td>
-            <td style="text-align: right; color: #dc2626;">-${formatPrice(session.purchases)}</td>
+            <td>(-) Dépenses Diverses (espèces)</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(expDiverses)}</td>
+          </tr>
+          <tr>
+            <td>(-) Achats en espèces</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(purcCash)}</td>
+          </tr>
+          <tr>
+            <td>(-) Retraits caisse (sorties manuelles)</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(manualOutflows)}</td>
+          </tr>
+          <tr>
+            <td>(-) Remboursements caisse (espèces)</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(refunds)}</td>
           </tr>
         </table>
 
         <div class="total-box">
           <table style="width: 100%; font-size: 14px;">
             <tr style="font-weight: 600;">
-              <td>Solde Théorique Attendu :</td>
-              <td style="text-align: right;">${formatPrice(session.openingBalance + totalRevenue - totalExpenses)}</td>
+              <td>Solde Espèces Théorique Attendu :</td>
+              <td style="text-align: right;">${formatPrice(expectedCash)}</td>
             </tr>
             <tr style="font-weight: 800; font-size: 16px; border-top: 1px solid #e4e4e7;">
-              <td style="padding-top: 10px;">Fond de Caisse Réel Compté :</td>
+              <td style="padding-top: 10px;">Solde Espèces Réel Compté :</td>
               <td style="text-align: right; padding-top: 10px;">${session.realBalance ? formatPrice(session.realBalance) : 'En cours'}</td>
             </tr>
             ${session.dateClose ? `
             <tr style="font-size: 14px; border-top: 1px dashed #e4e4e7;">
-              <td style="padding-top: 10px;">Écart de Caisse :</td>
+              <td style="padding-top: 10px;">Écart de Caisse Physique :</td>
               <td style="text-align: right; padding-top: 10px; color: ${session.variance < 0 ? '#dc2626' : (session.variance > 0 ? '#d97706' : '#16a34a')};" class="variance-alert">
                 ${session.variance > 0 ? '+' : ''}${formatPrice(session.variance)}
                 (${session.variance === 0 ? 'Conforme' : (session.variance < 0 ? 'Déficit' : 'Surplus')})
@@ -1401,6 +1840,32 @@ export default function App() {
             ` : ''}
           </table>
         </div>
+
+        ${movements.length > 0 ? `
+          <h3 style="margin-top: 35px; border-bottom: 1px solid #e4e4e7; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">Historique des Mouvements</h3>
+          <table class="details-table" style="font-size: 11px;">
+            <thead>
+              <tr style="font-weight: bold; background-color: #f4f4f5;">
+                <td style="padding: 5px 10px;">Heure</td>
+                <td style="padding: 5px 10px;">Type</td>
+                <td style="padding: 5px 10px;">Motif</td>
+                <td style="padding: 5px 10px;">Opérateur</td>
+                <td style="padding: 5px 10px; text-align: right;">Montant</td>
+              </tr>
+            </thead>
+            <tbody>
+              ${movements.map(m => `
+                <tr>
+                  <td style="padding: 5px 10px;">${new Date(m.date).toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}</td>
+                  <td style="padding: 5px 10px; font-weight: bold; color: ${m.type === 'entrée' ? '#16a34a' : '#dc2626'};">${m.type.toUpperCase()}</td>
+                  <td style="padding: 5px 10px;">${m.reason}</td>
+                  <td style="padding: 5px 10px;">${m.operator}</td>
+                  <td style="padding: 5px 10px; text-align: right; font-weight: bold;">${m.type === 'entrée' ? '+' : '-'}${formatPrice(m.amount)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : ''}
 
         ${session.notes ? `
           <div style="margin-top: 20px; border: 1px solid #e4e4e7; padding: 12px; border-radius: 6px; font-size: 12px; background-color: #fafafa;">
@@ -1853,7 +2318,10 @@ export default function App() {
         ...prev,
         gamesRevenue: prev.gamesRevenue + inv.gameCost,
         snackRevenue: prev.snackRevenue + inv.snackCost,
-        cashBalance: prev.cashBalance + cashUsed
+        paymentEspèces: (prev.paymentEspèces || 0) + cashUsed,
+        paymentMobileMoney: (prev.paymentMobileMoney || 0) + mobileUsed,
+        paymentCarte: (prev.paymentCarte || 0) + (total - cashUsed - mobileUsed),
+        transactionsCount: (prev.transactionsCount || 0) + 1
       }));
     }
 
@@ -2452,7 +2920,9 @@ export default function App() {
     if (caisseStatus === "ouverte") {
       setActiveCaisseSession(prev => ({
         ...prev,
-        gamesRevenue: prev.gamesRevenue + gameCost
+        gamesRevenue: prev.gamesRevenue + gameCost,
+        paymentEspèces: (prev.paymentEspèces || 0) + gameCost,
+        transactionsCount: (prev.transactionsCount || 0) + 1
       }));
     }
 
@@ -2755,7 +3225,9 @@ export default function App() {
       setActiveCaisseSession(prev => ({
         ...prev,
         gamesRevenue: prev.gamesRevenue + finalGameAmount,
-        snackRevenue: prev.snackRevenue + finalSnackAmount
+        snackRevenue: prev.snackRevenue + finalSnackAmount,
+        paymentEspèces: (prev.paymentEspèces || 0) + totalRevenue,
+        transactionsCount: (prev.transactionsCount || 0) + 1
       }));
     }
 
@@ -3396,7 +3868,9 @@ export default function App() {
     if (caisseStatus === "ouverte") {
       setActiveCaisseSession(prev => ({
         ...prev,
-        snackRevenue: prev.snackRevenue + cartTotal
+        snackRevenue: prev.snackRevenue + cartTotal,
+        paymentEspèces: (prev.paymentEspèces || 0) + cartTotal,
+        transactionsCount: (prev.transactionsCount || 0) + 1
       }));
     }
 
@@ -6986,13 +7460,13 @@ export default function App() {
               const periodGamesRevenue = comptaCategoryFilter === "all" ? (sales || []).filter(s => {
                 if (!s) return false;
                 const d = new Date(s.date || Date.now());
-                return d >= start && d <= end;
+                return d >= start && d <= end && s.status !== "annulée";
               }).reduce((sum, s) => sum + (s.gameCost || 0), 0) : 0;
 
               const periodSnackRevenue = (sales || []).filter(s => {
                 if (!s) return false;
                 const d = new Date(s.date || Date.now());
-                return d >= start && d <= end;
+                return d >= start && d <= end && s.status !== "annulée";
               }).reduce((sum, s) => {
                 const items = s.itemsList || [];
                 const filteredItems = items.filter(item => item && item.product && (comptaCategoryFilter === "all" || item.product.category === comptaCategoryFilter));
@@ -7004,7 +7478,7 @@ export default function App() {
               const periodCOGS = (sales || []).filter(s => {
                 if (!s) return false;
                 const d = new Date(s.date || Date.now());
-                return d >= start && d <= end;
+                return d >= start && d <= end && s.status !== "annulée";
               }).reduce((sum, s) => {
                 const items = s.itemsList || [];
                 const filteredItems = items.filter(item => item && item.product && (comptaCategoryFilter === "all" || item.product.category === comptaCategoryFilter));
@@ -7033,6 +7507,13 @@ export default function App() {
               const periodNetProfit = periodMargeBrute - periodTotalOPEX;
               const periodMargePercent = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) * 100 : 0;
               const netProfitMargePercent = periodTotalRevenue > 0 ? (periodNetProfit / periodTotalRevenue) * 100 : 0;
+
+              const periodCancelledSales = (sales || []).filter(s => {
+                if (!s) return false;
+                const d = new Date(s.date || Date.now());
+                return d >= start && d <= end && s.status === "annulée";
+              });
+              const periodCancelledAmount = periodCancelledSales.reduce((sum, s) => sum + (s.total || 0), 0);
 
               const durationDays = Math.max(1, Math.round(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1);
 
@@ -7086,7 +7567,7 @@ export default function App() {
                   
                   const daySales = sales.filter(s => {
                     const d = new Date(s.date);
-                    return d >= dStart && d <= dEnd;
+                    return d >= dStart && d <= dEnd && s.status !== "annulée";
                   });
                   
                   const dayExpenses = expenses.filter(e => {
@@ -7330,7 +7811,9 @@ export default function App() {
                         <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
                           <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Revenus Totaux</span>
                           <span className="text-sm font-bold text-white font-mono block">{formatPrice(periodTotalRevenue)}</span>
-                          <span className="text-[9px] text-zinc-600 block">{filteredSales.length} ventes</span>
+                          <span className="text-[9px] text-zinc-600 block">
+                            {filteredSales.filter(s => s.status !== "annulée").length} ventes actives
+                          </span>
                         </div>
                         <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
                           <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Coût Marchandises</span>
@@ -7347,12 +7830,22 @@ export default function App() {
                           <span className="text-sm font-bold text-rose-500 font-mono block">{formatPrice(periodTotalOPEX)}</span>
                           <span className="text-[9px] text-zinc-600 block">{comptaPeriodExpenses.length} dép. / {comptaPeriodPurchases.length} achats</span>
                         </div>
+                        {/* Ventes Annulées */}
+                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl relative overflow-hidden">
+                          <span className="text-[9px] text-rose-450 font-extrabold block uppercase font-sans tracking-wide">Ventes Annulées</span>
+                          <span className="text-sm font-bold text-rose-500 font-mono block">{formatPrice(periodCancelledAmount)}</span>
+                          <span className="text-[9px] text-zinc-600 block">{periodCancelledSales.length} annulée(s)</span>
+                        </div>
+                        {/* Panier Moyen */}
                         <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
-                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Vente Moyenne</span>
+                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Panier Moyen</span>
                           <span className="text-sm font-bold text-white font-mono block">
-                            {formatPrice(filteredSales.length > 0 ? periodTotalRevenue / filteredSales.length : 0)}
+                            {(() => {
+                              const activeSalesCount = filteredSales.filter(s => s.status !== "annulée").length;
+                              return formatPrice(activeSalesCount > 0 ? periodTotalRevenue / activeSalesCount : 0);
+                            })()}
                           </span>
-                          <span className="text-[9px] text-zinc-600 block">Par transaction</span>
+                          <span className="text-[9px] text-zinc-600 block">Par vente active</span>
                         </div>
                         <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
                           <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Bénéfice/Jour</span>
@@ -7360,6 +7853,13 @@ export default function App() {
                             {formatPrice(periodNetProfit / durationDays)}
                           </span>
                           <span className="text-[9px] text-zinc-600 block">{durationDays} jours d'analyse</span>
+                        </div>
+                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
+                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Marge Nette %</span>
+                          <span className="text-sm font-bold text-teal-400 font-mono block">
+                            {netProfitMargePercent.toFixed(1)}%
+                          </span>
+                          <span className="text-[9px] text-zinc-600 block">CA convertible net</span>
                         </div>
                       </div>
                     </div>
@@ -7581,23 +8081,34 @@ export default function App() {
                                   </span>
                                   <span className="text-[10px] text-zinc-500 font-bold font-mono">{formattedDate}</span>
                                 </div>
-                                <button
-                                  onClick={() => setShowReceiptModal({
-                                    id: `REC-${sale.id.slice(-6)}`,
-                                    customer: sale.customer,
-                                    itemsList: sale.itemsList,
-                                    gameCost: sale.gameCost || 0,
-                                    snackCost: sale.snackCost || 0,
-                                    total: sale.total,
-                                    date: new Date(sale.date).toLocaleTimeString(),
-                                    type: sale.gameCost > 0 ? "Clôture Station & Snacks" : "Facture Directe",
-                                    paymentMethod: sale.paymentMethod
-                                  })}
-                                  className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
-                                  title="Imprimer le reçu"
-                                >
-                                  <Printer className="w-3.5 h-3.5" />
-                                </button>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => setShowReceiptModal({
+                                      id: `REC-${sale.id.slice(-6)}`,
+                                      customer: sale.customer,
+                                      itemsList: sale.itemsList,
+                                      gameCost: sale.gameCost || 0,
+                                      snackCost: sale.snackCost || 0,
+                                      total: sale.total,
+                                      date: new Date(sale.date).toLocaleTimeString(),
+                                      type: sale.gameCost > 0 ? "Clôture Station & Snacks" : "Facture Directe",
+                                      paymentMethod: sale.paymentMethod
+                                    })}
+                                    className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
+                                    title="Imprimer le reçu"
+                                  >
+                                    <Printer className="w-3.5 h-3.5" />
+                                  </button>
+                                  {sale.status !== "annulée" && (
+                                    <button
+                                      onClick={() => setShowCancelSaleModal(sale)}
+                                      className="w-8 h-8 rounded-lg bg-rose-950/60 border border-rose-900/60 flex items-center justify-center text-rose-400 hover:text-white hover:bg-rose-900/80 transition-all"
+                                      title="Annuler cette vente"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
 
@@ -8835,170 +9346,208 @@ export default function App() {
                     </div>
                   ) : (
                     /* Cash Register OPEN state view */
-                    <div className="space-y-6">
-                      {/* Active Shift Header Metrics */}
-                      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-zinc-900/40 p-4 border border-zinc-850 rounded-2xl">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl flex items-center justify-center text-xl">
-                            <Unlock className="w-5 h-5 animate-pulse" />
+                    <div className="space-y-6 animate-fade-in">
+                      {/* Top Action Buttons (Mouvement / Fermer Caisse) */}
+                      <div className="flex gap-4">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMovementType("entrée");
+                            setMovementAmount("");
+                            setMovementReason("");
+                            setMovementOperator(activeCaisseSession.openedBy || "");
+                            setShowAddMovementModal(true);
+                          }}
+                          className="py-2.5 px-5 bg-zinc-950 border border-zinc-850 hover:bg-zinc-900 text-white rounded-xl text-xs font-black tracking-wider uppercase shadow-md flex items-center gap-2 transition-all active:scale-[0.98]"
+                        >
+                          <span className="text-emerald-400 font-extrabold text-base leading-none">+</span>
+                          Mouvement
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCloseCaisseRealBalance("");
+                            setCloseCaisseNotes("");
+                            setCloseCaisseOperator(activeCaisseSession.openedBy || "");
+                            setShowCloseCaisseModal(true);
+                          }}
+                          className="py-2.5 px-5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white rounded-xl text-xs font-black tracking-wider uppercase shadow-lg shadow-rose-950/20 flex items-center gap-2 transition-all active:scale-[0.98]"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Fermer la caisse
+                        </button>
+                      </div>
+
+                      {/* Cash Register State Banner */}
+                      <div className="flex justify-between items-center bg-emerald-950/20 border border-emerald-500/30 p-5 rounded-2xl relative overflow-hidden shadow-inner">
+                        <div className="flex items-center gap-4">
+                          {/* Glowing pulsing dot */}
+                          <div className="relative flex h-3.5 w-3.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
                           </div>
                           <div>
-                            <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                              Session Active
-                              <span className="bg-emerald-500/20 text-emerald-400 text-[8px] font-extrabold px-1.5 py-0.5 rounded-full border border-emerald-500/30">En Cours</span>
+                            <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                              Caisse OUVERTE
                             </h3>
-                            <p className="text-[10px] text-zinc-500">
-                              Ouverte par <span className="text-zinc-300 font-bold">{activeCaisseSession.openedBy}</span> depuis le {new Date(activeCaisseSession.dateOpen).toLocaleDateString('fr-FR')} à {new Date(activeCaisseSession.dateOpen).toLocaleTimeString('fr-FR')}
+                            <p className="text-[11px] text-zinc-450 mt-1">
+                              Caissier: <span className="text-white font-bold">{activeCaisseSession.openedBy}</span>
+                              <span className="mx-2 text-zinc-650">•</span>
+                              Durée {getSessionDuration()}
                             </p>
                           </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Manual tick trigger
+                            setCaisseTimerTick(t => t + 1);
+                          }}
+                          className="p-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl border border-zinc-850 transition-colors"
+                          title="Rafraîchir la durée"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
                       </div>
 
-                      {/* Live Counter Cards */}
+                      {/* Metrics 4 Grid */}
                       {(() => {
-                        const opening = activeCaisseSession.openingBalance;
-                        const jeux = activeCaisseSession.gamesRevenue;
-                        const snack = activeCaisseSession.snackRevenue;
-                        const encaissementsTotal = jeux + snack;
+                        const opening = activeCaisseSession.openingBalance || 0;
+                        const jeux = activeCaisseSession.gamesRevenue || 0;
+                        const snack = activeCaisseSession.snackRevenue || 0;
+                        const totalSales = jeux + snack;
+                        const transactions = activeCaisseSession.transactionsCount || 0;
                         
-                        const achats = activeCaisseSession.purchases;
-                        const depensesDiverses = activeCaisseSession.expensesDiverses;
-                        const maintenance = activeCaisseSession.expensesMaintenance;
-                        const remboursements = activeCaisseSession.refunds;
-                        const decaissementsTotal = achats + depensesDiverses + maintenance + remboursements;
+                        const manualInflows = (activeCaisseSession.movements || [])
+                          .filter(m => m.type === "entrée")
+                          .reduce((sum, m) => sum + m.amount, 0);
+                        const manualOutflows = (activeCaisseSession.movements || [])
+                          .filter(m => m.type === "sortie")
+                          .reduce((sum, m) => sum + m.amount, 0);
+                          
+                        const expMaintenance = activeCaisseSession.expensesMaintenance || 0;
+                        const expDiverses = activeCaisseSession.expensesDiverses || 0;
+                        const purcCash = activeCaisseSession.purchasesCash || 0;
+                        const refunds = activeCaisseSession.refunds || 0;
                         
-                        const netBenefit = encaissementsTotal - decaissementsTotal;
-                        const cashAvailable = opening + netBenefit;
+                        // expected cash balance
+                        const expectedCash = opening + (activeCaisseSession.paymentEspèces || 0) + manualInflows - manualOutflows - expMaintenance - expDiverses - purcCash - refunds;
 
                         return (
                           <div className="space-y-6">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                              {/* 1. Fond d'ouverture */}
-                              <div className="glass-panel p-4 rounded-xl border border-zinc-800/40 relative overflow-hidden flex flex-col gap-1 shadow-md">
-                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Fond d'Ouverture</span>
-                                <span className="text-lg font-black text-zinc-300 font-mono">
-                                  {opening.toLocaleString('fr-FR')} FCFA
-                                </span>
+                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                              {/* 1. VENTES SESSION */}
+                              <div className="glass-panel p-4 rounded-2xl border border-zinc-850 flex items-center justify-between shadow-md relative overflow-hidden">
+                                <div className="space-y-1">
+                                  <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Ventes Session</span>
+                                  <span className="text-base font-extrabold text-white font-mono">
+                                    {totalSales.toLocaleString('fr-FR')} FCFA
+                                  </span>
+                                </div>
+                                <div className="w-10 h-10 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl flex items-center justify-center">
+                                  <ShoppingCart className="w-5 h-5" />
+                                </div>
                               </div>
 
-                              {/* 2. Total Encaissements */}
-                              <div className="glass-panel p-4 rounded-xl border border-emerald-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
-                                <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded font-sans tracking-wider">ENTRÉE</div>
-                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Total Encaissements</span>
-                                <span className="text-lg font-black text-emerald-400 font-mono">
-                                  +{encaissementsTotal.toLocaleString('fr-FR')} FCFA
-                                </span>
+                              {/* 2. TRANSACTIONS */}
+                              <div className="glass-panel p-4 rounded-2xl border border-zinc-850 flex items-center justify-between shadow-md relative overflow-hidden">
+                                <div className="space-y-1">
+                                  <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Transactions</span>
+                                  <span className="text-base font-extrabold text-white font-mono">
+                                    {transactions}
+                                  </span>
+                                </div>
+                                <div className="w-10 h-10 bg-violet-500/10 text-violet-400 border border-violet-500/20 rounded-xl flex items-center justify-center">
+                                  <TrendingUp className="w-5 h-5" />
+                                </div>
                               </div>
 
-                              {/* 3. Total Décaissements */}
-                              <div className="glass-panel p-4 rounded-xl border border-rose-500/10 relative overflow-hidden flex flex-col gap-1 shadow-md">
-                                <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded font-sans tracking-wider">SORTIE</div>
-                                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">Total Décaissements</span>
-                                <span className="text-lg font-black text-rose-400 font-mono">
-                                  -{decaissementsTotal.toLocaleString('fr-FR')} FCFA
-                                </span>
+                              {/* 3. FOND INITIAL */}
+                              <div className="glass-panel p-4 rounded-2xl border border-zinc-850 flex items-center justify-between shadow-md relative overflow-hidden">
+                                <div className="space-y-1">
+                                  <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Fond Initial</span>
+                                  <span className="text-base font-extrabold text-white font-mono">
+                                    {opening.toLocaleString('fr-FR')} FCFA
+                                  </span>
+                                </div>
+                                <div className="w-10 h-10 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-xl flex items-center justify-center">
+                                  <DollarSign className="w-5 h-5" />
+                                </div>
                               </div>
 
-                              {/* 4. Caisse Disponible */}
-                              <div className="glass-panel p-4 rounded-xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/20 to-blue-950/10 relative overflow-hidden flex flex-col gap-1 shadow-lg">
-                                <div className="absolute right-2 top-2 text-[9px] font-black px-1.5 py-0.5 bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 rounded font-sans uppercase tracking-widest">DISPONIBLE</div>
-                                <span className="text-[9px] text-zinc-400 font-black uppercase tracking-wider">Caisse Disponible</span>
-                                <span className="text-lg font-black text-cyan-300 font-mono">
-                                  {cashAvailable.toLocaleString('fr-FR')} FCFA
-                                </span>
+                              {/* 4. DUREE */}
+                              <div className="glass-panel p-4 rounded-2xl border border-zinc-850 flex items-center justify-between shadow-md relative overflow-hidden">
+                                <div className="space-y-1">
+                                  <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Durée</span>
+                                  <span className="text-base font-extrabold text-white font-mono">
+                                    {getSessionDuration()}
+                                  </span>
+                                </div>
+                                <div className="w-10 h-10 bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded-xl flex items-center justify-center">
+                                  <Clock className="w-5 h-5" />
+                                </div>
                               </div>
                             </div>
 
-                            {/* Detailed Bilan Panel */}
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                              {/* Left/Middle: Bilan Table (2 cols) */}
-                              <div className="lg:col-span-2 space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                  {/* Encaissements (Left side) */}
-                                  <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
-                                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                                      <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                                        <span className="text-emerald-400">📥</span> Bilan des Encaissements
-                                      </h4>
-                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-500/20 uppercase">Entrées</span>
-                                    </div>
-                                    <div className="space-y-3">
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="text-zinc-400 font-semibold">Jeux (revenus joueurs) :</span>
-                                        <span className="font-mono text-zinc-200 font-bold">+{jeux.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="text-zinc-400 font-semibold">Snack (ventes snack) :</span>
-                                        <span className="font-mono text-zinc-200 font-bold">+{snack.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                      <div className="border-t border-zinc-900 pt-2 flex justify-between items-center text-xs font-bold">
-                                        <span className="text-zinc-300">Total Jeux :</span>
-                                        <span className="font-mono text-white">+{jeux.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                      <div className="flex justify-between items-center text-xs font-bold">
-                                        <span className="text-zinc-300">Total Snack :</span>
-                                        <span className="font-mono text-white">+{snack.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                      <div className="border-t border-zinc-800 pt-3 flex justify-between items-center text-sm font-black text-emerald-400">
-                                        <span>TOTAL GÉNÉRAL :</span>
-                                        <span className="font-mono">+{encaissementsTotal.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Décaissements (Right side) */}
-                                  <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
-                                    <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
-                                      <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                                        <span className="text-rose-400">📤</span> Bilan des Décaissements
-                                      </h4>
-                                      <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-rose-950/60 text-rose-400 border border-rose-500/20 uppercase">Sorties</span>
-                                    </div>
-                                    <div className="space-y-3">
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="text-zinc-400 font-semibold">Achats :</span>
-                                        <span className="font-mono text-zinc-200 font-bold">-{achats.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="text-zinc-400 font-semibold">Dépenses Diverses :</span>
-                                        <span className="font-mono text-zinc-200 font-bold">-{depensesDiverses.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="text-zinc-400 font-semibold">Maintenance :</span>
-                                        <span className="font-mono text-zinc-200 font-bold">-{maintenance.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                      <div className="flex justify-between items-center text-xs">
-                                        <span className="text-zinc-400 font-semibold">Remboursements :</span>
-                                        <span className="font-mono text-zinc-200 font-bold">-{remboursements.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                      <div className="border-t border-zinc-800 pt-3 flex justify-between items-center text-sm font-black text-rose-400">
-                                        <span>TOTAL DÉPENSES :</span>
-                                        <span className="font-mono">-{decaissementsTotal.toLocaleString('fr-FR')} FCFA</span>
-                                      </div>
-                                    </div>
-                                  </div>
+                            {/* Section: Répartition des Paiements */}
+                            <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
+                              <h4 className="text-xs font-black text-white uppercase tracking-wider">Répartition des paiements</h4>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 flex justify-between items-center">
+                                  <span className="text-xs text-zinc-400 font-semibold">Espèces</span>
+                                  <span className="text-sm font-black text-emerald-400 font-mono">
+                                    {(activeCaisseSession.paymentEspèces || 0).toLocaleString('fr-FR')} FCFA
+                                  </span>
                                 </div>
+                                <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 flex justify-between items-center">
+                                  <span className="text-xs text-zinc-400 font-semibold">Mobile Money</span>
+                                  <span className="text-sm font-black text-blue-400 font-mono">
+                                    {(activeCaisseSession.paymentMobileMoney || 0).toLocaleString('fr-FR')} FCFA
+                                  </span>
+                                </div>
+                                <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 flex justify-between items-center">
+                                  <span className="text-xs text-zinc-400 font-semibold">Carte</span>
+                                  <span className="text-sm font-black text-teal-400 font-mono">
+                                    {(activeCaisseSession.paymentCarte || 0).toLocaleString('fr-FR')} FCFA
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
 
-                                {/* Summary bar */}
-                                <div className="p-5 bg-zinc-950/50 border border-zinc-850 rounded-2xl flex flex-wrap gap-6 items-center justify-between">
-                                  <div className="space-y-1">
-                                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Fond d'Ouverture</span>
-                                    <span className="text-sm font-bold text-zinc-300 font-mono">{opening.toLocaleString('fr-FR')} FCFA</span>
+                            {/* Situation Théorique and Details Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                              {/* Left Column: Situation Théorique (2 cols span) */}
+                              <div className="lg:col-span-2 bg-amber-500/[0.03] border border-amber-500/20 p-6 rounded-2xl space-y-4">
+                                <h4 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-1.5">
+                                  Situation théorique
+                                </h4>
+                                <div className="space-y-3.5 text-xs">
+                                  <div className="flex justify-between items-center text-zinc-400">
+                                    <span>Fond initial :</span>
+                                    <span className="font-mono text-zinc-300 font-bold">{opening.toLocaleString('fr-FR')} FCFA</span>
                                   </div>
-                                  <div className="space-y-1">
-                                    <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Bénéfice Net Shift</span>
-                                    <span className={`text-base font-extrabold font-mono ${netBenefit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                      {netBenefit > 0 ? '+' : ''}{netBenefit.toLocaleString('fr-FR')} FCFA
+                                  <div className="flex justify-between items-center text-zinc-400">
+                                    <span>+ Ventes espèces :</span>
+                                    <span className="font-mono text-emerald-400 font-bold">+{ (activeCaisseSession.paymentEspèces || 0).toLocaleString('fr-FR') } FCFA</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-zinc-400">
+                                    <span>+ Entrées (apports) :</span>
+                                    <span className="font-mono text-emerald-400 font-bold">+{ manualInflows.toLocaleString('fr-FR') } FCFA</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-zinc-450 border-b border-zinc-900 pb-2">
+                                    <span>- Sorties (retraits manuels / charges shift) :</span>
+                                    <span className="font-mono text-rose-400 font-bold">
+                                      -{ (manualOutflows + expMaintenance + expDiverses + purcCash + refunds).toLocaleString('fr-FR') } FCFA
                                     </span>
                                   </div>
-                                  <div className="space-y-1 text-right">
-                                    <span className="text-[10px] text-cyan-400 font-black uppercase tracking-wider block">Solde Caisse Disponible</span>
-                                    <span className="text-xl font-black text-cyan-300 font-mono tracking-tight">{cashAvailable.toLocaleString('fr-FR')} FCFA</span>
+                                  <div className="pt-2 flex justify-between items-center text-sm font-black text-amber-400">
+                                    <span>Caisse attendue (tiroir caisse) :</span>
+                                    <span className="font-mono text-base">{expectedCash.toLocaleString('fr-FR')} FCFA</span>
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Right: Shift Info (1 col) */}
+                              {/* Right Column: Shift details */}
                               <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4 flex flex-col justify-between">
                                 <div className="space-y-4">
                                   <h4 className="text-xs font-bold text-white uppercase tracking-wider">📋 Renseignements Shift</h4>
@@ -9019,6 +9568,7 @@ export default function App() {
                                 </div>
                                 <div className="pt-4 text-center">
                                   <button
+                                    type="button"
                                     onClick={() => handlePrintShiftReport(activeCaisseSession)}
                                     className="w-full py-3 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                                   >
@@ -9027,6 +9577,53 @@ export default function App() {
                                   </button>
                                 </div>
                               </div>
+                            </div>
+
+                            {/* Section: Historique des mouvements récents de la session */}
+                            <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
+                              <div className="flex justify-between items-center">
+                                <h4 className="text-xs font-black text-white uppercase tracking-wider">Mouvements de Caisse récents</h4>
+                                <span className="text-[10px] text-zinc-550 font-bold font-mono">
+                                  {(activeCaisseSession.movements || []).length} mouvement(s)
+                                </span>
+                              </div>
+                              
+                              {(activeCaisseSession.movements || []).length === 0 ? (
+                                <p className="text-xs text-zinc-500 italic text-center py-4">Aucun mouvement saisi durant ce shift.</p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                      <tr className="border-b border-zinc-900 text-[10px] text-zinc-500 uppercase font-bold tracking-wider">
+                                        <th className="py-2.5">Heure</th>
+                                        <th className="py-2.5">Type</th>
+                                        <th className="py-2.5">Motif</th>
+                                        <th className="py-2.5">Responsable</th>
+                                        <th className="py-2.5 text-right">Montant</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {activeCaisseSession.movements.map((mov, idx) => (
+                                        <tr key={idx} className="border-b border-zinc-900/40 hover:bg-zinc-950/20 text-zinc-300 font-medium">
+                                          <td className="py-2.5 font-mono">{new Date(mov.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</td>
+                                          <td className="py-2.5">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                              mov.type === "entrée" ? "bg-emerald-950/40 text-emerald-400 border border-emerald-500/20" : "bg-rose-950/40 text-rose-400 border border-rose-500/20"
+                                            }`}>
+                                              {mov.type}
+                                            </span>
+                                          </td>
+                                          <td className="py-2.5">{mov.reason}</td>
+                                          <td className="py-2.5">{mov.operator}</td>
+                                          <td className={`py-2.5 text-right font-bold font-mono ${mov.type === "entrée" ? "text-emerald-400" : "text-rose-400"}`}>
+                                            {mov.type === "entrée" ? "+" : "-"}{mov.amount.toLocaleString('fr-FR')} FCFA
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
@@ -9216,6 +9813,119 @@ export default function App() {
                   className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black rounded-xl text-xs font-extrabold tracking-wider uppercase shadow-lg shadow-orange-950/20 active:scale-95 transition-all"
                 >
                   Ouvrir la Caisse
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modale Nouveau Mouvement de Caisse */}
+      {showAddMovementModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-panel w-full max-w-md rounded-2xl border border-zinc-800 shadow-2xl p-6 space-y-5 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">💰</span>
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Saisir un Mouvement</h3>
+              </div>
+              <button 
+                onClick={() => setShowAddMovementModal(false)}
+                className="text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleAddCaisseMovement(movementType, movementAmount, movementReason, movementOperator);
+              }}
+              className="space-y-4"
+            >
+              {/* Type toggle */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Type de flux</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMovementType("entrée")}
+                    className={`py-2.5 rounded-xl border text-center text-xs font-bold transition-all ${
+                      movementType === "entrée"
+                        ? "bg-emerald-950/30 border-emerald-500/50 text-emerald-400 shadow-inner font-extrabold"
+                        : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    📥 Entrée (Apport)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMovementType("sortie")}
+                    className={`py-2.5 rounded-xl border text-center text-xs font-bold transition-all ${
+                      movementType === "sortie"
+                        ? "bg-rose-950/30 border-rose-500/50 text-rose-400 shadow-inner font-extrabold"
+                        : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    📤 Sortie (Retrait / Charge)
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount input */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Montant du mouvement (FCFA)</label>
+                <input 
+                  type="number"
+                  required
+                  placeholder="Ex: 5000"
+                  value={movementAmount}
+                  onChange={(e) => setMovementAmount(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Motif input */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Motif / Description</label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="Ex: Apport monnaie matin, Achat ampoule bar..."
+                  value={movementReason}
+                  onChange={(e) => setMovementReason(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Responsible/Operator input */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Responsable de l'opération</label>
+                <input 
+                  type="text"
+                  required
+                  placeholder="Nom du responsable"
+                  value={movementOperator}
+                  onChange={(e) => setMovementOperator(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* Action buttons */}
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMovementModal(false)}
+                  className="flex-1 py-3 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-400 rounded-xl text-xs font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black rounded-xl text-xs font-extrabold tracking-wider uppercase shadow-lg shadow-orange-950/20 active:scale-95 transition-all"
+                >
+                  Valider
                 </button>
               </div>
             </form>
@@ -12819,6 +13529,18 @@ export default function App() {
 
           </div>
         </div>
+      )}
+
+      {/* ========== MODAL ANNULATION VENTE ========== */}
+      {showCancelSaleModal && (
+        <CancelSaleModal
+          sale={showCancelSaleModal}
+          onClose={() => setShowCancelSaleModal(null)}
+          onConfirm={(id, reason, custom, returnStock) => {
+            handleCancelSale(id, reason, custom, returnStock);
+            setShowCancelSaleModal(null);
+          }}
+        />
       )}
 
     </div>
