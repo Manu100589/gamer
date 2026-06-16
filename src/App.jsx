@@ -133,6 +133,512 @@ const generateMockSales = () => {
 
   return list.sort((a, b) => new Date(b.date) - new Date(a.date));
 };
+
+// ============================================================
+// COMPTABILITE VIEW COMPONENT
+// ============================================================
+function ComptabiliteView({
+  sales, expenses, purchases, products, formatPrice,
+  comptaStartDate, comptaEndDate, setComptaStartDate, setComptaEndDate,
+  comptaCategoryFilter, setComptaCategoryFilter,
+  comptaSearchQuery, setComptaSearchQuery,
+  comptaSellerFilter, setComptaSellerFilter,
+  comptaPeriodFilterToggled, setComptaPeriodFilterToggled,
+  comptaExpandedSaleId, setComptaExpandedSaleId,
+  setShowCancelSaleModal, setShowReceiptModal
+}) {
+  const start = React.useMemo(() => {
+    const d = new Date(comptaStartDate);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, [comptaStartDate]);
+
+  const end = React.useMemo(() => {
+    const d = new Date(comptaEndDate);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  }, [comptaEndDate]);
+
+  const formatDateStr = (dateStr) => {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+
+  const handleQuickPeriod = (period) => {
+    const today = new Date();
+    let s = new Date();
+    let e = new Date();
+    switch (period) {
+      case "today": s = today; e = today; break;
+      case "yesterday": {
+        s = new Date(today); s.setDate(today.getDate() - 1);
+        e = new Date(s); break;
+      }
+      case "this_week": {
+        const cd = today.getDay();
+        const dist = cd === 0 ? 6 : cd - 1;
+        s = new Date(today); s.setDate(today.getDate() - dist);
+        e = today; break;
+      }
+      case "last_week": {
+        const cd2 = today.getDay();
+        const dist2 = cd2 === 0 ? 6 : cd2 - 1;
+        s = new Date(today); s.setDate(today.getDate() - dist2 - 7);
+        e = new Date(s); e.setDate(s.getDate() + 6); break;
+      }
+      case "this_month":
+        s = new Date(today.getFullYear(), today.getMonth(), 1);
+        e = today; break;
+      case "last_month":
+        s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        e = new Date(today.getFullYear(), today.getMonth(), 0); break;
+      case "this_quarter": {
+        const q = Math.floor(today.getMonth() / 3);
+        s = new Date(today.getFullYear(), q * 3, 1);
+        e = today; break;
+      }
+      case "this_year":
+        s = new Date(today.getFullYear(), 0, 1);
+        e = today; break;
+      default: break;
+    }
+    setComptaStartDate(s.toISOString().slice(0, 10));
+    setComptaEndDate(e.toISOString().slice(0, 10));
+  };
+
+  const filteredSales = React.useMemo(() => (sales || []).filter(s => {
+    if (!s) return false;
+    const saleDate = new Date(s.date || Date.now());
+    const inDateRange = saleDate >= start && saleDate <= end;
+    const customerName = s.customer || "Client Comptant";
+    const saleId = s.id || "";
+    const matchesSearch = customerName.toLowerCase().includes(comptaSearchQuery.toLowerCase()) ||
+                          saleId.toLowerCase().includes(comptaSearchQuery.toLowerCase());
+    const sellerName = s.seller || "Gérant";
+    const matchesSeller = comptaSellerFilter === "all" || sellerName.toLowerCase() === comptaSellerFilter.toLowerCase();
+    const items = s.itemsList || [];
+    const matchesCategory = comptaCategoryFilter === "all" || items.some(item => item && item.product && item.product.category === comptaCategoryFilter);
+    return inDateRange && matchesSearch && matchesSeller && matchesCategory;
+  }), [sales, start, end, comptaSearchQuery, comptaSellerFilter, comptaCategoryFilter]);
+
+  const periodGamesRevenue = React.useMemo(() => comptaCategoryFilter === "all" ? (sales || []).filter(s => {
+    if (!s) return false;
+    const d = new Date(s.date || Date.now());
+    return d >= start && d <= end && s.status !== "annulée";
+  }).reduce((sum, s) => sum + (s.gameCost || 0), 0) : 0, [sales, start, end, comptaCategoryFilter]);
+
+  const periodSnackRevenue = React.useMemo(() => (sales || []).filter(s => {
+    if (!s) return false;
+    const d = new Date(s.date || Date.now());
+    return d >= start && d <= end && s.status !== "annulée";
+  }).reduce((sum, s) => {
+    const items = s.itemsList || [];
+    const filteredItems = items.filter(item => item && item.product && (comptaCategoryFilter === "all" || item.product.category === comptaCategoryFilter));
+    return sum + filteredItems.reduce((s2, item) => s2 + (item.product.price || 0) * (item.quantity || 0), 0);
+  }, 0), [sales, start, end, comptaCategoryFilter]);
+
+  const periodTotalRevenue = periodGamesRevenue + periodSnackRevenue;
+
+  const periodCOGS = React.useMemo(() => (sales || []).filter(s => {
+    if (!s) return false;
+    const d = new Date(s.date || Date.now());
+    return d >= start && d <= end && s.status !== "annulée";
+  }).reduce((sum, s) => {
+    const items = s.itemsList || [];
+    const filteredItems = items.filter(item => item && item.product && (comptaCategoryFilter === "all" || item.product.category === comptaCategoryFilter));
+    return sum + filteredItems.reduce((s2, item) => s2 + (item.product.purchasePrice || 0) * (item.quantity || 0), 0);
+  }, 0), [sales, start, end, comptaCategoryFilter]);
+
+  const comptaPeriodExpenses = React.useMemo(() => (expenses || []).filter(e => {
+    if (!e) return false;
+    const d = new Date(e.date || Date.now());
+    return d >= start && d <= end;
+  }), [expenses, start, end]);
+
+  const comptaPeriodPurchases = React.useMemo(() => (purchases || []).filter(p => {
+    if (!p) return false;
+    const d = new Date(p.date || Date.now());
+    return d >= start && d <= end;
+  }), [purchases, start, end]);
+
+  const periodExpensesAmount = comptaPeriodExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const periodPurchasesAmount = comptaPeriodPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+  const periodTotalOPEX = periodExpensesAmount + periodPurchasesAmount;
+  const periodMargeBrute = periodTotalRevenue - periodCOGS;
+  const periodNetProfit = periodMargeBrute - periodTotalOPEX;
+  const periodMargePercent = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) * 100 : 0;
+  const netProfitMargePercent = periodTotalRevenue > 0 ? (periodNetProfit / periodTotalRevenue) * 100 : 0;
+
+  const periodCancelledSales = (sales || []).filter(s => {
+    if (!s) return false;
+    const d = new Date(s.date || Date.now());
+    return d >= start && d <= end && s.status === "annulée";
+  });
+  const periodCancelledAmount = periodCancelledSales.reduce((sum, s) => sum + (s.total || 0), 0);
+  const durationDays = Math.max(1, Math.round(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1);
+
+  let healthStatus = "Situation critique";
+  let healthColor = "text-rose-500";
+  let healthBg = "bg-rose-950/20 border-rose-500/20 shadow-rose-950/10";
+  let progressPercent = 0;
+  if (periodNetProfit > 0) {
+    if (netProfitMargePercent < 15) {
+      healthStatus = "Situation stable"; healthColor = "text-amber-500";
+      healthBg = "bg-amber-950/20 border-amber-500/20 shadow-amber-950/10"; progressPercent = 40;
+    } else if (netProfitMargePercent >= 15 && netProfitMargePercent < 35) {
+      healthStatus = "Bonne rentabilité"; healthColor = "text-emerald-400";
+      healthBg = "bg-emerald-950/20 border-emerald-500/20 shadow-emerald-950/10"; progressPercent = 75;
+    } else {
+      healthStatus = "Excellent bénéfice"; healthColor = "text-teal-400";
+      healthBg = "bg-teal-950/20 border-teal-500/20 shadow-teal-950/10"; progressPercent = 95;
+    }
+  }
+
+  const periodROI = (periodCOGS + periodTotalOPEX) > 0 ? (periodNetProfit / (periodCOGS + periodTotalOPEX)) * 100 : 0;
+  const periodTMCV = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) : 0;
+  const periodSR = periodTMCV > 0 ? periodTotalOPEX / periodTMCV : 0;
+  const averageDailyRevenue = periodTotalRevenue / durationDays;
+  const daysToSR = averageDailyRevenue > 0 && periodSR > 0 ? periodSR / averageDailyRevenue : 0;
+
+  const dailyPoints = React.useMemo(() => {
+    const days = [];
+    const curr = new Date(start);
+    if (isNaN(curr.getTime())) return [];
+    while (curr <= end) {
+      days.push(curr.toISOString().slice(0, 10));
+      curr.setDate(curr.getDate() + 1);
+    }
+    const displayDays = days.length > 15 ? days.slice(-15) : days;
+    return displayDays.map(day => {
+      const dStart = new Date(day); dStart.setHours(0, 0, 0, 0);
+      const dEnd = new Date(day); dEnd.setHours(23, 59, 59, 999);
+      const daySales = (sales || []).filter(s => { if (!s || !s.date) return false; const d = new Date(s.date); return d >= dStart && d <= dEnd && s.status !== "annulée"; });
+      const dayExpenses = (expenses || []).filter(e => { if (!e || !e.date) return false; const d = new Date(e.date); return d >= dStart && d <= dEnd; });
+      const dayPurchases = (purchases || []).filter(p => { if (!p || !p.date) return false; const d = new Date(p.date); return d >= dStart && d <= dEnd; });
+      const rev = daySales.reduce((sum, s) => sum + (s.total || 0), 0);
+      const exp = dayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0) + dayPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+      return { label: new Date(day).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }), revenue: rev, expenses: exp, profit: rev - exp };
+    });
+  }, [sales, expenses, purchases, start, end]);
+
+  const maxDailyVal = dailyPoints.length > 0
+    ? Math.max(50000, ...dailyPoints.map(d => Math.max(d.revenue, d.expenses, Math.abs(d.profit), 50000))) * 1.15
+    : 100000;
+
+  const productCategories = [...new Set((products || []).map(p => p.category).filter(Boolean))];
+  const sellers = [...new Set((sales || []).map(s => s.seller || "Gérant").filter(Boolean))];
+
+  return (
+    <div className="space-y-6 animate-fade-in pb-12 max-w-6xl mx-auto font-sans">
+
+      {/* Banner Rentabilité */}
+      <div className={`glass-panel p-6 rounded-2xl border ${healthBg} flex flex-col gap-6 transition-all duration-300`}>
+        <div className="flex items-center gap-4">
+          <div className={`w-12 h-12 rounded-2xl bg-zinc-950 flex items-center justify-center border border-zinc-800 shadow-md ${healthColor}`}>
+            <TrendingDown className="w-6 h-6 animate-pulse" />
+          </div>
+          <div>
+            <span className="text-[10px] text-zinc-400 font-extrabold tracking-widest uppercase">Rentabilité du mois</span>
+            <h3 className={`text-xl font-black ${healthColor} uppercase tracking-wide`}>{healthStatus}</h3>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-center text-zinc-500">
+              <span className="text-[9px] font-extrabold uppercase tracking-wider">Bénéfice Net</span>
+              <span className="text-xs">📉</span>
+            </div>
+            <p className={`text-base font-black font-mono tracking-tight ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{formatPrice(periodNetProfit)}</p>
+          </div>
+          <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-center text-zinc-500">
+              <span className="text-[9px] font-extrabold uppercase tracking-wider">% Marge</span>
+              <span className="text-xs">📊</span>
+            </div>
+            <p className={`text-base font-black font-mono tracking-tight ${netProfitMargePercent >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{netProfitMargePercent.toFixed(1)}%</p>
+          </div>
+          <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-center text-zinc-500">
+              <span className="text-[9px] font-extrabold uppercase tracking-wider">Revenus</span>
+              <span className="text-xs text-emerald-400">💵</span>
+            </div>
+            <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(periodTotalRevenue)}</p>
+          </div>
+          <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-center text-zinc-500">
+              <span className="text-[9px] font-extrabold uppercase tracking-wider">Dépenses</span>
+              <span className="text-xs text-rose-500">💸</span>
+            </div>
+            <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(periodCOGS + periodTotalOPEX)}</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between text-[10px] text-zinc-400 font-bold">
+            <span>Score de santé</span>
+            <span className={healthColor}>{progressPercent}%</span>
+          </div>
+          <div className="w-full h-2 bg-zinc-900 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-700 ${progressPercent >= 75 ? 'bg-emerald-500' : progressPercent >= 40 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${progressPercent}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* Period Selector */}
+      <div className="glass-panel p-4 rounded-2xl border border-zinc-850/60 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-violet-400" />
+            <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Période d'analyse</span>
+          </div>
+          <span className="text-[10px] text-zinc-500 font-mono">{formatDateStr(comptaStartDate)} – {formatDateStr(comptaEndDate)}</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "today", label: "Aujourd'hui" },
+            { key: "yesterday", label: "Hier" },
+            { key: "this_week", label: "Cette semaine" },
+            { key: "last_week", label: "Sem. passée" },
+            { key: "this_month", label: "Ce mois" },
+            { key: "last_month", label: "Mois passé" },
+            { key: "this_quarter", label: "Ce trimestre" },
+            { key: "this_year", label: "Cette année" }
+          ].map(p => (
+            <button key={p.key} onClick={() => handleQuickPeriod(p.key)}
+              className="px-3 py-1.5 text-[10px] font-bold rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white transition-all">
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Du</label>
+            <input type="date" value={comptaStartDate} onChange={e => setComptaStartDate(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 focus:border-violet-600/50 rounded-lg px-3 py-2 text-xs text-white outline-none transition-all" />
+          </div>
+          <div>
+            <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Au</label>
+            <input type="date" value={comptaEndDate} onChange={e => setComptaEndDate(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 focus:border-violet-600/50 rounded-lg px-3 py-2 text-xs text-white outline-none transition-all" />
+          </div>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
+          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">ROI</span>
+          <p className="text-base font-black text-white font-mono tracking-tight">{Math.max(0, periodROI).toFixed(1)}%</p>
+          <span className="text-[9px] text-zinc-600 block">Retour sur investissement</span>
+        </div>
+        <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
+          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Seuil de Rentabilité</span>
+          <p className="text-base font-black text-amber-500 font-mono tracking-tight">{formatPrice(periodSR)}</p>
+          <span className="text-[9px] text-zinc-600 block">Point d'équilibre</span>
+        </div>
+        <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
+          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Flux de Trésorerie</span>
+          <p className={`text-base font-black font-mono tracking-tight ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{formatPrice(periodNetProfit)}</p>
+          <span className="text-[9px] text-zinc-600 block">Bénéfice net période</span>
+        </div>
+        <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
+          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Marge Brute</span>
+          <p className="text-base font-black text-blue-400 font-mono tracking-tight">{periodMargePercent.toFixed(1)}%</p>
+          <span className="text-[9px] text-zinc-600 block">{formatPrice(periodMargeBrute)}</span>
+        </div>
+      </div>
+
+      {/* Ventes Summary */}
+      <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+        <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
+          <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Résumé des Ventes</span>
+          <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+            <span className="font-bold text-emerald-400">{filteredSales.filter(s => s.status !== "annulée").length} ventes actives</span>
+            <span className="text-zinc-700">|</span>
+            <span className="font-bold text-rose-400">{periodCancelledSales.length} annulée(s)</span>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-xl text-center">
+            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Jeux</span>
+            <p className="text-sm font-black text-blue-400 font-mono">{formatPrice(periodGamesRevenue)}</p>
+          </div>
+          <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-xl text-center">
+            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Snack</span>
+            <p className="text-sm font-black text-amber-400 font-mono">{formatPrice(periodSnackRevenue)}</p>
+          </div>
+          <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-xl text-center">
+            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Annulées</span>
+            <p className="text-sm font-black text-rose-400 font-mono">{formatPrice(periodCancelledAmount)}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Bar Chart */}
+        <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+          <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
+            <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider block">Revenus vs Dépenses</span>
+            <span className="text-[10px] text-zinc-500 font-medium">Bilan global</span>
+          </div>
+          <div className="h-44 flex items-end justify-around pb-3 pt-6 bg-zinc-950/60 rounded-xl border border-zinc-900 relative">
+            {(() => {
+              const maxVal = Math.max(periodTotalRevenue, periodCOGS + periodTotalOPEX, Math.abs(periodNetProfit), 100000);
+              const hRev = (periodTotalRevenue / maxVal) * 110;
+              const hExp = ((periodCOGS + periodTotalOPEX) / maxVal) * 110;
+              const hProf = (Math.max(0, periodNetProfit) / maxVal) * 110;
+              return (
+                <>
+                  <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                    <span className="text-[9px] font-mono text-emerald-400 font-bold">{formatPrice(periodTotalRevenue)}</span>
+                    <div className="w-12 bg-gradient-to-t from-emerald-600 to-teal-500 rounded-t-lg shadow-lg" style={{ height: `${Math.max(5, hRev)}px` }} />
+                    <span className="text-[9px] font-bold text-zinc-500 uppercase">Revenus</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                    <span className="text-[9px] font-mono text-rose-500 font-bold">{formatPrice(periodCOGS + periodTotalOPEX)}</span>
+                    <div className="w-12 bg-gradient-to-t from-rose-600 to-pink-500 rounded-t-lg shadow-lg" style={{ height: `${Math.max(5, hExp)}px` }} />
+                    <span className="text-[9px] font-bold text-zinc-500 uppercase">Dépenses</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                    <span className="text-[9px] font-mono text-amber-500 font-bold">{formatPrice(periodNetProfit)}</span>
+                    <div className="w-12 bg-gradient-to-t from-amber-600 to-orange-500 rounded-t-lg shadow-lg" style={{ height: `${Math.max(5, hProf)}px` }} />
+                    <span className="text-[9px] font-bold text-zinc-500 uppercase">Bénéfice</span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* Line Chart */}
+        <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+          <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
+            <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider block">Evolution Quotidienne</span>
+            <span className="text-[10px] text-zinc-500 font-medium">Flux récents</span>
+          </div>
+          <div className="bg-zinc-950/60 rounded-xl border border-zinc-900 p-3 flex flex-col justify-between h-44 relative">
+            {dailyPoints.length > 0 ? (
+              <svg className="w-full h-full" viewBox="0 0 400 130">
+                <line x1="20" y1="20" x2="390" y2="20" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                <line x1="20" y1="60" x2="390" y2="60" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                <line x1="20" y1="100" x2="390" y2="100" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                {(() => {
+                  const points = dailyPoints.map((d, idx) => {
+                    const step = 370 / Math.max(1, dailyPoints.length - 1);
+                    const x = 20 + idx * step;
+                    const yRev = 110 - (d.revenue / maxDailyVal) * 90;
+                    const yExp = 110 - (d.expenses / maxDailyVal) * 90;
+                    return { x, yRev, yExp };
+                  });
+                  const pathRev = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yRev}`).join(' ');
+                  const pathExp = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yExp}`).join(' ');
+                  return (
+                    <>
+                      <path d={pathRev} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                      {points.map((p, idx) => <circle key={`r-${idx}`} cx={p.x} cy={p.yRev} r="3.5" fill="#020205" stroke="#10b981" strokeWidth="2" />)}
+                      <path d={pathExp} fill="none" stroke="#f43f5e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1,1" />
+                      {points.map((p, idx) => <circle key={`e-${idx}`} cx={p.x} cy={p.yExp} r="3" fill="#020205" stroke="#f43f5e" strokeWidth="1.5" />)}
+                    </>
+                  );
+                })()}
+                {dailyPoints.map((d, idx) => {
+                  const step = 370 / Math.max(1, dailyPoints.length - 1);
+                  const x = 20 + idx * step;
+                  const isLabelVisible = idx === 0 || idx === Math.floor(dailyPoints.length / 2) || idx === dailyPoints.length - 1;
+                  if (!isLabelVisible) return null;
+                  return <text key={idx} x={x} y="125" fill="#6b7280" fontSize="8" fontWeight="bold" textAnchor="middle">{d.label}</text>;
+                })}
+              </svg>
+            ) : (
+              <div className="flex items-center justify-center h-full text-[10px] text-zinc-500 font-medium">Pas de données d'évolution</div>
+            )}
+            <div className="flex justify-center gap-4 text-[9px] font-extrabold uppercase text-zinc-500 pt-1 border-t border-zinc-900/60">
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500" /> Revenus</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500" /> Dépenses</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sales List */}
+      <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+        <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
+          <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Détail des Ventes</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={comptaSearchQuery}
+              onChange={e => setComptaSearchQuery(e.target.value)}
+              placeholder="Rechercher..."
+              className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-zinc-600 outline-none focus:border-zinc-700 w-36 transition-all"
+            />
+            <select
+              value={comptaCategoryFilter}
+              onChange={e => setComptaCategoryFilter(e.target.value)}
+              className="bg-zinc-900 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-zinc-700 transition-all"
+            >
+              <option value="all">Toutes catégories</option>
+              {productCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="space-y-2 max-h-80 overflow-y-auto">
+          {filteredSales.length === 0 ? (
+            <div className="text-center py-8 text-zinc-500 text-xs font-medium">Aucune vente sur cette période.</div>
+          ) : filteredSales.map(sale => {
+            const isExpanded = comptaExpandedSaleId === sale.id;
+            const formattedDate = new Date(sale.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            return (
+              <div key={sale.id} className={`bg-zinc-950/60 border rounded-xl p-3 space-y-2 cursor-pointer transition-all ${sale.status === "annulée" ? 'border-rose-900/40 opacity-60' : 'border-zinc-900 hover:border-zinc-800'}`}>
+                <div className="flex items-center justify-between" onClick={() => setComptaExpandedSaleId(isExpanded ? null : sale.id)}>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold ${sale.status === "annulée" ? 'bg-rose-950/60 text-rose-400' : 'bg-emerald-950/60 text-emerald-400'}`}>
+                      {sale.status || "Terminée"}
+                    </span>
+                    <span className="text-xs text-zinc-300 font-bold">{sale.customer}</span>
+                    <span className="text-[10px] text-zinc-600 font-mono">{sale.id}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-zinc-500 font-mono">{formattedDate}</span>
+                    <span className="text-sm font-black text-white font-mono">{formatPrice(sale.total)}</span>
+                    {sale.status !== "annulée" && (
+                      <button onClick={e => { e.stopPropagation(); setShowCancelSaleModal(sale); }}
+                        className="w-7 h-7 rounded-lg bg-rose-950/60 border border-rose-900/60 flex items-center justify-center text-rose-400 hover:text-white hover:bg-rose-900 transition-all"
+                        title="Annuler cette vente">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button onClick={e => { e.stopPropagation(); setShowReceiptModal({ id: `REC-${sale.id.slice(-6)}`, customer: sale.customer, itemsList: sale.itemsList, gameCost: sale.gameCost || 0, snackCost: sale.snackCost || 0, total: sale.total, date: new Date(sale.date).toLocaleTimeString(), type: sale.gameCost > 0 ? "Clôture Station & Snacks" : "Facture Directe", paymentMethod: sale.paymentMethod }); }}
+                      className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
+                      title="Imprimer le reçu">
+                      <Printer className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-lg space-y-1 animate-fade-in">
+                    {sale.gameCost > 0 && <div className="flex justify-between text-[11px] text-zinc-300"><span>🕹️ Session</span><span>{formatPrice(sale.gameCost)}</span></div>}
+                    {(sale.itemsList || []).map((item, i) => item && item.product ? (
+                      <div key={i} className="flex justify-between text-[11px] text-zinc-400">
+                        <span>{item.quantity}x {item.product.name}</span>
+                        <span>{formatPrice(item.product.price * item.quantity)}</span>
+                      </div>
+                    ) : null)}
+                    {sale.cancelReason && <div className="text-[10px] text-rose-400 pt-1 border-t border-zinc-900">Motif: {sale.cancelReason}</div>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ============================================================
 // CANCEL SALE MODAL COMPONENT
 // ============================================================
@@ -7365,966 +7871,35 @@ export default function App() {
               );
             })()}
 
-            {/* ==================== VUE : COMPTABILITÉ & RENTABILITÉ ==================== */}
-            {activeTab === "comptabilite" && (() => {
-              const start = new Date(comptaStartDate);
-              start.setHours(0, 0, 0, 0);
-              const end = new Date(comptaEndDate);
-              end.setHours(23, 59, 59, 999);
-
-              const formatDateStr = (dateStr) => {
-                if (!dateStr) return "";
-                const d = new Date(dateStr);
-                return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-              };
-
-              // Helper function for quick periods
-              const handleQuickPeriod = (period) => {
-                const today = new Date();
-                let s = new Date();
-                let e = new Date();
-
-                switch (period) {
-                  case "today":
-                    s = today;
-                    e = today;
-                    break;
-                  case "yesterday":
-                    s = new Date(today);
-                    s.setDate(today.getDate() - 1);
-                    e = new Date(s);
-                    break;
-                  case "this_week":
-                    const currentDay = today.getDay();
-                    const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
-                    s = new Date(today);
-                    s.setDate(today.getDate() - distanceToMonday);
-                    e = today;
-                    break;
-                  case "last_week":
-                    const currDay = today.getDay();
-                    const distToMon = currDay === 0 ? 6 : currDay - 1;
-                    s = new Date(today);
-                    s.setDate(today.getDate() - distToMon - 7);
-                    e = new Date(s);
-                    e.setDate(s.getDate() + 6);
-                    break;
-                  case "this_month":
-                    s = new Date(today.getFullYear(), today.getMonth(), 1);
-                    e = today;
-                    break;
-                  case "last_month":
-                    s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                    e = new Date(today.getFullYear(), today.getMonth(), 0);
-                    break;
-                  case "this_quarter":
-                    const quarter = Math.floor(today.getMonth() / 3);
-                    s = new Date(today.getFullYear(), quarter * 3, 1);
-                    e = today;
-                    break;
-                  case "this_year":
-                    s = new Date(today.getFullYear(), 0, 1);
-                    e = today;
-                    break;
-                  default:
-                    break;
-                }
-                setComptaStartDate(s.toISOString().slice(0, 10));
-                setComptaEndDate(e.toISOString().slice(0, 10));
-              };
-
-              // Filtered sales
-              const filteredSales = (sales || []).filter(s => {
-                if (!s) return false;
-                const saleDate = new Date(s.date || Date.now());
-                const inDateRange = saleDate >= start && saleDate <= end;
-                
-                const customerName = s.customer || "Client Comptant";
-                const saleId = s.id || "";
-                const matchesSearch = customerName.toLowerCase().includes(comptaSearchQuery.toLowerCase()) ||
-                                      saleId.toLowerCase().includes(comptaSearchQuery.toLowerCase());
-                
-                const sellerName = s.seller || "Gérant";
-                const matchesSeller = comptaSellerFilter === "all" || sellerName.toLowerCase() === comptaSellerFilter.toLowerCase();
-                
-                const items = s.itemsList || [];
-                const matchesCategory = comptaCategoryFilter === "all" || items.some(item => item && item.product && item.product.category === comptaCategoryFilter);
-                
-                return inDateRange && matchesSearch && matchesSeller && matchesCategory;
-              });
-
-              // Financial calculations for the selected date range and category
-              const periodGamesRevenue = comptaCategoryFilter === "all" ? (sales || []).filter(s => {
-                if (!s) return false;
-                const d = new Date(s.date || Date.now());
-                return d >= start && d <= end && s.status !== "annulée";
-              }).reduce((sum, s) => sum + (s.gameCost || 0), 0) : 0;
-
-              const periodSnackRevenue = (sales || []).filter(s => {
-                if (!s) return false;
-                const d = new Date(s.date || Date.now());
-                return d >= start && d <= end && s.status !== "annulée";
-              }).reduce((sum, s) => {
-                const items = s.itemsList || [];
-                const filteredItems = items.filter(item => item && item.product && (comptaCategoryFilter === "all" || item.product.category === comptaCategoryFilter));
-                return sum + filteredItems.reduce((sum2, item) => sum2 + (item.product.price || 0) * (item.quantity || 0), 0);
-              }, 0);
-
-              const periodTotalRevenue = periodGamesRevenue + periodSnackRevenue;
-
-              const periodCOGS = (sales || []).filter(s => {
-                if (!s) return false;
-                const d = new Date(s.date || Date.now());
-                return d >= start && d <= end && s.status !== "annulée";
-              }).reduce((sum, s) => {
-                const items = s.itemsList || [];
-                const filteredItems = items.filter(item => item && item.product && (comptaCategoryFilter === "all" || item.product.category === comptaCategoryFilter));
-                return sum + filteredItems.reduce((sum2, item) => sum2 + (item.product.purchasePrice || 0) * (item.quantity || 0), 0);
-              }, 0);
-
-              // OPEX (General expenses + Purchases) in the period
-              const comptaPeriodExpenses = (expenses || []).filter(e => {
-                if (!e) return false;
-                const d = new Date(e.date || Date.now());
-                return d >= start && d <= end;
-              });
-
-              const comptaPeriodPurchases = (purchases || []).filter(p => {
-                if (!p) return false;
-                const d = new Date(p.date || Date.now());
-                return d >= start && d <= end;
-              });
-
-              const periodExpensesAmount = comptaPeriodExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-              const periodPurchasesAmount = comptaPeriodPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-
-              const periodTotalOPEX = periodExpensesAmount + periodPurchasesAmount;
-
-              const periodMargeBrute = periodTotalRevenue - periodCOGS;
-              const periodNetProfit = periodMargeBrute - periodTotalOPEX;
-              const periodMargePercent = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) * 100 : 0;
-              const netProfitMargePercent = periodTotalRevenue > 0 ? (periodNetProfit / periodTotalRevenue) * 100 : 0;
-
-              const periodCancelledSales = (sales || []).filter(s => {
-                if (!s) return false;
-                const d = new Date(s.date || Date.now());
-                return d >= start && d <= end && s.status === "annulée";
-              });
-              const periodCancelledAmount = periodCancelledSales.reduce((sum, s) => sum + (s.total || 0), 0);
-
-              const durationDays = Math.max(1, Math.round(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1);
-
-              // Profitability Health Score & Status
-              let healthStatus = "Situation critique";
-              let healthColor = "text-rose-500";
-              let healthBg = "bg-rose-950/20 border-rose-500/20 shadow-rose-950/10";
-              let progressPercent = 0;
-
-              if (periodNetProfit > 0) {
-                if (netProfitMargePercent < 15) {
-                  healthStatus = "Situation stable";
-                  healthColor = "text-amber-500";
-                  healthBg = "bg-amber-950/20 border-amber-500/20 shadow-amber-950/10";
-                  progressPercent = 40;
-                } else if (netProfitMargePercent >= 15 && netProfitMargePercent < 35) {
-                  healthStatus = "Bonne rentabilité";
-                  healthColor = "text-emerald-400";
-                  healthBg = "bg-emerald-950/20 border-emerald-500/20 shadow-emerald-950/10";
-                  progressPercent = 75;
-                } else {
-                  healthStatus = "Excellent bénéfice";
-                  healthColor = "text-teal-400";
-                  healthBg = "bg-teal-950/20 border-teal-500/20 shadow-teal-950/10";
-                  progressPercent = 95;
-                }
-              }
-
-              // KPIs
-              const periodROI = (periodCOGS + periodTotalOPEX) > 0 ? (periodNetProfit / (periodCOGS + periodTotalOPEX)) * 100 : 0;
-              const periodTMCV = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) : 0;
-              const periodSR = periodTMCV > 0 ? periodTotalOPEX / periodTMCV : 0;
-              const averageDailyRevenue = periodTotalRevenue / durationDays;
-              const daysToSR = averageDailyRevenue > 0 && periodSR > 0 ? periodSR / averageDailyRevenue : 0;
-
-              // Daily Data for chart
-              const getDailyData = () => {
-                const days = [];
-                const curr = new Date(start);
-                while (curr <= end) {
-                  days.push(curr.toISOString().slice(0, 10));
-                  curr.setDate(curr.getDate() + 1);
-                }
-                const displayDays = days.length > 15 ? days.slice(-15) : days;
-                
-                return displayDays.map(day => {
-                  const dStart = new Date(day);
-                  dStart.setHours(0,0,0,0);
-                  const dEnd = new Date(day);
-                  dEnd.setHours(23,59,59,999);
-                  
-                  const daySales = sales.filter(s => {
-                    const d = new Date(s.date);
-                    return d >= dStart && d <= dEnd && s.status !== "annulée";
-                  });
-                  
-                  const dayExpenses = expenses.filter(e => {
-                    const d = new Date(e.date);
-                    return d >= dStart && d <= dEnd;
-                  });
-                  
-                  const dayPurchases = purchases.filter(p => {
-                    const d = new Date(p.date);
-                    return d >= dStart && d <= dEnd;
-                  });
-                  
-                  const rev = daySales.reduce((sum, s) => sum + s.total, 0);
-                  const exp = dayExpenses.reduce((sum, e) => sum + e.amount, 0) + dayPurchases.reduce((sum, p) => sum + p.totalAmount, 0);
-                  const prof = rev - exp;
-                  
-                  return {
-                    label: new Date(day).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
-                    revenue: rev,
-                    expenses: exp,
-                    profit: prof
-                  };
-                });
-              };
-
-              const dailyPoints = getDailyData();
-              const maxDailyVal = Math.max(50000, ...dailyPoints.map(d => Math.max(d.revenue, d.expenses, d.profit, 50000))) * 1.15;
-
-              return (
-                <div className="space-y-6 animate-fade-in pb-12 max-w-6xl mx-auto font-sans">
-                  
-                  {/* Banner Rentabilité */}
-                  <div className={`glass-panel p-6 rounded-2xl border ${healthBg} flex flex-col gap-6 transition-all duration-300`}>
-                    <div className="flex items-center gap-4">
-                      <div className={`w-12 h-12 rounded-2xl bg-zinc-950 flex items-center justify-center border border-zinc-800 shadow-md ${healthColor}`}>
-                        <TrendingDown className="w-6 h-6 animate-pulse" />
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-zinc-400 font-extrabold tracking-widest uppercase">Rentabilité du mois</span>
-                        <h3 className={`text-xl font-black ${healthColor} uppercase tracking-wide`}>{healthStatus}</h3>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* Card 1 */}
-                      <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
-                        <div className="flex justify-between items-center text-zinc-500">
-                          <span className="text-[9px] font-extrabold uppercase tracking-wider">Bénéfice Net</span>
-                          <span className="text-xs">📉</span>
-                        </div>
-                        <p className={`text-base font-black font-mono tracking-tight ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                          {formatPrice(periodNetProfit)}
-                        </p>
-                      </div>
-
-                      {/* Card 2 */}
-                      <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
-                        <div className="flex justify-between items-center text-zinc-500">
-                          <span className="text-[9px] font-extrabold uppercase tracking-wider">% Marge</span>
-                          <span className="text-xs">📊</span>
-                        </div>
-                        <p className={`text-base font-black font-mono tracking-tight ${netProfitMargePercent >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                          {netProfitMargePercent.toFixed(1)}%
-                        </p>
-                      </div>
-
-                      {/* Card 3 */}
-                      <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
-                        <div className="flex justify-between items-center text-zinc-500">
-                          <span className="text-[9px] font-extrabold uppercase tracking-wider">Revenus</span>
-                          <span className="text-xs text-emerald-400">💵</span>
-                        </div>
-                        <p className="text-base font-black text-white font-mono tracking-tight">
-                          {formatPrice(periodTotalRevenue)}
-                        </p>
-                      </div>
-
-                      {/* Card 4 */}
-                      <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
-                        <div className="flex justify-between items-center text-zinc-500">
-                          <span className="text-[9px] font-extrabold uppercase tracking-wider">Dépenses</span>
-                          <span className="text-xs text-rose-500">💸</span>
-                        </div>
-                        <p className="text-base font-black text-white font-mono tracking-tight">
-                          {formatPrice(periodCOGS + periodTotalOPEX)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
-                        <span>Critique</span>
-                        <span>Excellent</span>
-                      </div>
-                      <div className="w-full h-2.5 bg-zinc-950 border border-zinc-850 rounded-full overflow-hidden relative">
-                        <div 
-                          className="h-full bg-gradient-to-r from-rose-600 via-amber-500 to-emerald-500 transition-all duration-500"
-                          style={{ width: `${progressPercent || 5}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Période d'analyse */}
-                  <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-violet-400" />
-                        <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Période d'analyse</h4>
-                      </div>
-                      <button 
-                        onClick={() => {
-                          const d = new Date();
-                          setComptaStartDate(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10));
-                          setComptaEndDate(new Date().toISOString().slice(0,10));
-                          setComptaCategoryFilter("all");
-                          setComptaSearchQuery("");
-                          setComptaSellerFilter("all");
-                        }}
-                        className="text-zinc-500 hover:text-zinc-300 p-1.5 hover:bg-zinc-900 rounded-lg transition-all"
-                        title="Réinitialiser"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-zinc-950/80 border border-zinc-900 rounded-xl p-3 flex flex-col gap-1">
-                        <label className="text-[9px] font-extrabold text-zinc-500 uppercase">Date de début</label>
-                        <input 
-                          type="date" 
-                          value={comptaStartDate}
-                          onChange={(e) => setComptaStartDate(e.target.value)}
-                          className="bg-transparent border-0 text-sm font-bold text-white focus:outline-none focus:ring-0 w-full"
-                        />
-                      </div>
-                      <div className="bg-zinc-950/80 border border-zinc-900 rounded-xl p-3 flex flex-col gap-1">
-                        <label className="text-[9px] font-extrabold text-zinc-500 uppercase">Date de fin</label>
-                        <input 
-                          type="date" 
-                          value={comptaEndDate}
-                          onChange={(e) => setComptaEndDate(e.target.value)}
-                          className="bg-transparent border-0 text-sm font-bold text-white focus:outline-none focus:ring-0 w-full"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {[
-                        { id: "today", label: "Aujourd'hui" },
-                        { id: "yesterday", label: "Hier" },
-                        { id: "this_week", label: "Cette semaine" },
-                        { id: "last_week", label: "Semaine dernière" },
-                        { id: "this_month", label: "Ce mois" },
-                        { id: "last_month", label: "Mois dernier" },
-                        { id: "this_quarter", label: "Ce trimestre" },
-                        { id: "this_year", label: "Cette année" }
-                      ].map(p => (
-                        <button
-                          key={p.id}
-                          onClick={() => handleQuickPeriod(p.id)}
-                          className="px-3 py-1.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-[10px] text-zinc-400 font-extrabold rounded-lg tracking-wide transition-all active:scale-95"
-                        >
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Filtrer par catégorie de produit */}
-                  <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Tag className="w-4 h-4 text-emerald-400" />
-                      <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Filtrer par catégorie de produit</h4>
-                    </div>
-                    <div className="bg-zinc-950/80 border border-zinc-900 rounded-xl p-3">
-                      <label className="text-[9px] font-extrabold text-zinc-500 uppercase block mb-1">Catégories</label>
-                      <select
-                        value={comptaCategoryFilter}
-                        onChange={(e) => setComptaCategoryFilter(e.target.value)}
-                        className="bg-transparent border-0 text-sm font-bold text-white focus:outline-none w-full cursor-pointer"
-                      >
-                        <option value="all">Toutes les catégories</option>
-                        {productCategories.map(cat => (
-                          <option key={cat.id} value={cat.id}>{cat.emoji} {cat.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Période Analysée info bar */}
-                  <div className="bg-blue-950/20 border border-blue-900/30 text-blue-300 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs font-bold shadow-md shadow-blue-950/10">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">ℹ️</span>
-                      <div>
-                        <span className="text-[9px] uppercase tracking-wider text-blue-400 block font-extrabold">Période Analysée</span>
-                        <span>{formatDateStr(comptaStartDate)} – {formatDateStr(comptaEndDate)}</span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-6 sm:gap-10">
-                      <div>
-                        <span className="text-[9px] uppercase tracking-wider text-blue-400 block font-extrabold">Durée</span>
-                        <span className="text-white font-mono">{durationDays} jours</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] uppercase tracking-wider text-blue-400 block font-extrabold">Transactions</span>
-                        <span className="text-white font-mono">{filteredSales.length}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] uppercase tracking-wider text-blue-400 block font-extrabold">Moyenne/Jour</span>
-                        <span className="text-white font-mono">{formatPrice(periodNetProfit / durationDays)}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bilan Financier & Calcul de la Rentabilité */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Bilan Financier */}
-                    <div className="lg:col-span-2 glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
-                      <div className="flex justify-between items-center border-b border-zinc-900 pb-3">
-                        <div className="flex items-center gap-2">
-                          <Building2 className="w-4 h-4 text-violet-400" />
-                          <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Bilan Financier</h4>
-                        </div>
-                        <span className="text-[9px] bg-rose-500/10 border border-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full font-bold uppercase">
-                          {healthStatus}
-                        </span>
-                      </div>
-
-                      <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl p-4 flex items-center justify-between">
-                        <div>
-                          <span className="text-[9px] text-rose-400 font-extrabold tracking-wider uppercase block">Résultat Net</span>
-                          <p className={`text-lg font-black font-mono leading-none pt-1 ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                            {formatPrice(periodNetProfit)}
-                          </p>
-                        </div>
-                        <span className="text-[10px] text-zinc-500 font-extrabold">Marge : {netProfitMargePercent.toFixed(1)}%</span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
-                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Revenus Totaux</span>
-                          <span className="text-sm font-bold text-white font-mono block">{formatPrice(periodTotalRevenue)}</span>
-                          <span className="text-[9px] text-zinc-600 block">
-                            {filteredSales.filter(s => s.status !== "annulée").length} ventes actives
-                          </span>
-                        </div>
-                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
-                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Coût Marchandises</span>
-                          <span className="text-sm font-bold text-amber-500 font-mono block">{formatPrice(periodCOGS)}</span>
-                          <span className="text-[9px] text-zinc-600 block">CUMP (moy. pondérée)</span>
-                        </div>
-                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
-                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Marge Brute</span>
-                          <span className="text-sm font-bold text-emerald-400 font-mono block">{formatPrice(periodMargeBrute)}</span>
-                          <span className="text-[9px] text-zinc-600 block">Marge : {periodMargePercent.toFixed(1)}%</span>
-                        </div>
-                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
-                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Dépenses Opérat.</span>
-                          <span className="text-sm font-bold text-rose-500 font-mono block">{formatPrice(periodTotalOPEX)}</span>
-                          <span className="text-[9px] text-zinc-600 block">{comptaPeriodExpenses.length} dép. / {comptaPeriodPurchases.length} achats</span>
-                        </div>
-                        {/* Ventes Annulées */}
-                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl relative overflow-hidden">
-                          <span className="text-[9px] text-rose-450 font-extrabold block uppercase font-sans tracking-wide">Ventes Annulées</span>
-                          <span className="text-sm font-bold text-rose-500 font-mono block">{formatPrice(periodCancelledAmount)}</span>
-                          <span className="text-[9px] text-zinc-600 block">{periodCancelledSales.length} annulée(s)</span>
-                        </div>
-                        {/* Panier Moyen */}
-                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
-                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Panier Moyen</span>
-                          <span className="text-sm font-bold text-white font-mono block">
-                            {(() => {
-                              const activeSalesCount = filteredSales.filter(s => s.status !== "annulée").length;
-                              return formatPrice(activeSalesCount > 0 ? periodTotalRevenue / activeSalesCount : 0);
-                            })()}
-                          </span>
-                          <span className="text-[9px] text-zinc-600 block">Par vente active</span>
-                        </div>
-                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
-                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Bénéfice/Jour</span>
-                          <span className="text-sm font-bold text-purple-400 font-mono block">
-                            {formatPrice(periodNetProfit / durationDays)}
-                          </span>
-                          <span className="text-[9px] text-zinc-600 block">{durationDays} jours d'analyse</span>
-                        </div>
-                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
-                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Marge Nette %</span>
-                          <span className="text-sm font-bold text-teal-400 font-mono block">
-                            {netProfitMargePercent.toFixed(1)}%
-                          </span>
-                          <span className="text-[9px] text-zinc-600 block">CA convertible net</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Calcul de la Rentabilité */}
-                    <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 flex flex-col justify-between">
-                      <div className="border-b border-zinc-900 pb-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Activity className="w-4 h-4 text-emerald-400" />
-                          <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Calcul de la Rentabilité</h4>
-                        </div>
-                        <span className="text-[10px] text-zinc-500 cursor-help" title="Méthode d'analyse standard">ℹ️</span>
-                      </div>
-
-                      <div className="space-y-4 py-4 flex-1 flex flex-col justify-around text-xs font-semibold text-zinc-400">
-                        {/* Step 1 */}
-                        <div className="flex justify-between items-center border-b border-zinc-900/60 pb-2">
-                          <div>
-                            <p className="text-white font-extrabold text-[11px] block">1. Revenus des Ventes</p>
-                            <p className="text-[9px] text-zinc-600">Prix de vente × Quantités vendues</p>
-                          </div>
-                          <span className="text-emerald-400 font-mono font-bold">+{formatPrice(periodTotalRevenue)}</span>
-                        </div>
-
-                        {/* Step 2 */}
-                        <div className="flex justify-between items-center border-b border-zinc-900/60 pb-2">
-                          <div>
-                            <p className="text-white font-extrabold text-[11px] block">2. Coût des Marchandises</p>
-                            <p className="text-[9px] text-zinc-600">CUMP × Quantités vendues</p>
-                          </div>
-                          <span className="text-amber-500 font-mono font-bold">-{formatPrice(periodCOGS)}</span>
-                        </div>
-
-                        {/* Marge Brute */}
-                        <div className="flex justify-between items-center bg-zinc-900/40 p-2.5 rounded-lg border border-zinc-850">
-                          <div>
-                            <p className="text-white font-black text-[11px] block">= Marge Brute</p>
-                            <p className="text-[9px] text-zinc-500">Revenus - Coût marchandises ({periodMargePercent.toFixed(1)}%)</p>
-                          </div>
-                          <span className="text-teal-400 font-mono font-black">+{formatPrice(periodMargeBrute)}</span>
-                        </div>
-
-                        {/* Step 3 */}
-                        <div className="flex justify-between items-center border-b border-zinc-900/60 pb-2 pt-1">
-                          <div>
-                            <p className="text-white font-extrabold text-[11px] block">3. Dépenses Opérationnelles</p>
-                            <p className="text-[9px] text-zinc-600">Frais généraux, salaires, achats stock...</p>
-                          </div>
-                          <span className="text-rose-500 font-mono font-bold">-{formatPrice(periodTotalOPEX)}</span>
-                        </div>
-
-                        {/* Bénéfice Net */}
-                        <div className="flex justify-between items-center bg-rose-500/5 p-3 rounded-lg border border-rose-500/20 shadow-md">
-                          <div>
-                            <p className="text-white font-black text-[11px] block">= Bénéfice Net</p>
-                            <p className="text-[9px] text-zinc-500">Marge brute - Dépenses ({netProfitMargePercent.toFixed(1)}%)</p>
-                          </div>
-                          <span className={`font-mono font-black text-sm ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                            {formatPrice(periodNetProfit)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Rechercher et Filtres Ventes */}
-                  <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
-                    <div className="flex flex-col md:flex-row gap-4 justify-between">
-                      <div className="flex-1 relative">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                        <input
-                          type="text"
-                          placeholder="Rechercher par nom client ou numéro de vente..."
-                          value={comptaSearchQuery}
-                          onChange={(e) => setComptaSearchQuery(e.target.value)}
-                          className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-zinc-500 font-bold focus:outline-none focus:border-violet-500 transition-all"
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-3">
-                        <button
-                          onClick={() => {
-                            setComptaSearchQuery("");
-                            setComptaCategoryFilter("all");
-                            setComptaSellerFilter("all");
-                          }}
-                          className="px-4 py-2.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 text-[10px] text-zinc-400 hover:text-white font-extrabold rounded-xl transition-all flex items-center gap-1.5"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          Effacer les filtres
-                        </button>
-
-                        <button
-                          onClick={() => setComptaPeriodFilterToggled(!comptaPeriodFilterToggled)}
-                          className={`px-4 py-2.5 border text-[10px] font-extrabold rounded-xl transition-all flex items-center gap-1.5 ${
-                            comptaPeriodFilterToggled
-                              ? "bg-blue-900/20 border-blue-500/50 text-blue-300"
-                              : "bg-zinc-950 hover:bg-zinc-900 border-zinc-850 text-zinc-400 hover:text-white"
-                          }`}
-                        >
-                          <Calendar className="w-3.5 h-3.5" />
-                          Filtrer par période
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Expandable Period Filters */}
-                    {comptaPeriodFilterToggled && (
-                      <div className="p-4 bg-zinc-950/80 border border-zinc-900 rounded-xl space-y-4 animate-fade-in">
-                        <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
-                          Période personnalisée
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <button
-                            onClick={() => {
-                              const d = new Date();
-                              setComptaStartDate(d.toISOString().slice(0, 10));
-                            }}
-                            className="bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-left p-3 rounded-xl flex items-center justify-between text-xs text-zinc-400 hover:text-white font-extrabold transition-all"
-                          >
-                            <span>📅 Date de début</span>
-                            <span className="font-mono text-white">{comptaStartDate}</span>
-                          </button>
-
-                          <button
-                            onClick={() => {
-                              const d = new Date();
-                              setComptaEndDate(d.toISOString().slice(0, 10));
-                            }}
-                            className="bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-left p-3 rounded-xl flex items-center justify-between text-xs text-zinc-400 hover:text-white font-extrabold transition-all"
-                          >
-                            <span>📅 Date de fin</span>
-                            <span className="font-mono text-white">{comptaEndDate}</span>
-                          </button>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2 pt-1 border-t border-zinc-900/60 pt-3">
-                          {[
-                            { id: "today", label: "Aujourd'hui" },
-                            { id: "yesterday", label: "Hier" },
-                            { id: "this_week", label: "Cette semaine" },
-                            { id: "last_week", label: "Semaine dernière" },
-                            { id: "this_month", label: "Ce mois" },
-                            { id: "last_month", label: "Mois dernier" },
-                            { id: "this_quarter", label: "Ce trimestre" },
-                            { id: "this_year", label: "Cette année" }
-                          ].map(p => (
-                            <button
-                              key={p.id}
-                              onClick={() => handleQuickPeriod(p.id)}
-                              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 text-[10px] text-zinc-400 font-extrabold rounded-lg tracking-wide transition-all active:scale-95"
-                            >
-                              {p.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Seller dropdown filter */}
-                    <div className="flex items-center gap-3">
-                      <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
-                        Filtrer par vendeur :
-                      </div>
-                      <div className="flex gap-2">
-                        {["all", "gérant", "administrateur"].map(seller => (
-                          <button
-                            key={seller}
-                            onClick={() => setComptaSellerFilter(seller)}
-                            className={`px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase transition-all border ${
-                              comptaSellerFilter === seller
-                                ? "bg-violet-900/20 border-violet-500/50 text-violet-300"
-                                : "bg-zinc-950 border-zinc-900 text-zinc-500 hover:text-zinc-300"
-                            }`}
-                          >
-                            {seller === "all" ? "Tous les vendeurs" : seller}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Sales List Container */}
-                    <div className="space-y-3 pt-2">
-                      {filteredSales.slice(0, 20).map(sale => {
-                        const isExpanded = comptaExpandedSaleId === sale.id;
-                        const formattedDate = new Date(sale.date).toLocaleDateString('fr-FR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric'
-                        });
-
-                        return (
-                          <div
-                            key={sale.id}
-                            className="bg-zinc-950/80 border border-zinc-900 rounded-xl p-4 flex flex-col gap-3 hover:border-zinc-800 transition-all duration-300"
-                          >
-                            <div className="flex justify-between items-center">
-                              <div className="flex items-center gap-3">
-                                {/* Print Status Indicator Check Circle */}
-                                <div className="w-6 h-6 rounded-full bg-emerald-950/50 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xs">
-                                  ✓
-                                </div>
-                                <div>
-                                  <h5 className="text-xs font-black text-white hover:text-violet-400 cursor-pointer" onClick={() => setComptaExpandedSaleId(isExpanded ? null : sale.id)}>
-                                    Vente {sale.id}
-                                  </h5>
-                                  <p className="text-[10px] text-zinc-500 font-semibold">
-                                    Client: <span className="text-zinc-300 font-bold">{sale.customer}</span>
-                                    <span className="mx-1.5">|</span>
-                                    Vendeur: <span className="text-zinc-400 font-bold">& {sale.seller}</span>
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-3">
-                                <div className="text-right">
-                                  <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase block mb-1">
-                                    {sale.status || "Terminée"}
-                                  </span>
-                                  <span className="text-[10px] text-zinc-500 font-bold font-mono">{formattedDate}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    onClick={() => setShowReceiptModal({
-                                      id: `REC-${sale.id.slice(-6)}`,
-                                      customer: sale.customer,
-                                      itemsList: sale.itemsList,
-                                      gameCost: sale.gameCost || 0,
-                                      snackCost: sale.snackCost || 0,
-                                      total: sale.total,
-                                      date: new Date(sale.date).toLocaleTimeString(),
-                                      type: sale.gameCost > 0 ? "Clôture Station & Snacks" : "Facture Directe",
-                                      paymentMethod: sale.paymentMethod
-                                    })}
-                                    className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
-                                    title="Imprimer le reçu"
-                                  >
-                                    <Printer className="w-3.5 h-3.5" />
-                                  </button>
-                                  {sale.status !== "annulée" && (
-                                    <button
-                                      onClick={() => setShowCancelSaleModal(sale)}
-                                      className="w-8 h-8 rounded-lg bg-rose-950/60 border border-rose-900/60 flex items-center justify-center text-rose-400 hover:text-white hover:bg-rose-900/80 transition-all"
-                                      title="Annuler cette vente"
-                                    >
-                                      <X className="w-3.5 h-3.5" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex justify-between items-center text-xs font-bold border-t border-zinc-900/60 pt-2 text-zinc-400">
-                              <span>Total : <strong className="text-white font-mono">{formatPrice(sale.total)}</strong></span>
-                              <span>Payé : <strong className="text-emerald-400 font-mono">{formatPrice(sale.paid)}</strong></span>
-                            </div>
-
-                            {/* Details Collapsible Area */}
-                            {isExpanded && (
-                              <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-lg mt-1 space-y-2 animate-fade-in">
-                                <span className="text-[9px] font-extrabold text-zinc-500 uppercase tracking-wider block border-b border-zinc-900 pb-1">
-                                  Détail des articles
-                                </span>
-                                <div className="space-y-1.5">
-                                  {sale.gameCost > 0 && (
-                                    <div className="flex justify-between text-[11px] text-zinc-300">
-                                      <span>🕹️ Session de jeu</span>
-                                      <span className="font-mono">{formatPrice(sale.gameCost)}</span>
-                                    </div>
-                                  )}
-                                  {(sale.itemsList || []).map((item, index) => {
-                                    if (!item || !item.product) return null;
-                                    return (
-                                      <div key={index} className="flex justify-between text-[11px] text-zinc-400">
-                                        <span>{item.quantity}x {item.product.name}</span>
-                                        <span className="font-mono">{formatPrice(item.product.price * item.quantity)}</span>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {filteredSales.length === 0 && (
-                        <div className="text-center py-8 text-zinc-500 font-medium text-xs">
-                          Aucune vente enregistrée sur cette période avec ces critères.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Indicateurs Clés (KPI) & Graphiques */}
-                  <div className="space-y-6">
-                    <div className="flex items-center gap-2">
-                      <BarChart3 className="w-4.5 h-4.5 text-amber-400" />
-                      <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Indicateurs Clés (KPI)</h4>
-                    </div>
-
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* KPI 1 */}
-                      <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-                        <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">ROI</span>
-                        <p className="text-base font-black text-white font-mono tracking-tight">{Math.max(0, periodROI).toFixed(1)}%</p>
-                        <span className="text-[9px] text-zinc-600 block">Retour sur investissement</span>
-                      </div>
-
-                      {/* KPI 2 */}
-                      <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-                        <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Seuil de Rentabilité</span>
-                        <p className="text-base font-black text-amber-500 font-mono tracking-tight">{formatPrice(periodSR)}</p>
-                        <span className="text-[9px] text-zinc-600 block">Point d'équilibre</span>
-                      </div>
-
-                      {/* KPI 3 */}
-                      <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-                        <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Flux de Trésorerie</span>
-                        <p className="text-base font-black text-emerald-400 font-mono tracking-tight">{formatPrice(periodNetProfit)}</p>
-                        <span className="text-[9px] text-zinc-600 block">Cash-Flow net</span>
-                      </div>
-
-                      {/* KPI 4 */}
-                      <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-                        <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Jours au Seuil</span>
-                        <p className="text-base font-black text-purple-400 font-mono tracking-tight">
-                          {daysToSR > 0 && daysToSR <= 365 ? `${Math.ceil(daysToSR)} jours` : "N/A"}
-                        </p>
-                        <span className="text-[9px] text-zinc-600 block">Temps pour équilibre</span>
-                      </div>
-                    </div>
-
-                    {/* Chart Columns */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Chart 1: Revenus vs Dépenses */}
-                      <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
-                        <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
-                          <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider block">Revenus vs Dépenses</span>
-                          <span className="text-[10px] text-zinc-500 font-medium">Bilan global</span>
-                        </div>
-
-                        <div className="h-44 flex items-end justify-around pb-3 pt-6 bg-zinc-950/60 rounded-xl border border-zinc-900 relative">
-                          {(() => {
-                            const maxVal = Math.max(periodTotalRevenue, periodCOGS + periodTotalOPEX, Math.abs(periodNetProfit), 100000);
-                            const hRev = (periodTotalRevenue / maxVal) * 110;
-                            const hExp = ((periodCOGS + periodTotalOPEX) / maxVal) * 110;
-                            const hProf = (Math.max(0, periodNetProfit) / maxVal) * 110;
-
-                            return (
-                              <>
-                                {/* Revenue Bar */}
-                                <div className="flex flex-col items-center gap-2 group cursor-pointer">
-                                  <span className="text-[9px] font-mono text-emerald-400 font-bold">{formatPrice(periodTotalRevenue)}</span>
-                                  <div 
-                                    className="w-12 bg-gradient-to-t from-emerald-600 to-teal-500 rounded-t-lg shadow-lg group-hover:brightness-110 transition-all duration-300"
-                                    style={{ height: `${Math.max(5, hRev)}px` }}
-                                  ></div>
-                                  <span className="text-[9px] font-bold text-zinc-500 uppercase">Revenus</span>
-                                </div>
-
-                                {/* Expense Bar */}
-                                <div className="flex flex-col items-center gap-2 group cursor-pointer">
-                                  <span className="text-[9px] font-mono text-rose-500 font-bold">{formatPrice(periodCOGS + periodTotalOPEX)}</span>
-                                  <div 
-                                    className="w-12 bg-gradient-to-t from-rose-600 to-pink-500 rounded-t-lg shadow-lg group-hover:brightness-110 transition-all duration-300"
-                                    style={{ height: `${Math.max(5, hExp)}px` }}
-                                  ></div>
-                                  <span className="text-[9px] font-bold text-zinc-500 uppercase">Dépenses</span>
-                                </div>
-
-                                {/* Profit Bar */}
-                                <div className="flex flex-col items-center gap-2 group cursor-pointer">
-                                  <span className="text-[9px] font-mono text-amber-500 font-bold">{formatPrice(periodNetProfit)}</span>
-                                  <div 
-                                    className="w-12 bg-gradient-to-t from-amber-600 to-orange-500 rounded-t-lg shadow-lg group-hover:brightness-110 transition-all duration-300"
-                                    style={{ height: `${Math.max(5, hProf)}px` }}
-                                  ></div>
-                                  <span className="text-[9px] font-bold text-zinc-500 uppercase">Bénéfice</span>
-                                </div>
-                              </>
-                            );
-                          })()}
-                        </div>
-                      </div>
-
-                      {/* Chart 2: Evolution Quotidienne */}
-                      <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
-                        <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
-                          <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider block">Evolution Quotidienne</span>
-                          <span className="text-[10px] text-zinc-500 font-medium">Flux récents</span>
-                        </div>
-
-                        <div className="bg-zinc-950/60 rounded-xl border border-zinc-900 p-3 flex flex-col justify-between h-44 relative">
-                          {dailyPoints.length > 0 ? (
-                            <svg className="w-full h-full" viewBox="0 0 400 130">
-                              {/* Grid lines */}
-                              <line x1="20" y1="20" x2="390" y2="20" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
-                              <line x1="20" y1="60" x2="390" y2="60" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
-                              <line x1="20" y1="100" x2="390" y2="100" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
-                              
-                              {/* Paths */}
-                              {(() => {
-                                const points = dailyPoints.map((d, idx) => {
-                                  const step = 370 / Math.max(1, dailyPoints.length - 1);
-                                  const x = 20 + idx * step;
-                                  const yRev = 110 - (d.revenue / maxDailyVal) * 90;
-                                  const yExp = 110 - (d.expenses / maxDailyVal) * 90;
-                                  return { x, yRev, yExp };
-                                });
-
-                                const pathRev = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yRev}`).join(' ');
-                                const pathExp = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yExp}`).join(' ');
-
-                                return (
-                                  <>
-                                    {/* Revenue Line */}
-                                    <path d={pathRev} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-[0_0_4px_rgba(16,185,129,0.3)]" />
-                                    {points.map((p, idx) => (
-                                      <circle key={`r-${idx}`} cx={p.x} cy={p.yRev} r="3.5" fill="#020205" stroke="#10b981" strokeWidth="2" title={`Rev: ${dailyPoints[idx].revenue}`} />
-                                    ))}
-
-                                    {/* Expense Line */}
-                                    <path d={pathExp} fill="none" stroke="#f43f5e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1,1" className="drop-shadow-[0_0_3px_rgba(244,63,94,0.3)]" />
-                                    {points.map((p, idx) => (
-                                      <circle key={`e-${idx}`} cx={p.x} cy={p.yExp} r="3" fill="#020205" stroke="#f43f5e" strokeWidth="1.5" title={`Exp: ${dailyPoints[idx].expenses}`} />
-                                    ))}
-                                  </>
-                                );
-                              })()}
-                              
-                              {/* X Axis Labels */}
-                              {dailyPoints.map((d, idx) => {
-                                const step = 370 / Math.max(1, dailyPoints.length - 1);
-                                const x = 20 + idx * step;
-                                // Only draw labels for first, middle, last to avoid overlap
-                                const isLabelVisible = idx === 0 || idx === Math.floor(dailyPoints.length / 2) || idx === dailyPoints.length - 1;
-                                if (!isLabelVisible) return null;
-                                return (
-                                  <text key={idx} x={x} y="125" fill="#6b7280" fontSize="8" fontWeight="bold" textAnchor="middle">
-                                    {d.label}
-                                  </text>
-                                );
-                              })}
-                            </svg>
-                          ) : (
-                            <div className="flex items-center justify-center h-full text-[10px] text-zinc-500 font-medium">
-                              Pas de données d'évolution
-                            </div>
-                          )}
-
-                          {/* Legend */}
-                          <div className="flex justify-center gap-4 text-[9px] font-extrabold uppercase text-zinc-500 pt-1 border-t border-zinc-900/60">
-                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Revenus</span>
-                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Dépenses</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                </div>
-              );
-            })()}
+            {activeTab === "comptabilite" && (
+              <ComptabiliteView
+                sales={sales}
+                expenses={expenses}
+                purchases={purchases}
+                products={products}
+                formatPrice={formatPrice}
+                comptaStartDate={comptaStartDate}
+                comptaEndDate={comptaEndDate}
+                setComptaStartDate={setComptaStartDate}
+                setComptaEndDate={setComptaEndDate}
+                comptaCategoryFilter={comptaCategoryFilter}
+                setComptaCategoryFilter={setComptaCategoryFilter}
+                comptaSearchQuery={comptaSearchQuery}
+                setComptaSearchQuery={setComptaSearchQuery}
+                comptaSellerFilter={comptaSellerFilter}
+                setComptaSellerFilter={setComptaSellerFilter}
+                comptaPeriodFilterToggled={comptaPeriodFilterToggled}
+                setComptaPeriodFilterToggled={setComptaPeriodFilterToggled}
+                comptaExpandedSaleId={comptaExpandedSaleId}
+                setComptaExpandedSaleId={setComptaExpandedSaleId}
+                setShowCancelSaleModal={setShowCancelSaleModal}
+                setShowReceiptModal={setShowReceiptModal}
+              />
+            )}
 
             {/* ==================== VUE : FACTURES EN COURS ==================== */}
             {activeTab === "invoices" && (() => {
+
               const posInvoices = tickets.map(t => ({
                 type: "pos",
                 id: t.id,
