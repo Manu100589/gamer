@@ -74,6 +74,64 @@ import {
   initialPlayers
 } from "./mockData";
 
+const generateMockSales = () => {
+  const list = [];
+  const playersList = ["Kevin Nguemo", "Marc Etoa", "Junior Tchakounté", "Sofiane Zidane", "Karim Belhadj", "Amine El Amrani", "Lucas Martin", "Tagne Paul", "Client Comptant"];
+  const operators = ["Gérant", "Administrateur"];
+  const paymentMethods = ["espèces", "mobile money", "Wave", "espèces + mobile"];
+
+  const baseDate = new Date();
+  baseDate.setDate(baseDate.getDate() - 45);
+
+  for (let i = 0; i < 75; i++) {
+    const saleDate = new Date(baseDate.getTime() + i * 14.5 * 3600 * 1000 + Math.random() * 6 * 3600 * 1000);
+    if (saleDate > new Date()) continue;
+
+    const customer = playersList[Math.floor(Math.random() * playersList.length)];
+    const seller = operators[Math.random() > 0.3 ? 0 : 1];
+    
+    const itemsCount = Math.floor(Math.random() * 3) + 1;
+    const itemsList = [];
+    let snackCost = 0;
+    
+    for (let j = 0; j < itemsCount; j++) {
+      const prod = snackProducts[Math.floor(Math.random() * snackProducts.length)];
+      const qty = Math.floor(Math.random() * 2) + 1;
+      itemsList.push({
+        product: prod,
+        quantity: qty
+      });
+      snackCost += prod.price * qty;
+    }
+
+    const gameCost = Math.random() > 0.5 ? (Math.floor(Math.random() * 4) + 1) * 1000 : 0;
+    const total = snackCost + gameCost;
+    
+    const isPartial = Math.random() > 0.9 && total > 5000;
+    const paid = isPartial ? Math.floor(total * 0.8 / 1000) * 1000 : total;
+    const status = isPartial ? "Partiel" : "Terminée";
+    
+    const id = `VTE-${saleDate.toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    list.push({
+      id,
+      customer,
+      seller,
+      total,
+      paid,
+      itemsList,
+      gameCost,
+      snackCost,
+      date: saleDate.toISOString(),
+      status,
+      paymentMethod: paymentMethods[Math.floor(Math.random() * paymentMethods.length)],
+      type: gameCost > 0 ? "console" : "pos"
+    });
+  }
+
+  return list.sort((a, b) => new Date(b.date) - new Date(a.date));
+};
+
 export default function App() {
   // App states
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -182,6 +240,7 @@ export default function App() {
       localStorage.removeItem("system_activity_log");
       localStorage.removeItem("system_stock_movements");
       localStorage.removeItem("system_settings");
+      localStorage.removeItem("system_sales");
       localStorage.setItem("system_test_reset_v3", "true");
       window.location.reload();
     }
@@ -211,6 +270,27 @@ export default function App() {
   const [topConsolesState, setTopConsolesState] = useState(initialTopConsoles);
   const [topProductsState, setTopProductsState] = useState(initialTopProducts);
   const [activityLog, setActivityLog] = useState(initialActivityLog);
+
+  const [sales, setSales] = useState(() => {
+    const saved = localStorage.getItem("system_sales");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.every(s => s && typeof s === 'object' && 'itemsList' in s)) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error("Failed parsing sales history:", e);
+      }
+    }
+    const mock = generateMockSales();
+    localStorage.setItem("system_sales", JSON.stringify(mock));
+    return mock;
+  });
+
+  useEffect(() => {
+    localStorage.setItem("system_sales", JSON.stringify(sales));
+  }, [sales]);
 
   // Detailed daily report tracking
   const [dailyConsolesRevenue, setDailyConsolesRevenue] = useState(() => {
@@ -321,6 +401,20 @@ export default function App() {
   const [purchasePaymentMethod, setPurchasePaymentMethod] = useState("espèces");
   const [purchaseResponsible, setPurchaseResponsible] = useState("");
   const [purchaseDate, setPurchaseDate] = useState("");
+
+  // Comptabilité states
+  const [comptaStartDate, setComptaStartDate] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  });
+  const [comptaEndDate, setComptaEndDate] = useState(() => {
+    return new Date().toISOString().slice(0, 10);
+  });
+  const [comptaCategoryFilter, setComptaCategoryFilter] = useState("all");
+  const [comptaSearchQuery, setComptaSearchQuery] = useState("");
+  const [comptaSellerFilter, setComptaSellerFilter] = useState("all");
+  const [comptaPeriodFilterToggled, setComptaPeriodFilterToggled] = useState(false);
+  const [comptaExpandedSaleId, setComptaExpandedSaleId] = useState(null);
 
   // Sync purchaseTotalAmount on quantity or price change
   useEffect(() => {
@@ -1725,6 +1819,22 @@ export default function App() {
       `Paiement reçu pour "${inv.name}". Total: ${formatPrice(total)} (Méthode: ${pmText})`,
       inv.type === "console" ? "console" : "snack"
     );
+
+    const newCompletedSale = {
+      id: `VTE-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`,
+      customer: inv.customer || "Client Comptant",
+      seller: role === "admin" ? "Administrateur" : "Gérant",
+      total: total,
+      paid: total,
+      itemsList: inv.itemsList || [],
+      gameCost: inv.gameCost || 0,
+      snackCost: inv.snackCost || 0,
+      date: new Date().toISOString(),
+      status: "Terminée",
+      paymentMethod: pmText,
+      type: inv.type === "console" ? "console" : "pos"
+    };
+    setSales(prev => [newCompletedSale, ...prev]);
 
     setShowReceiptModal({
       id: `REC-${Date.now().toString().slice(-6)}`,
@@ -3143,6 +3253,22 @@ export default function App() {
       "snack"
     );
 
+    const newCompletedSale = {
+      id: `VTE-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`,
+      customer: clientRef,
+      seller: role === "admin" ? "Administrateur" : "Gérant",
+      total: cartTotal,
+      paid: cartTotal,
+      itemsList: [...activeCart],
+      gameCost: 0,
+      snackCost: cartTotal,
+      date: new Date().toISOString(),
+      status: "Terminée",
+      paymentMethod: "espèces",
+      type: "pos"
+    };
+    setSales(prev => [newCompletedSale, ...prev]);
+
     // Save details for showing the invoice popup
     setShowReceiptModal({
       id: `REC-${Date.now().toString().slice(-6)}`,
@@ -3555,6 +3681,18 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => setActiveTab("comptabilite")}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "comptabilite"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <Coins className="w-5 h-5 text-emerald-400" />
+              Comptabilité & Stock
+            </button>
+
+            <button
               onClick={() => setActiveTab("invoices")}
               className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                 activeTab === "invoices"
@@ -3665,7 +3803,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : activeTab === "comptabilite" ? "Comptabilité & Stock" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -6530,6 +6668,927 @@ export default function App() {
                         <Printer className="w-4 h-4" />
                         <span>Imprimer</span>
                       </button>
+                    </div>
+
+                  </div>
+
+                </div>
+              );
+            })()}
+
+            {/* ==================== VUE : COMPTABILITÉ & RENTABILITÉ ==================== */}
+            {activeTab === "comptabilite" && (() => {
+              const start = new Date(comptaStartDate);
+              start.setHours(0, 0, 0, 0);
+              const end = new Date(comptaEndDate);
+              end.setHours(23, 59, 59, 999);
+
+              const formatDateStr = (dateStr) => {
+                if (!dateStr) return "";
+                const d = new Date(dateStr);
+                return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+              };
+
+              // Helper function for quick periods
+              const handleQuickPeriod = (period) => {
+                const today = new Date();
+                let s = new Date();
+                let e = new Date();
+
+                switch (period) {
+                  case "today":
+                    s = today;
+                    e = today;
+                    break;
+                  case "yesterday":
+                    s = new Date(today);
+                    s.setDate(today.getDate() - 1);
+                    e = new Date(s);
+                    break;
+                  case "this_week":
+                    const currentDay = today.getDay();
+                    const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
+                    s = new Date(today);
+                    s.setDate(today.getDate() - distanceToMonday);
+                    e = today;
+                    break;
+                  case "last_week":
+                    const currDay = today.getDay();
+                    const distToMon = currDay === 0 ? 6 : currDay - 1;
+                    s = new Date(today);
+                    s.setDate(today.getDate() - distToMon - 7);
+                    e = new Date(s);
+                    e.setDate(s.getDate() + 6);
+                    break;
+                  case "this_month":
+                    s = new Date(today.getFullYear(), today.getMonth(), 1);
+                    e = today;
+                    break;
+                  case "last_month":
+                    s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                    e = new Date(today.getFullYear(), today.getMonth(), 0);
+                    break;
+                  case "this_quarter":
+                    const quarter = Math.floor(today.getMonth() / 3);
+                    s = new Date(today.getFullYear(), quarter * 3, 1);
+                    e = today;
+                    break;
+                  case "this_year":
+                    s = new Date(today.getFullYear(), 0, 1);
+                    e = today;
+                    break;
+                  default:
+                    break;
+                }
+                setComptaStartDate(s.toISOString().slice(0, 10));
+                setComptaEndDate(e.toISOString().slice(0, 10));
+              };
+
+              // Filtered sales
+              const filteredSales = (sales || []).filter(s => {
+                if (!s) return false;
+                const saleDate = new Date(s.date || Date.now());
+                const inDateRange = saleDate >= start && saleDate <= end;
+                
+                const customerName = s.customer || "Client Comptant";
+                const saleId = s.id || "";
+                const matchesSearch = customerName.toLowerCase().includes(comptaSearchQuery.toLowerCase()) ||
+                                      saleId.toLowerCase().includes(comptaSearchQuery.toLowerCase());
+                
+                const sellerName = s.seller || "Gérant";
+                const matchesSeller = comptaSellerFilter === "all" || sellerName.toLowerCase() === comptaSellerFilter.toLowerCase();
+                
+                const items = s.itemsList || [];
+                const matchesCategory = comptaCategoryFilter === "all" || items.some(item => item && item.product && item.product.category === comptaCategoryFilter);
+                
+                return inDateRange && matchesSearch && matchesSeller && matchesCategory;
+              });
+
+              // Financial calculations for the selected date range and category
+              const periodGamesRevenue = comptaCategoryFilter === "all" ? (sales || []).filter(s => {
+                if (!s) return false;
+                const d = new Date(s.date || Date.now());
+                return d >= start && d <= end;
+              }).reduce((sum, s) => sum + (s.gameCost || 0), 0) : 0;
+
+              const periodSnackRevenue = (sales || []).filter(s => {
+                if (!s) return false;
+                const d = new Date(s.date || Date.now());
+                return d >= start && d <= end;
+              }).reduce((sum, s) => {
+                const items = s.itemsList || [];
+                const filteredItems = items.filter(item => item && item.product && (comptaCategoryFilter === "all" || item.product.category === comptaCategoryFilter));
+                return sum + filteredItems.reduce((sum2, item) => sum2 + (item.product.price || 0) * (item.quantity || 0), 0);
+              }, 0);
+
+              const periodTotalRevenue = periodGamesRevenue + periodSnackRevenue;
+
+              const periodCOGS = (sales || []).filter(s => {
+                if (!s) return false;
+                const d = new Date(s.date || Date.now());
+                return d >= start && d <= end;
+              }).reduce((sum, s) => {
+                const items = s.itemsList || [];
+                const filteredItems = items.filter(item => item && item.product && (comptaCategoryFilter === "all" || item.product.category === comptaCategoryFilter));
+                return sum + filteredItems.reduce((sum2, item) => sum2 + (item.product.purchasePrice || 0) * (item.quantity || 0), 0);
+              }, 0);
+
+              // OPEX (General expenses + Purchases) in the period
+              const comptaPeriodExpenses = (expenses || []).filter(e => {
+                if (!e) return false;
+                const d = new Date(e.date || Date.now());
+                return d >= start && d <= end;
+              });
+
+              const comptaPeriodPurchases = (purchases || []).filter(p => {
+                if (!p) return false;
+                const d = new Date(p.date || Date.now());
+                return d >= start && d <= end;
+              });
+
+              const periodExpensesAmount = comptaPeriodExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+              const periodPurchasesAmount = comptaPeriodPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+
+              const periodTotalOPEX = periodExpensesAmount + periodPurchasesAmount;
+
+              const periodMargeBrute = periodTotalRevenue - periodCOGS;
+              const periodNetProfit = periodMargeBrute - periodTotalOPEX;
+              const periodMargePercent = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) * 100 : 0;
+              const netProfitMargePercent = periodTotalRevenue > 0 ? (periodNetProfit / periodTotalRevenue) * 100 : 0;
+
+              const durationDays = Math.max(1, Math.round(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1);
+
+              // Profitability Health Score & Status
+              let healthStatus = "Situation critique";
+              let healthColor = "text-rose-500";
+              let healthBg = "bg-rose-950/20 border-rose-500/20 shadow-rose-950/10";
+              let progressPercent = 0;
+
+              if (periodNetProfit > 0) {
+                if (netProfitMargePercent < 15) {
+                  healthStatus = "Situation stable";
+                  healthColor = "text-amber-500";
+                  healthBg = "bg-amber-950/20 border-amber-500/20 shadow-amber-950/10";
+                  progressPercent = 40;
+                } else if (netProfitMargePercent >= 15 && netProfitMargePercent < 35) {
+                  healthStatus = "Bonne rentabilité";
+                  healthColor = "text-emerald-400";
+                  healthBg = "bg-emerald-950/20 border-emerald-500/20 shadow-emerald-950/10";
+                  progressPercent = 75;
+                } else {
+                  healthStatus = "Excellent bénéfice";
+                  healthColor = "text-teal-400";
+                  healthBg = "bg-teal-950/20 border-teal-500/20 shadow-teal-950/10";
+                  progressPercent = 95;
+                }
+              }
+
+              // KPIs
+              const periodROI = (periodCOGS + periodTotalOPEX) > 0 ? (periodNetProfit / (periodCOGS + periodTotalOPEX)) * 100 : 0;
+              const periodTMCV = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) : 0;
+              const periodSR = periodTMCV > 0 ? periodTotalOPEX / periodTMCV : 0;
+              const averageDailyRevenue = periodTotalRevenue / durationDays;
+              const daysToSR = averageDailyRevenue > 0 && periodSR > 0 ? periodSR / averageDailyRevenue : 0;
+
+              // Daily Data for chart
+              const getDailyData = () => {
+                const days = [];
+                const curr = new Date(start);
+                while (curr <= end) {
+                  days.push(curr.toISOString().slice(0, 10));
+                  curr.setDate(curr.getDate() + 1);
+                }
+                const displayDays = days.length > 15 ? days.slice(-15) : days;
+                
+                return displayDays.map(day => {
+                  const dStart = new Date(day);
+                  dStart.setHours(0,0,0,0);
+                  const dEnd = new Date(day);
+                  dEnd.setHours(23,59,59,999);
+                  
+                  const daySales = sales.filter(s => {
+                    const d = new Date(s.date);
+                    return d >= dStart && d <= dEnd;
+                  });
+                  
+                  const dayExpenses = expenses.filter(e => {
+                    const d = new Date(e.date);
+                    return d >= dStart && d <= dEnd;
+                  });
+                  
+                  const dayPurchases = purchases.filter(p => {
+                    const d = new Date(p.date);
+                    return d >= dStart && d <= dEnd;
+                  });
+                  
+                  const rev = daySales.reduce((sum, s) => sum + s.total, 0);
+                  const exp = dayExpenses.reduce((sum, e) => sum + e.amount, 0) + dayPurchases.reduce((sum, p) => sum + p.totalAmount, 0);
+                  const prof = rev - exp;
+                  
+                  return {
+                    label: new Date(day).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
+                    revenue: rev,
+                    expenses: exp,
+                    profit: prof
+                  };
+                });
+              };
+
+              const dailyPoints = getDailyData();
+              const maxDailyVal = Math.max(50000, ...dailyPoints.map(d => Math.max(d.revenue, d.expenses, d.profit, 50000))) * 1.15;
+
+              return (
+                <div className="space-y-6 animate-fade-in pb-12 max-w-6xl mx-auto font-sans">
+                  
+                  {/* Banner Rentabilité */}
+                  <div className={`glass-panel p-6 rounded-2xl border ${healthBg} flex flex-col gap-6 transition-all duration-300`}>
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-2xl bg-zinc-950 flex items-center justify-center border border-zinc-800 shadow-md ${healthColor}`}>
+                        <TrendingDown className="w-6 h-6 animate-pulse" />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-zinc-400 font-extrabold tracking-widest uppercase">Rentabilité du mois</span>
+                        <h3 className={`text-xl font-black ${healthColor} uppercase tracking-wide`}>{healthStatus}</h3>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* Card 1 */}
+                      <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+                        <div className="flex justify-between items-center text-zinc-500">
+                          <span className="text-[9px] font-extrabold uppercase tracking-wider">Bénéfice Net</span>
+                          <span className="text-xs">📉</span>
+                        </div>
+                        <p className={`text-base font-black font-mono tracking-tight ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                          {formatPrice(periodNetProfit)}
+                        </p>
+                      </div>
+
+                      {/* Card 2 */}
+                      <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+                        <div className="flex justify-between items-center text-zinc-500">
+                          <span className="text-[9px] font-extrabold uppercase tracking-wider">% Marge</span>
+                          <span className="text-xs">📊</span>
+                        </div>
+                        <p className={`text-base font-black font-mono tracking-tight ${netProfitMargePercent >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                          {netProfitMargePercent.toFixed(1)}%
+                        </p>
+                      </div>
+
+                      {/* Card 3 */}
+                      <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+                        <div className="flex justify-between items-center text-zinc-500">
+                          <span className="text-[9px] font-extrabold uppercase tracking-wider">Revenus</span>
+                          <span className="text-xs text-emerald-400">💵</span>
+                        </div>
+                        <p className="text-base font-black text-white font-mono tracking-tight">
+                          {formatPrice(periodTotalRevenue)}
+                        </p>
+                      </div>
+
+                      {/* Card 4 */}
+                      <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+                        <div className="flex justify-between items-center text-zinc-500">
+                          <span className="text-[9px] font-extrabold uppercase tracking-wider">Dépenses</span>
+                          <span className="text-xs text-rose-500">💸</span>
+                        </div>
+                        <p className="text-base font-black text-white font-mono tracking-tight">
+                          {formatPrice(periodCOGS + periodTotalOPEX)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-[10px] font-bold text-zinc-500 uppercase">
+                        <span>Critique</span>
+                        <span>Excellent</span>
+                      </div>
+                      <div className="w-full h-2.5 bg-zinc-950 border border-zinc-850 rounded-full overflow-hidden relative">
+                        <div 
+                          className="h-full bg-gradient-to-r from-rose-600 via-amber-500 to-emerald-500 transition-all duration-500"
+                          style={{ width: `${progressPercent || 5}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Période d'analyse */}
+                  <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-violet-400" />
+                        <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Période d'analyse</h4>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          const d = new Date();
+                          setComptaStartDate(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10));
+                          setComptaEndDate(new Date().toISOString().slice(0,10));
+                          setComptaCategoryFilter("all");
+                          setComptaSearchQuery("");
+                          setComptaSellerFilter("all");
+                        }}
+                        className="text-zinc-500 hover:text-zinc-300 p-1.5 hover:bg-zinc-900 rounded-lg transition-all"
+                        title="Réinitialiser"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-zinc-950/80 border border-zinc-900 rounded-xl p-3 flex flex-col gap-1">
+                        <label className="text-[9px] font-extrabold text-zinc-500 uppercase">Date de début</label>
+                        <input 
+                          type="date" 
+                          value={comptaStartDate}
+                          onChange={(e) => setComptaStartDate(e.target.value)}
+                          className="bg-transparent border-0 text-sm font-bold text-white focus:outline-none focus:ring-0 w-full"
+                        />
+                      </div>
+                      <div className="bg-zinc-950/80 border border-zinc-900 rounded-xl p-3 flex flex-col gap-1">
+                        <label className="text-[9px] font-extrabold text-zinc-500 uppercase">Date de fin</label>
+                        <input 
+                          type="date" 
+                          value={comptaEndDate}
+                          onChange={(e) => setComptaEndDate(e.target.value)}
+                          className="bg-transparent border-0 text-sm font-bold text-white focus:outline-none focus:ring-0 w-full"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {[
+                        { id: "today", label: "Aujourd'hui" },
+                        { id: "yesterday", label: "Hier" },
+                        { id: "this_week", label: "Cette semaine" },
+                        { id: "last_week", label: "Semaine dernière" },
+                        { id: "this_month", label: "Ce mois" },
+                        { id: "last_month", label: "Mois dernier" },
+                        { id: "this_quarter", label: "Ce trimestre" },
+                        { id: "this_year", label: "Cette année" }
+                      ].map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => handleQuickPeriod(p.id)}
+                          className="px-3 py-1.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-[10px] text-zinc-400 font-extrabold rounded-lg tracking-wide transition-all active:scale-95"
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Filtrer par catégorie de produit */}
+                  <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-4 h-4 text-emerald-400" />
+                      <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Filtrer par catégorie de produit</h4>
+                    </div>
+                    <div className="bg-zinc-950/80 border border-zinc-900 rounded-xl p-3">
+                      <label className="text-[9px] font-extrabold text-zinc-500 uppercase block mb-1">Catégories</label>
+                      <select
+                        value={comptaCategoryFilter}
+                        onChange={(e) => setComptaCategoryFilter(e.target.value)}
+                        className="bg-transparent border-0 text-sm font-bold text-white focus:outline-none w-full cursor-pointer"
+                      >
+                        <option value="all">Toutes les catégories</option>
+                        {productCategories.map(cat => (
+                          <option key={cat.id} value={cat.id}>{cat.emoji} {cat.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Période Analysée info bar */}
+                  <div className="bg-blue-950/20 border border-blue-900/30 text-blue-300 p-4 rounded-xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-xs font-bold shadow-md shadow-blue-950/10">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">ℹ️</span>
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-blue-400 block font-extrabold">Période Analysée</span>
+                        <span>{formatDateStr(comptaStartDate)} – {formatDateStr(comptaEndDate)}</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-6 sm:gap-10">
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-blue-400 block font-extrabold">Durée</span>
+                        <span className="text-white font-mono">{durationDays} jours</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-blue-400 block font-extrabold">Transactions</span>
+                        <span className="text-white font-mono">{filteredSales.length}</span>
+                      </div>
+                      <div>
+                        <span className="text-[9px] uppercase tracking-wider text-blue-400 block font-extrabold">Moyenne/Jour</span>
+                        <span className="text-white font-mono">{formatPrice(periodNetProfit / durationDays)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bilan Financier & Calcul de la Rentabilité */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Bilan Financier */}
+                    <div className="lg:col-span-2 glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+                      <div className="flex justify-between items-center border-b border-zinc-900 pb-3">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-violet-400" />
+                          <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Bilan Financier</h4>
+                        </div>
+                        <span className="text-[9px] bg-rose-500/10 border border-rose-500/20 text-rose-400 px-2 py-0.5 rounded-full font-bold uppercase">
+                          {healthStatus}
+                        </span>
+                      </div>
+
+                      <div className="bg-rose-500/5 border border-rose-500/10 rounded-xl p-4 flex items-center justify-between">
+                        <div>
+                          <span className="text-[9px] text-rose-400 font-extrabold tracking-wider uppercase block">Résultat Net</span>
+                          <p className={`text-lg font-black font-mono leading-none pt-1 ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                            {formatPrice(periodNetProfit)}
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-zinc-500 font-extrabold">Marge : {netProfitMargePercent.toFixed(1)}%</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
+                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Revenus Totaux</span>
+                          <span className="text-sm font-bold text-white font-mono block">{formatPrice(periodTotalRevenue)}</span>
+                          <span className="text-[9px] text-zinc-600 block">{filteredSales.length} ventes</span>
+                        </div>
+                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
+                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Coût Marchandises</span>
+                          <span className="text-sm font-bold text-amber-500 font-mono block">{formatPrice(periodCOGS)}</span>
+                          <span className="text-[9px] text-zinc-600 block">CUMP (moy. pondérée)</span>
+                        </div>
+                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
+                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Marge Brute</span>
+                          <span className="text-sm font-bold text-emerald-400 font-mono block">{formatPrice(periodMargeBrute)}</span>
+                          <span className="text-[9px] text-zinc-600 block">Marge : {periodMargePercent.toFixed(1)}%</span>
+                        </div>
+                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
+                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Dépenses Opérat.</span>
+                          <span className="text-sm font-bold text-rose-500 font-mono block">{formatPrice(periodTotalOPEX)}</span>
+                          <span className="text-[9px] text-zinc-600 block">{comptaPeriodExpenses.length} dép. / {comptaPeriodPurchases.length} achats</span>
+                        </div>
+                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
+                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Vente Moyenne</span>
+                          <span className="text-sm font-bold text-white font-mono block">
+                            {formatPrice(filteredSales.length > 0 ? periodTotalRevenue / filteredSales.length : 0)}
+                          </span>
+                          <span className="text-[9px] text-zinc-600 block">Par transaction</span>
+                        </div>
+                        <div className="bg-zinc-950/70 border border-zinc-900 p-3 rounded-xl">
+                          <span className="text-[9px] text-zinc-500 font-extrabold block uppercase">Bénéfice/Jour</span>
+                          <span className="text-sm font-bold text-purple-400 font-mono block">
+                            {formatPrice(periodNetProfit / durationDays)}
+                          </span>
+                          <span className="text-[9px] text-zinc-600 block">{durationDays} jours d'analyse</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Calcul de la Rentabilité */}
+                    <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 flex flex-col justify-between">
+                      <div className="border-b border-zinc-900 pb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-emerald-400" />
+                          <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Calcul de la Rentabilité</h4>
+                        </div>
+                        <span className="text-[10px] text-zinc-500 cursor-help" title="Méthode d'analyse standard">ℹ️</span>
+                      </div>
+
+                      <div className="space-y-4 py-4 flex-1 flex flex-col justify-around text-xs font-semibold text-zinc-400">
+                        {/* Step 1 */}
+                        <div className="flex justify-between items-center border-b border-zinc-900/60 pb-2">
+                          <div>
+                            <p className="text-white font-extrabold text-[11px] block">1. Revenus des Ventes</p>
+                            <p className="text-[9px] text-zinc-600">Prix de vente × Quantités vendues</p>
+                          </div>
+                          <span className="text-emerald-400 font-mono font-bold">+{formatPrice(periodTotalRevenue)}</span>
+                        </div>
+
+                        {/* Step 2 */}
+                        <div className="flex justify-between items-center border-b border-zinc-900/60 pb-2">
+                          <div>
+                            <p className="text-white font-extrabold text-[11px] block">2. Coût des Marchandises</p>
+                            <p className="text-[9px] text-zinc-600">CUMP × Quantités vendues</p>
+                          </div>
+                          <span className="text-amber-500 font-mono font-bold">-{formatPrice(periodCOGS)}</span>
+                        </div>
+
+                        {/* Marge Brute */}
+                        <div className="flex justify-between items-center bg-zinc-900/40 p-2.5 rounded-lg border border-zinc-850">
+                          <div>
+                            <p className="text-white font-black text-[11px] block">= Marge Brute</p>
+                            <p className="text-[9px] text-zinc-500">Revenus - Coût marchandises ({periodMargePercent.toFixed(1)}%)</p>
+                          </div>
+                          <span className="text-teal-400 font-mono font-black">+{formatPrice(periodMargeBrute)}</span>
+                        </div>
+
+                        {/* Step 3 */}
+                        <div className="flex justify-between items-center border-b border-zinc-900/60 pb-2 pt-1">
+                          <div>
+                            <p className="text-white font-extrabold text-[11px] block">3. Dépenses Opérationnelles</p>
+                            <p className="text-[9px] text-zinc-600">Frais généraux, salaires, achats stock...</p>
+                          </div>
+                          <span className="text-rose-500 font-mono font-bold">-{formatPrice(periodTotalOPEX)}</span>
+                        </div>
+
+                        {/* Bénéfice Net */}
+                        <div className="flex justify-between items-center bg-rose-500/5 p-3 rounded-lg border border-rose-500/20 shadow-md">
+                          <div>
+                            <p className="text-white font-black text-[11px] block">= Bénéfice Net</p>
+                            <p className="text-[9px] text-zinc-500">Marge brute - Dépenses ({netProfitMargePercent.toFixed(1)}%)</p>
+                          </div>
+                          <span className={`font-mono font-black text-sm ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                            {formatPrice(periodNetProfit)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Rechercher et Filtres Ventes */}
+                  <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+                    <div className="flex flex-col md:flex-row gap-4 justify-between">
+                      <div className="flex-1 relative">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                        <input
+                          type="text"
+                          placeholder="Rechercher par nom client ou numéro de vente..."
+                          value={comptaSearchQuery}
+                          onChange={(e) => setComptaSearchQuery(e.target.value)}
+                          className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-zinc-500 font-bold focus:outline-none focus:border-violet-500 transition-all"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          onClick={() => {
+                            setComptaSearchQuery("");
+                            setComptaCategoryFilter("all");
+                            setComptaSellerFilter("all");
+                          }}
+                          className="px-4 py-2.5 bg-zinc-950 hover:bg-zinc-900 border border-zinc-850 text-[10px] text-zinc-400 hover:text-white font-extrabold rounded-xl transition-all flex items-center gap-1.5"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          Effacer les filtres
+                        </button>
+
+                        <button
+                          onClick={() => setComptaPeriodFilterToggled(!comptaPeriodFilterToggled)}
+                          className={`px-4 py-2.5 border text-[10px] font-extrabold rounded-xl transition-all flex items-center gap-1.5 ${
+                            comptaPeriodFilterToggled
+                              ? "bg-blue-900/20 border-blue-500/50 text-blue-300"
+                              : "bg-zinc-950 hover:bg-zinc-900 border-zinc-850 text-zinc-400 hover:text-white"
+                          }`}
+                        >
+                          <Calendar className="w-3.5 h-3.5" />
+                          Filtrer par période
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expandable Period Filters */}
+                    {comptaPeriodFilterToggled && (
+                      <div className="p-4 bg-zinc-950/80 border border-zinc-900 rounded-xl space-y-4 animate-fade-in">
+                        <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                          Période personnalisée
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <button
+                            onClick={() => {
+                              const d = new Date();
+                              setComptaStartDate(d.toISOString().slice(0, 10));
+                            }}
+                            className="bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-left p-3 rounded-xl flex items-center justify-between text-xs text-zinc-400 hover:text-white font-extrabold transition-all"
+                          >
+                            <span>📅 Date de début</span>
+                            <span className="font-mono text-white">{comptaStartDate}</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const d = new Date();
+                              setComptaEndDate(d.toISOString().slice(0, 10));
+                            }}
+                            className="bg-zinc-900 border border-zinc-850 hover:border-zinc-700 text-left p-3 rounded-xl flex items-center justify-between text-xs text-zinc-400 hover:text-white font-extrabold transition-all"
+                          >
+                            <span>📅 Date de fin</span>
+                            <span className="font-mono text-white">{comptaEndDate}</span>
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 pt-1 border-t border-zinc-900/60 pt-3">
+                          {[
+                            { id: "today", label: "Aujourd'hui" },
+                            { id: "yesterday", label: "Hier" },
+                            { id: "this_week", label: "Cette semaine" },
+                            { id: "last_week", label: "Semaine dernière" },
+                            { id: "this_month", label: "Ce mois" },
+                            { id: "last_month", label: "Mois dernier" },
+                            { id: "this_quarter", label: "Ce trimestre" },
+                            { id: "this_year", label: "Cette année" }
+                          ].map(p => (
+                            <button
+                              key={p.id}
+                              onClick={() => handleQuickPeriod(p.id)}
+                              className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 hover:border-zinc-700 text-[10px] text-zinc-400 font-extrabold rounded-lg tracking-wide transition-all active:scale-95"
+                            >
+                              {p.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Seller dropdown filter */}
+                    <div className="flex items-center gap-3">
+                      <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+                        Filtrer par vendeur :
+                      </div>
+                      <div className="flex gap-2">
+                        {["all", "gérant", "administrateur"].map(seller => (
+                          <button
+                            key={seller}
+                            onClick={() => setComptaSellerFilter(seller)}
+                            className={`px-3 py-1.5 rounded-lg text-[9px] font-extrabold uppercase transition-all border ${
+                              comptaSellerFilter === seller
+                                ? "bg-violet-900/20 border-violet-500/50 text-violet-300"
+                                : "bg-zinc-950 border-zinc-900 text-zinc-500 hover:text-zinc-300"
+                            }`}
+                          >
+                            {seller === "all" ? "Tous les vendeurs" : seller}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Sales List Container */}
+                    <div className="space-y-3 pt-2">
+                      {filteredSales.slice(0, 20).map(sale => {
+                        const isExpanded = comptaExpandedSaleId === sale.id;
+                        const formattedDate = new Date(sale.date).toLocaleDateString('fr-FR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric'
+                        });
+
+                        return (
+                          <div
+                            key={sale.id}
+                            className="bg-zinc-950/80 border border-zinc-900 rounded-xl p-4 flex flex-col gap-3 hover:border-zinc-800 transition-all duration-300"
+                          >
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-3">
+                                {/* Print Status Indicator Check Circle */}
+                                <div className="w-6 h-6 rounded-full bg-emerald-950/50 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-xs">
+                                  ✓
+                                </div>
+                                <div>
+                                  <h5 className="text-xs font-black text-white hover:text-violet-400 cursor-pointer" onClick={() => setComptaExpandedSaleId(isExpanded ? null : sale.id)}>
+                                    Vente {sale.id}
+                                  </h5>
+                                  <p className="text-[10px] text-zinc-500 font-semibold">
+                                    Client: <span className="text-zinc-300 font-bold">{sale.customer}</span>
+                                    <span className="mx-1.5">|</span>
+                                    Vendeur: <span className="text-zinc-400 font-bold">& {sale.seller}</span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <div className="text-right">
+                                  <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase block mb-1">
+                                    {sale.status || "Terminée"}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-500 font-bold font-mono">{formattedDate}</span>
+                                </div>
+                                <button
+                                  onClick={() => setShowReceiptModal({
+                                    id: `REC-${sale.id.slice(-6)}`,
+                                    customer: sale.customer,
+                                    itemsList: sale.itemsList,
+                                    gameCost: sale.gameCost || 0,
+                                    snackCost: sale.snackCost || 0,
+                                    total: sale.total,
+                                    date: new Date(sale.date).toLocaleTimeString(),
+                                    type: sale.gameCost > 0 ? "Clôture Station & Snacks" : "Facture Directe",
+                                    paymentMethod: sale.paymentMethod
+                                  })}
+                                  className="w-8 h-8 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all"
+                                  title="Imprimer le reçu"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between items-center text-xs font-bold border-t border-zinc-900/60 pt-2 text-zinc-400">
+                              <span>Total : <strong className="text-white font-mono">{formatPrice(sale.total)}</strong></span>
+                              <span>Payé : <strong className="text-emerald-400 font-mono">{formatPrice(sale.paid)}</strong></span>
+                            </div>
+
+                            {/* Details Collapsible Area */}
+                            {isExpanded && (
+                              <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-lg mt-1 space-y-2 animate-fade-in">
+                                <span className="text-[9px] font-extrabold text-zinc-500 uppercase tracking-wider block border-b border-zinc-900 pb-1">
+                                  Détail des articles
+                                </span>
+                                <div className="space-y-1.5">
+                                  {sale.gameCost > 0 && (
+                                    <div className="flex justify-between text-[11px] text-zinc-300">
+                                      <span>🕹️ Session de jeu</span>
+                                      <span className="font-mono">{formatPrice(sale.gameCost)}</span>
+                                    </div>
+                                  )}
+                                  {(sale.itemsList || []).map((item, index) => {
+                                    if (!item || !item.product) return null;
+                                    return (
+                                      <div key={index} className="flex justify-between text-[11px] text-zinc-400">
+                                        <span>{item.quantity}x {item.product.name}</span>
+                                        <span className="font-mono">{formatPrice(item.product.price * item.quantity)}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {filteredSales.length === 0 && (
+                        <div className="text-center py-8 text-zinc-500 font-medium text-xs">
+                          Aucune vente enregistrée sur cette période avec ces critères.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Indicateurs Clés (KPI) & Graphiques */}
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4.5 h-4.5 text-amber-400" />
+                      <h4 className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider">Indicateurs Clés (KPI)</h4>
+                    </div>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      {/* KPI 1 */}
+                      <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
+                        <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">ROI</span>
+                        <p className="text-base font-black text-white font-mono tracking-tight">{Math.max(0, periodROI).toFixed(1)}%</p>
+                        <span className="text-[9px] text-zinc-600 block">Retour sur investissement</span>
+                      </div>
+
+                      {/* KPI 2 */}
+                      <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
+                        <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Seuil de Rentabilité</span>
+                        <p className="text-base font-black text-amber-500 font-mono tracking-tight">{formatPrice(periodSR)}</p>
+                        <span className="text-[9px] text-zinc-600 block">Point d'équilibre</span>
+                      </div>
+
+                      {/* KPI 3 */}
+                      <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
+                        <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Flux de Trésorerie</span>
+                        <p className="text-base font-black text-emerald-400 font-mono tracking-tight">{formatPrice(periodNetProfit)}</p>
+                        <span className="text-[9px] text-zinc-600 block">Cash-Flow net</span>
+                      </div>
+
+                      {/* KPI 4 */}
+                      <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
+                        <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Jours au Seuil</span>
+                        <p className="text-base font-black text-purple-400 font-mono tracking-tight">
+                          {daysToSR > 0 && daysToSR <= 365 ? `${Math.ceil(daysToSR)} jours` : "N/A"}
+                        </p>
+                        <span className="text-[9px] text-zinc-600 block">Temps pour équilibre</span>
+                      </div>
+                    </div>
+
+                    {/* Chart Columns */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Chart 1: Revenus vs Dépenses */}
+                      <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+                        <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
+                          <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider block">Revenus vs Dépenses</span>
+                          <span className="text-[10px] text-zinc-500 font-medium">Bilan global</span>
+                        </div>
+
+                        <div className="h-44 flex items-end justify-around pb-3 pt-6 bg-zinc-950/60 rounded-xl border border-zinc-900 relative">
+                          {(() => {
+                            const maxVal = Math.max(periodTotalRevenue, periodCOGS + periodTotalOPEX, Math.abs(periodNetProfit), 100000);
+                            const hRev = (periodTotalRevenue / maxVal) * 110;
+                            const hExp = ((periodCOGS + periodTotalOPEX) / maxVal) * 110;
+                            const hProf = (Math.max(0, periodNetProfit) / maxVal) * 110;
+
+                            return (
+                              <>
+                                {/* Revenue Bar */}
+                                <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                                  <span className="text-[9px] font-mono text-emerald-400 font-bold">{formatPrice(periodTotalRevenue)}</span>
+                                  <div 
+                                    className="w-12 bg-gradient-to-t from-emerald-600 to-teal-500 rounded-t-lg shadow-lg group-hover:brightness-110 transition-all duration-300"
+                                    style={{ height: `${Math.max(5, hRev)}px` }}
+                                  ></div>
+                                  <span className="text-[9px] font-bold text-zinc-500 uppercase">Revenus</span>
+                                </div>
+
+                                {/* Expense Bar */}
+                                <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                                  <span className="text-[9px] font-mono text-rose-500 font-bold">{formatPrice(periodCOGS + periodTotalOPEX)}</span>
+                                  <div 
+                                    className="w-12 bg-gradient-to-t from-rose-600 to-pink-500 rounded-t-lg shadow-lg group-hover:brightness-110 transition-all duration-300"
+                                    style={{ height: `${Math.max(5, hExp)}px` }}
+                                  ></div>
+                                  <span className="text-[9px] font-bold text-zinc-500 uppercase">Dépenses</span>
+                                </div>
+
+                                {/* Profit Bar */}
+                                <div className="flex flex-col items-center gap-2 group cursor-pointer">
+                                  <span className="text-[9px] font-mono text-amber-500 font-bold">{formatPrice(periodNetProfit)}</span>
+                                  <div 
+                                    className="w-12 bg-gradient-to-t from-amber-600 to-orange-500 rounded-t-lg shadow-lg group-hover:brightness-110 transition-all duration-300"
+                                    style={{ height: `${Math.max(5, hProf)}px` }}
+                                  ></div>
+                                  <span className="text-[9px] font-bold text-zinc-500 uppercase">Bénéfice</span>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+
+                      {/* Chart 2: Evolution Quotidienne */}
+                      <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
+                        <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
+                          <span className="text-xs font-extrabold text-zinc-300 uppercase tracking-wider block">Evolution Quotidienne</span>
+                          <span className="text-[10px] text-zinc-500 font-medium">Flux récents</span>
+                        </div>
+
+                        <div className="bg-zinc-950/60 rounded-xl border border-zinc-900 p-3 flex flex-col justify-between h-44 relative">
+                          {dailyPoints.length > 0 ? (
+                            <svg className="w-full h-full" viewBox="0 0 400 130">
+                              {/* Grid lines */}
+                              <line x1="20" y1="20" x2="390" y2="20" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                              <line x1="20" y1="60" x2="390" y2="60" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                              <line x1="20" y1="100" x2="390" y2="100" stroke="#1f2937" strokeWidth="1" strokeDasharray="3,3" />
+                              
+                              {/* Paths */}
+                              {(() => {
+                                const points = dailyPoints.map((d, idx) => {
+                                  const step = 370 / Math.max(1, dailyPoints.length - 1);
+                                  const x = 20 + idx * step;
+                                  const yRev = 110 - (d.revenue / maxDailyVal) * 90;
+                                  const yExp = 110 - (d.expenses / maxDailyVal) * 90;
+                                  return { x, yRev, yExp };
+                                });
+
+                                const pathRev = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yRev}`).join(' ');
+                                const pathExp = points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.yExp}`).join(' ');
+
+                                return (
+                                  <>
+                                    {/* Revenue Line */}
+                                    <path d={pathRev} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="drop-shadow-[0_0_4px_rgba(16,185,129,0.3)]" />
+                                    {points.map((p, idx) => (
+                                      <circle key={`r-${idx}`} cx={p.x} cy={p.yRev} r="3.5" fill="#020205" stroke="#10b981" strokeWidth="2" title={`Rev: ${dailyPoints[idx].revenue}`} />
+                                    ))}
+
+                                    {/* Expense Line */}
+                                    <path d={pathExp} fill="none" stroke="#f43f5e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1,1" className="drop-shadow-[0_0_3px_rgba(244,63,94,0.3)]" />
+                                    {points.map((p, idx) => (
+                                      <circle key={`e-${idx}`} cx={p.x} cy={p.yExp} r="3" fill="#020205" stroke="#f43f5e" strokeWidth="1.5" title={`Exp: ${dailyPoints[idx].expenses}`} />
+                                    ))}
+                                  </>
+                                );
+                              })()}
+                              
+                              {/* X Axis Labels */}
+                              {dailyPoints.map((d, idx) => {
+                                const step = 370 / Math.max(1, dailyPoints.length - 1);
+                                const x = 20 + idx * step;
+                                // Only draw labels for first, middle, last to avoid overlap
+                                const isLabelVisible = idx === 0 || idx === Math.floor(dailyPoints.length / 2) || idx === dailyPoints.length - 1;
+                                if (!isLabelVisible) return null;
+                                return (
+                                  <text key={idx} x={x} y="125" fill="#6b7280" fontSize="8" fontWeight="bold" textAnchor="middle">
+                                    {d.label}
+                                  </text>
+                                );
+                              })}
+                            </svg>
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-[10px] text-zinc-500 font-medium">
+                              Pas de données d'évolution
+                            </div>
+                          )}
+
+                          {/* Legend */}
+                          <div className="flex justify-center gap-4 text-[9px] font-extrabold uppercase text-zinc-500 pt-1 border-t border-zinc-900/60">
+                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Revenus</span>
+                            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-500"></span> Dépenses</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                   </div>
