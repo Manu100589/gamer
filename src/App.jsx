@@ -13,6 +13,7 @@ import {
   Clock, 
   Play, 
   XCircle, 
+  X,
   Settings, 
   Plus, 
   Minus, 
