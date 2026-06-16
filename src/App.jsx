@@ -1420,6 +1420,224 @@ export default function App() {
       </body>
       </html>
     `);
+  };
+
+  const handlePrintReceipt = (receipt) => {
+    const printWindow = window.open("", "_blank", "width=450,height=600");
+    if (!printWindow) {
+      alert("Le bloqueur de fenêtres pop-up empêche l'exportation. Veuillez autoriser les pop-ups.");
+      return;
+    }
+
+    const receiptId = receipt.id;
+    const dateFormatted = `${currentDateTime.toLocaleDateString(systemSettings.currencyLocale || 'fr-FR')} ${receipt.date}`;
+    const customer = receipt.customer || "Client Comptant";
+    const type = receipt.type || "FACTURE DIRECTE";
+    const paymentMethod = receipt.paymentMethod || "";
+    const total = receipt.total || 0;
+    const prepaid = receipt.prepaid || 0;
+    const gameCost = receipt.gameCost || 0;
+    const snackCost = receipt.snackCost || 0;
+    const itemsList = receipt.itemsList || [];
+
+    let itemsHtml = "";
+    if (gameCost > 0) {
+      itemsHtml += `
+        <tr class="item-row">
+          <td>🕹️ ${receipt.item || "Temps de Jeu"}</td>
+          <td style="text-align: right; font-family: monospace;">${formatPrice(gameCost)}</td>
+        </tr>
+      `;
+    }
+    if (itemsList && itemsList.length > 0) {
+      itemsList.forEach(item => {
+        if (item && item.product) {
+          itemsHtml += `
+            <tr class="item-row">
+              <td>${item.quantity}x ${item.product.name}</td>
+              <td style="text-align: right; font-family: monospace;">${formatPrice(item.product.price * item.quantity)}</td>
+            </tr>
+          `;
+        }
+      });
+    } else if (snackCost > 0) {
+      itemsHtml += `
+        <tr class="item-row">
+          <td>Consommations Snack Bar</td>
+          <td style="text-align: right; font-family: monospace;">${formatPrice(snackCost)}</td>
+        </tr>
+      `;
+    }
+
+    const netToPay = prepaid > 0 ? Math.abs(total - prepaid) : total;
+    const netLabel = prepaid > 0 ? (total - prepaid < 0 ? "REMBOURSEMENT" : "RESTE À PAYER") : "NET À PAYER";
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Facture / Reçu ${receiptId}</title>
+        <meta charset="utf-8">
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+        <style>
+          body {
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #ffffff;
+            color: #18181b;
+            font-size: 13px;
+          }
+          .receipt-container {
+            max-width: 320px;
+            margin: 0 auto;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 1px dashed #cccccc;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+          }
+          .title {
+            font-size: 18px;
+            font-weight: 800;
+            text-transform: uppercase;
+            margin: 0;
+            letter-spacing: 0.5px;
+          }
+          .subtitle {
+            font-size: 10px;
+            color: #71717a;
+            margin-top: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .meta-info {
+            width: 100%;
+            margin-bottom: 15px;
+            font-size: 10px;
+            color: #52525b;
+          }
+          .meta-info td {
+            padding: 2px 0;
+          }
+          .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+          }
+          .items-table th, .items-table td {
+            padding: 6px 0;
+            text-align: left;
+          }
+          .items-table th {
+            font-size: 9px;
+            color: #71717a;
+            text-transform: uppercase;
+            border-bottom: 1px solid #e4e4e7;
+          }
+          .item-row td {
+            border-bottom: 1px dashed #f4f4f5;
+          }
+          .totals-section {
+            width: 100%;
+            margin-top: 10px;
+            font-size: 11px;
+          }
+          .totals-section td {
+            padding: 3px 0;
+          }
+          .net-pay {
+            font-size: 14px;
+            font-weight: 800;
+            border-top: 1px solid #18181b;
+            padding-top: 8px;
+            margin-top: 8px;
+          }
+          .footer {
+            margin-top: 25px;
+            text-align: center;
+            font-size: 10px;
+            color: #71717a;
+            border-top: 1px dashed #cccccc;
+            padding-top: 15px;
+          }
+          @media print {
+            body { padding: 0; }
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="receipt-container">
+          <div class="header">
+            ${systemSettings.logoUrl ? '<img src="' + systemSettings.logoUrl + '" style="max-height: 50px; margin-bottom: 5px; border-radius: 4px;" />' : ''}
+            <h1 class="title">${systemSettings.companyName || "GAMEZONE HUB"}</h1>
+            <p class="subtitle">${systemSettings.address || "12 Rue des Gamers, Yaoundé"}</p>
+            <p class="subtitle" style="font-size: 9px; text-transform: none; color: #a1a1aa; margin-top: 2px;">
+              Tél: ${systemSettings.phone || "+237 6 55 11 22 33"}
+            </p>
+          </div>
+
+          <table class="meta-info">
+            <tr>
+              <td>Nº FACTURE :</td>
+              <td style="text-align: right; font-weight: bold; color: #18181b;">${receiptId}</td>
+            </tr>
+            <tr>
+              <td>DATE :</td>
+              <td style="text-align: right;">${dateFormatted}</td>
+            </tr>
+            <tr>
+              <td>CLIENT :</td>
+              <td style="text-align: right; font-weight: bold; color: #18181b;">${customer}</td>
+            </tr>
+            <tr>
+              <td>TYPE :</td>
+              <td style="text-align: right; font-weight: bold; color: #18181b; text-transform: uppercase;">${type}</td>
+            </tr>
+            ${paymentMethod ? '<tr><td>RÈGLEMENT :</td><td style="text-align: right; font-weight: bold; color: #18181b; text-transform: uppercase;">' + paymentMethod + '</td></tr>' : ''}
+          </table>
+
+          <table class="items-table">
+            <thead>
+              <tr>
+                <th>Désignation</th>
+                <th style="text-align: right;">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itemsHtml}
+            </tbody>
+          </table>
+
+          <table class="totals-section">
+            ${prepaid > 0 ? '<tr><td>Prépayé au démarrage :</td><td style="text-align: right; font-family: monospace;">' + formatPrice(prepaid) + '</td></tr>' : ''}
+            <tr>
+              <td>Total Prestations :</td>
+              <td style="text-align: right; font-family: monospace;">${formatPrice(total)}</td>
+            </tr>
+            <tr class="net-pay">
+              <td style="font-weight: 800;">${netLabel} :</td>
+              <td style="text-align: right; font-weight: 800; font-family: monospace; font-size: 15px;">${formatPrice(netToPay)}</td>
+            </tr>
+          </table>
+
+          <div class="footer">
+            <p style="font-style: italic; font-weight: bold; margin: 0 0 5px 0;">Merci de votre visite à bientôt !</p>
+            <p style="font-size: 8px; color: #a1a1aa; margin: 0;">Impression Directe - GameZone</p>
+          </div>
+        </div>
+        
+        <script>
+          window.onload = function() {
+            window.print();
+            setTimeout(function() { window.close(); }, 500);
+          }
+        </script>
+      </body>
+      </html>
+    `);
     printWindow.document.close();
   };
 
@@ -10159,12 +10377,21 @@ export default function App() {
               </div>
             </div>
 
-            <button
-              onClick={() => setShowReceiptModal(null)}
-              className="w-full mt-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all text-center"
-            >
-              Fermer & Retour
-            </button>
+            <div className="w-full flex gap-3 mt-4">
+              <button
+                onClick={() => handlePrintReceipt(showReceiptModal)}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all text-center flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-900/20 active:scale-95"
+              >
+                <Printer className="w-4 h-4" />
+                Imprimer
+              </button>
+              <button
+                onClick={() => setShowReceiptModal(null)}
+                className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl text-xs font-bold transition-all text-center"
+              >
+                Fermer & Retour
+              </button>
+            </div>
 
           </div>
         </div>
