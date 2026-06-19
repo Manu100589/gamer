@@ -782,7 +782,7 @@ function SalesHistoryView({
       </div>
 
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* CA TOTAL */}
         <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
           <div className="flex justify-between items-start text-zinc-500 mb-1">
@@ -791,16 +791,6 @@ function SalesHistoryView({
           </div>
           <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(caTotal)}</p>
           <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">{activeSalesCount} ventes actives</span>
-        </div>
-
-        {/* PANIER MOYEN */}
-        <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
-          <div className="flex justify-between items-start text-zinc-500 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">PANIER MOYEN</span>
-            <span className="text-sm bg-violet-500/10 p-1.5 rounded-lg font-bold">🛒</span>
-          </div>
-          <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(panierMoyen)}</p>
-          <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Valeur moyenne</span>
         </div>
 
         {/* ANNULÉES */}
@@ -1350,7 +1340,7 @@ export default function App() {
   }, [systemSettings.theme]);
 
   useEffect(() => {
-    const initializedTest = localStorage.getItem("system_test_reset_v5_zero_stats");
+    const initializedTest = localStorage.getItem("system_test_reset_v6_persistence_fix");
     if (!initializedTest) {
       localStorage.removeItem("system_pos_tickets");
       localStorage.removeItem("system_active_caisse_session");
@@ -1359,6 +1349,12 @@ export default function App() {
       localStorage.removeItem("system_activity_log");
       localStorage.removeItem("system_stock_movements");
       localStorage.removeItem("system_sales");
+      localStorage.removeItem("system_caisse_sessions");
+      localStorage.removeItem("system_stats");
+      localStorage.removeItem("system_top_consoles");
+      localStorage.removeItem("system_top_products");
+      localStorage.removeItem("system_daily_consoles_revenue");
+      localStorage.removeItem("system_daily_products_revenue");
 
       // Reset consoles statistics but keep their configurations
       const savedConsoles = localStorage.getItem("system_consoles");
@@ -1396,7 +1392,7 @@ export default function App() {
         }
       }
 
-      localStorage.setItem("system_test_reset_v5_zero_stats", "true");
+      localStorage.setItem("system_test_reset_v6_persistence_fix", "true");
       window.location.reload();
     }
   }, []);
@@ -1421,13 +1417,40 @@ export default function App() {
     return `${amt.toLocaleString(locale)} ${symbol}`;
   };
 
-  const [stats, setStats] = useState(initialStats);
-  const [topConsolesState, setTopConsolesState] = useState(initialTopConsoles);
-  const [topProductsState, setTopProductsState] = useState(initialTopProducts);
-  const [activityLog, setActivityLog] = useState(initialActivityLog);
+  const [stats, setStats] = useState(() => {
+    const saved = localStorage.getItem("system_stats");
+    return saved ? JSON.parse(saved) : initialStats;
+  });
+  useEffect(() => {
+    localStorage.setItem("system_stats", JSON.stringify(stats));
+  }, [stats]);
+
+  const [topConsolesState, setTopConsolesState] = useState(() => {
+    const saved = localStorage.getItem("system_top_consoles");
+    return saved ? JSON.parse(saved) : initialTopConsoles;
+  });
+  useEffect(() => {
+    localStorage.setItem("system_top_consoles", JSON.stringify(topConsolesState));
+  }, [topConsolesState]);
+
+  const [topProductsState, setTopProductsState] = useState(() => {
+    const saved = localStorage.getItem("system_top_products");
+    return saved ? JSON.parse(saved) : initialTopProducts;
+  });
+  useEffect(() => {
+    localStorage.setItem("system_top_products", JSON.stringify(topProductsState));
+  }, [topProductsState]);
+
+  const [activityLog, setActivityLog] = useState(() => {
+    const saved = localStorage.getItem("system_activity_log");
+    return saved ? JSON.parse(saved) : initialActivityLog;
+  });
+  useEffect(() => {
+    localStorage.setItem("system_activity_log", JSON.stringify(activityLog));
+  }, [activityLog]);
 
   const [sales, setSales] = useState(() => {
-    const initializedTest = localStorage.getItem("system_test_reset_v5_zero_stats");
+    const initializedTest = localStorage.getItem("system_test_reset_v6_persistence_fix");
     if (!initializedTest) {
       return [];
     }
@@ -1453,6 +1476,8 @@ export default function App() {
 
   // Detailed daily report tracking
   const [dailyConsolesRevenue, setDailyConsolesRevenue] = useState(() => {
+    const saved = localStorage.getItem("system_daily_consoles_revenue");
+    if (saved) return JSON.parse(saved);
     return initialConsoles.map(c => {
       const topC = initialTopConsoles.find(x => x.name === c.name);
       return {
@@ -1463,8 +1488,13 @@ export default function App() {
       };
     });
   });
+  useEffect(() => {
+    localStorage.setItem("system_daily_consoles_revenue", JSON.stringify(dailyConsolesRevenue));
+  }, [dailyConsolesRevenue]);
 
   const [dailyProductsRevenue, setDailyProductsRevenue] = useState(() => {
+    const saved = localStorage.getItem("system_daily_products_revenue");
+    if (saved) return JSON.parse(saved);
     return snackProducts.map(p => {
       const topP = initialTopProducts.find(x => x.name === p.name);
       return {
@@ -1475,6 +1505,9 @@ export default function App() {
       };
     });
   });
+  useEffect(() => {
+    localStorage.setItem("system_daily_products_revenue", JSON.stringify(dailyProductsRevenue));
+  }, [dailyProductsRevenue]);
 
   // Live clock
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
@@ -1487,7 +1520,13 @@ export default function App() {
   const [showZReportModal, setShowZReportModal] = useState(false);
   const [showDetailedReport, setShowDetailedReport] = useState(false);
 
-  const [stockMovements, setStockMovements] = useState(initialStockMovements);
+  const [stockMovements, setStockMovements] = useState(() => {
+    const saved = localStorage.getItem("system_stock_movements");
+    return saved ? JSON.parse(saved) : initialStockMovements;
+  });
+  useEffect(() => {
+    localStorage.setItem("system_stock_movements", JSON.stringify(stockMovements));
+  }, [stockMovements]);
   
   // Stock sub-tab
   const [stockSubTab, setStockSubTab] = useState("inventory"); // 'inventory' or 'movements'
@@ -1539,10 +1578,22 @@ export default function App() {
   const [editConsoleImage, setEditConsoleImage] = useState("");
 
   // Expenses management states
-  const [expenses, setExpenses] = useState(initialExpenses);
+  const [expenses, setExpenses] = useState(() => {
+    const saved = localStorage.getItem("system_expenses");
+    return saved ? JSON.parse(saved) : initialExpenses;
+  });
+  useEffect(() => {
+    localStorage.setItem("system_expenses", JSON.stringify(expenses));
+  }, [expenses]);
 
   // Purchases management states
-  const [purchases, setPurchases] = useState(initialPurchases);
+  const [purchases, setPurchases] = useState(() => {
+    const saved = localStorage.getItem("system_purchases");
+    return saved ? JSON.parse(saved) : initialPurchases;
+  });
+  useEffect(() => {
+    localStorage.setItem("system_purchases", JSON.stringify(purchases));
+  }, [purchases]);
   const [purchaseSearchQuery, setPurchaseSearchQuery] = useState("");
   const [purchaseFilterPaymentMethod, setPurchaseFilterPaymentMethod] = useState("all");
   const [showAddPurchaseModal, setShowAddPurchaseModal] = useState(false);
@@ -1604,25 +1655,38 @@ export default function App() {
 
   // Caisse (Cash register) management states
   const [caisseStatus, setCaisseStatus] = useState("ouverte");
-  const [caisseSessions, setCaisseSessions] = useState(initialCaisseSessions);
-  const [activeCaisseSession, setActiveCaisseSession] = useState({
-    id: "shift-permanent",
-    dateOpen: new Date().toISOString(),
-    openedBy: "Gérant",
-    openingBalance: 0,
-    gamesRevenue: 0,
-    snackRevenue: 0,
-    expensesMaintenance: 0,
-    expensesDiverses: 0,
-    purchases: 0,
-    purchasesCash: 0,
-    refunds: 0,
-    paymentEspèces: 0,
-    paymentMobileMoney: 0,
-    paymentCarte: 0,
-    transactionsCount: 0,
-    movements: []
+  const [caisseSessions, setCaisseSessions] = useState(() => {
+    const saved = localStorage.getItem("system_caisse_sessions");
+    return saved ? JSON.parse(saved) : initialCaisseSessions;
   });
+  useEffect(() => {
+    localStorage.setItem("system_caisse_sessions", JSON.stringify(caisseSessions));
+  }, [caisseSessions]);
+
+  const [activeCaisseSession, setActiveCaisseSession] = useState(() => {
+    const saved = localStorage.getItem("system_active_caisse_session");
+    return saved ? JSON.parse(saved) : {
+      id: "shift-permanent",
+      dateOpen: new Date().toISOString(),
+      openedBy: "Gérant",
+      openingBalance: 0,
+      gamesRevenue: 0,
+      snackRevenue: 0,
+      expensesMaintenance: 0,
+      expensesDiverses: 0,
+      purchases: 0,
+      purchasesCash: 0,
+      refunds: 0,
+      paymentEspèces: 0,
+      paymentMobileMoney: 0,
+      paymentCarte: 0,
+      transactionsCount: 0,
+      movements: []
+    };
+  });
+  useEffect(() => {
+    localStorage.setItem("system_active_caisse_session", JSON.stringify(activeCaisseSession));
+  }, [activeCaisseSession]);
   const [caisseSubTab, setCaisseSubTab] = useState("suivi"); // 'suivi' or 'historique'
   const [reportSubTab, setReportSubTab] = useState("journalier"); // 'journalier', 'hebdomadaire', 'mensuel'
   const [showOpenCaisseModal, setShowOpenCaisseModal] = useState(false);
@@ -1835,6 +1899,14 @@ export default function App() {
     };
     reader.readAsDataURL(file);
   };
+
+  const renderProductImage = (img, fallback = "📦", imgClass = "w-6 h-6 rounded-lg object-cover", emojiClass = "text-xl") => {
+    if (img && (img.startsWith("data:") || img.startsWith("http"))) {
+      return <img src={img} className={imgClass} alt="" />;
+    }
+    return <span className={emojiClass}>{img || fallback}</span>;
+  };
+
 
   const handleAddConsole = () => {
     if (!addConsoleName.trim()) return;
@@ -5582,8 +5654,12 @@ export default function App() {
                 <p className="text-xs font-bold text-zinc-200">Terminal #01</p>
                 <p className="text-[10px] text-zinc-500 font-medium">{role === 'admin' ? 'Administrateur' : 'Gérant'}</p>
               </div>
-              <div className="w-9 h-9 rounded-full bg-zinc-850 border border-zinc-700/50 flex items-center justify-center">
-                <User className="w-4 h-4 text-zinc-400" />
+              <div className="w-9 h-9 rounded-full bg-zinc-850 border border-zinc-700/50 flex items-center justify-center overflow-hidden">
+                {systemSettings.logoUrl ? (
+                  <img src={systemSettings.logoUrl} className="w-full h-full object-cover" alt="Logo" onError={(e) => { e.target.src = "/logo.jpg"; }} />
+                ) : (
+                  <User className="w-4 h-4 text-zinc-400" />
+                )}
               </div>
             </div>
           </div>
@@ -5771,7 +5847,7 @@ export default function App() {
                           {products.filter(p => p.stock === 0).map(p => (
                             <div key={p.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
                               <div className="flex items-center gap-2.5">
-                                <span className="text-xl">{p.image}</span>
+                                {renderProductImage(p.image, "🥤", "w-6 h-6 rounded-lg object-cover", "text-xl")}
                                 <div>
                                   <span className="text-xs font-extrabold text-white block">{p.name}</span>
                                   <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">{p.category}</span>
@@ -5814,7 +5890,7 @@ export default function App() {
                           {products.filter(p => p.stock > 0 && p.stock <= p.minThreshold).map(p => (
                             <div key={p.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
                               <div className="flex items-center gap-2.5">
-                                <span className="text-xl">{p.image}</span>
+                                {renderProductImage(p.image, "🥤", "w-6 h-6 rounded-lg object-cover", "text-xl")}
                                 <div>
                                   <span className="text-xs font-extrabold text-white block">{p.name}</span>
                                   <span className="text-[9px] text-zinc-500 font-semibold">
@@ -6594,7 +6670,7 @@ export default function App() {
                         className="glass-panel p-4 rounded-2xl flex flex-col justify-between items-start text-left hover:border-violet-500/40 hover:bg-zinc-900/40 active:scale-[0.98] transition-all stagger-card group h-[140px] relative overflow-hidden"
                       >
                         <div className="flex justify-between items-start w-full">
-                          <span className="text-3xl filter drop-shadow">{p.image}</span>
+                          {renderProductImage(p.image, "🥤", "w-10 h-10 rounded-xl object-cover shadow-md", "text-3xl filter drop-shadow")}
                           <span className="text-[10px] bg-zinc-900 text-zinc-500 px-2 py-0.5 rounded-full font-bold group-hover:bg-violet-950 group-hover:text-violet-300 transition-colors">
                             {p.category.toUpperCase()}
                           </span>
@@ -6689,7 +6765,7 @@ export default function App() {
                       <div key={index} className="flex items-center justify-between p-3 bg-zinc-900/40 border border-zinc-850/60 rounded-xl text-xs">
                         <div className="flex-1 min-w-0 pr-2">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-lg">{item.product.image}</span>
+                            {renderProductImage(item.product.image, "🥤", "w-6 h-6 rounded-lg object-cover", "text-lg")}
                             <span className="font-bold text-white truncate block">{item.product.name}</span>
                           </div>
                           <span className="text-[10px] text-zinc-500 block mt-0.5">{formatPrice(item.product.price)} / u</span>
@@ -6931,7 +7007,9 @@ export default function App() {
                               return (
                                 <tr key={p.id} className="hover:bg-zinc-850/40 transition-colors">
                                   <td className="p-4 flex items-center gap-3">
-                                    <span className="text-xl w-10 h-10 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-center">{p.image}</span>
+                                    <div className="w-10 h-10 rounded-xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-center overflow-hidden">
+                                      {renderProductImage(p.image, "🥤", "w-full h-full object-cover", "text-xl")}
+                                    </div>
                                     <div>
                                       <span className="font-bold text-white block">{p.name}</span>
                                       <span className="text-[10px] text-zinc-500 font-semibold uppercase">ID: {p.id}</span>
@@ -8764,9 +8842,9 @@ export default function App() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-zinc-400 uppercase block">URL du Logo (Image) :</label>
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg border border-zinc-800 bg-zinc-950 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase block">Logo de l'entreprise :</label>
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden flex-shrink-0 flex items-center justify-center">
                             <img 
                               src={systemSettings.logoUrl || "/logo.jpg"} 
                               alt="Logo" 
@@ -8774,12 +8852,41 @@ export default function App() {
                               onError={(e) => { e.target.src = "/logo.jpg"; }}
                             />
                           </div>
-                          <input 
-                            type="text" 
-                            value={systemSettings.logoUrl}
-                            onChange={(e) => setSystemSettings(prev => ({ ...prev, logoUrl: e.target.value }))}
-                            className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
-                          />
+                          <div className="flex-1 flex items-center gap-3">
+                            <div className="flex-1 space-y-1">
+                              <input 
+                                type="file" 
+                                accept="image/*"
+                                onChange={(e) => handleImageUpload(e.target.files[0], (base64) => setSystemSettings(prev => ({ ...prev, logoUrl: base64 })))}
+                                className="hidden" 
+                                id="company-logo-file-input"
+                              />
+                              <label 
+                                htmlFor="company-logo-file-input"
+                                className="px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-[10px] font-bold rounded-lg cursor-pointer transition-all inline-block select-none"
+                              >
+                                Charger un logo
+                              </label>
+                              {systemSettings.logoUrl && systemSettings.logoUrl.startsWith("data:") && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSystemSettings(prev => ({ ...prev, logoUrl: "/logo.jpg" }))}
+                                  className="text-[10px] text-rose-400 font-bold ml-3 hover:underline cursor-pointer"
+                                >
+                                  Réinitialiser
+                                </button>
+                              )}
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <label className="text-[9px] text-zinc-500 font-bold uppercase block">Ou URL :</label>
+                              <input 
+                                type="text" 
+                                value={systemSettings.logoUrl}
+                                onChange={(e) => setSystemSettings(prev => ({ ...prev, logoUrl: e.target.value }))}
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-violet-500 font-semibold"
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -10852,7 +10959,7 @@ export default function App() {
                     className="p-3 bg-zinc-900 hover:bg-zinc-850 rounded-xl border border-zinc-800 hover:border-violet-500/40 text-left flex justify-between items-center text-xs group transition-all"
                   >
                     <div className="flex items-center gap-2">
-                      <span className="text-xl">{prod.image}</span>
+                      {renderProductImage(prod.image, "🥤", "w-6 h-6 rounded-lg object-cover", "text-xl")}
                       <div>
                         <p className="font-bold text-white group-hover:text-violet-300 transition-all">{prod.name}</p>
                         <p className="text-[10px] text-zinc-500">{prod.price.toLocaleString('fr-FR')} FCFA</p>
@@ -11487,8 +11594,8 @@ export default function App() {
               
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-2xl shadow-lg">
-                    {p.image || "📦"}
+                  <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center text-2xl shadow-lg overflow-hidden">
+                    {renderProductImage(p.image, "📦", "w-full h-full object-cover", "text-2xl")}
                   </div>
                   <div>
                     <h3 className="text-base font-black text-white leading-tight">{p.name}</h3>
@@ -12721,7 +12828,7 @@ export default function App() {
 
             <div className="space-y-4">
               <div className="p-3 bg-zinc-950 rounded-xl flex items-center gap-3 border border-zinc-850">
-                <span className="text-2xl">{showAdjustStockModal.image}</span>
+                {renderProductImage(showAdjustStockModal.image, "🥤", "w-8 h-8 rounded-lg object-cover", "text-2xl")}
                 <div>
                   <span className="font-bold text-white block">{showAdjustStockModal.name}</span>
                   <span className="text-zinc-400 text-xs">Stock actuel : <strong>{showAdjustStockModal.stock}</strong></span>
@@ -12806,24 +12913,62 @@ export default function App() {
             </div>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-3 items-end">
-                <div className="col-span-3 space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom du produit :</label>
-                  <input
-                    type="text"
-                    value={editProdName}
-                    onChange={(e) => setEditProdName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block text-center">Icône :</label>
-                  <input
-                    type="text"
-                    value={editProdImage}
-                    onChange={(e) => setEditProdImage(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-center text-white focus:outline-none focus:border-violet-500 font-bold"
-                  />
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom du produit :</label>
+                <input
+                  type="text"
+                  value={editProdName}
+                  onChange={(e) => setEditProdName(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Icône ou Image du produit :</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-zinc-950 border border-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0 text-2xl">
+                    {editProdImage && (editProdImage.startsWith("data:") || editProdImage.startsWith("http")) ? (
+                      <img src={editProdImage} className="w-full h-full object-cover" alt="Prévisualisation" />
+                    ) : (
+                      editProdImage || "📦"
+                    )}
+                  </div>
+                  <div className="flex-1 flex items-center gap-3">
+                    <div className="flex-1 space-y-1">
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => handleImageUpload(e.target.files[0], setEditProdImage)}
+                        className="hidden" 
+                        id="edit-product-file-input"
+                      />
+                      <label 
+                        htmlFor="edit-product-file-input"
+                        className="px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-[10px] font-bold rounded-lg cursor-pointer transition-all inline-block select-none"
+                      >
+                        Charger une image
+                      </label>
+                      {editProdImage && (editProdImage.startsWith("data:") || editProdImage.startsWith("http")) && (
+                        <button
+                          type="button"
+                          onClick={() => setEditProdImage("🥤")}
+                          className="text-[10px] text-rose-400 font-bold ml-3 hover:underline cursor-pointer"
+                        >
+                          Effacer
+                        </button>
+                      )}
+                    </div>
+                    <div className="w-24 space-y-1">
+                      <label className="text-[9px] text-zinc-500 font-bold uppercase block text-right">Ou Emoji :</label>
+                      <input
+                        type="text"
+                        placeholder="🥤"
+                        value={editProdImage && (editProdImage.startsWith("data:") || editProdImage.startsWith("http")) ? "🥤" : editProdImage}
+                        onChange={(e) => setEditProdImage(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2 py-1.5 text-xs text-center text-white focus:outline-none focus:border-violet-500 font-bold"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -12940,26 +13085,63 @@ export default function App() {
             </div>
 
             <div className="space-y-4">
-              <div className="grid grid-cols-4 gap-3 items-end">
-                <div className="col-span-3 space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom du produit :</label>
-                  <input
-                    type="text"
-                    placeholder="ex: Fanta Citron 33cl"
-                    value={addProdName}
-                    onChange={(e) => setAddProdName(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-violet-500"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase block text-center">Icône :</label>
-                  <input
-                    type="text"
-                    placeholder="🥤"
-                    value={addProdImage}
-                    onChange={(e) => setAddProdImage(e.target.value)}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-center text-white focus:outline-none focus:border-violet-500 font-bold"
-                  />
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Nom du produit :</label>
+                <input
+                  type="text"
+                  placeholder="ex: Fanta Citron 33cl"
+                  value={addProdName}
+                  onChange={(e) => setAddProdName(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-violet-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Icône ou Image du produit :</label>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-zinc-950 border border-zinc-800 overflow-hidden flex items-center justify-center flex-shrink-0 text-2xl">
+                    {addProdImage && (addProdImage.startsWith("data:") || addProdImage.startsWith("http")) ? (
+                      <img src={addProdImage} className="w-full h-full object-cover" alt="Prévisualisation" />
+                    ) : (
+                      addProdImage || "📦"
+                    )}
+                  </div>
+                  <div className="flex-1 flex items-center gap-3">
+                    <div className="flex-1 space-y-1">
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={(e) => handleImageUpload(e.target.files[0], setAddProdImage)}
+                        className="hidden" 
+                        id="add-product-file-input"
+                      />
+                      <label 
+                        htmlFor="add-product-file-input"
+                        className="px-3 py-1.5 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 text-[10px] font-bold rounded-lg cursor-pointer transition-all inline-block select-none"
+                      >
+                        Charger une image
+                      </label>
+                      {addProdImage && (addProdImage.startsWith("data:") || addProdImage.startsWith("http")) && (
+                        <button
+                          type="button"
+                          onClick={() => setAddProdImage("🥤")}
+                          className="text-[10px] text-rose-400 font-bold ml-3 hover:underline cursor-pointer"
+                        >
+                          Effacer
+                        </button>
+                      )}
+                    </div>
+                    <div className="w-24 space-y-1">
+                      <label className="text-[9px] text-zinc-500 font-bold uppercase block text-right">Ou Emoji :</label>
+                      <input
+                        type="text"
+                        placeholder="🥤"
+                        value={addProdImage && (addProdImage.startsWith("data:") || addProdImage.startsWith("http")) ? "🥤" : addProdImage}
+                        onChange={(e) => setAddProdImage(e.target.value)}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2 py-1.5 text-xs text-center text-white focus:outline-none focus:border-violet-500 font-bold"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
