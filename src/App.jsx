@@ -1351,7 +1351,7 @@ export default function App() {
   }, [systemSettings.theme]);
 
   useEffect(() => {
-    const initializedTest = localStorage.getItem("system_test_reset_v6_persistence_fix");
+    const initializedTest = localStorage.getItem("system_test_reset_v7_demo_cleanup");
     if (!initializedTest) {
       localStorage.removeItem("system_pos_tickets");
       localStorage.removeItem("system_active_caisse_session");
@@ -1403,7 +1403,7 @@ export default function App() {
         }
       }
 
-      localStorage.setItem("system_test_reset_v6_persistence_fix", "true");
+      localStorage.setItem("system_test_reset_v7_demo_cleanup", "true");
       window.location.reload();
     }
   }, []);
@@ -1461,7 +1461,7 @@ export default function App() {
   }, [activityLog]);
 
   const [sales, setSales] = useState(() => {
-    const initializedTest = localStorage.getItem("system_test_reset_v6_persistence_fix");
+    const initializedTest = localStorage.getItem("system_test_reset_v7_demo_cleanup");
     if (!initializedTest) {
       return [];
     }
