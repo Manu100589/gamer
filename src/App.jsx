@@ -82,6 +82,14 @@ const generateMockSales = () => {
   return [];
 };
 
+const formatLocalDateToYYYYMMDD = (d) => {
+  if (!d || isNaN(d.getTime())) return "";
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 // ============================================================
 // COMPTABILITE VIEW COMPONENT
 // ============================================================
@@ -96,14 +104,14 @@ function ComptabiliteView({
   setShowCancelSaleModal, setShowReceiptModal
 }) {
   const start = React.useMemo(() => {
-    const d = new Date(comptaStartDate);
-    d.setHours(0, 0, 0, 0);
+    const [year, month, day] = comptaStartDate.split('-').map(Number);
+    const d = new Date(year, month - 1, day, 0, 0, 0, 0);
     return d;
   }, [comptaStartDate]);
 
   const end = React.useMemo(() => {
-    const d = new Date(comptaEndDate);
-    d.setHours(23, 59, 59, 999);
+    const [year, month, day] = comptaEndDate.split('-').map(Number);
+    const d = new Date(year, month - 1, day, 23, 59, 59, 999);
     return d;
   }, [comptaEndDate]);
 
@@ -151,8 +159,8 @@ function ComptabiliteView({
         e = today; break;
       default: break;
     }
-    setComptaStartDate(s.toISOString().slice(0, 10));
-    setComptaEndDate(e.toISOString().slice(0, 10));
+    setComptaStartDate(formatLocalDateToYYYYMMDD(s));
+    setComptaEndDate(formatLocalDateToYYYYMMDD(e));
   };
 
   const filteredSales = React.useMemo(() => (sales || []).filter(s => {
@@ -254,19 +262,22 @@ function ComptabiliteView({
     const curr = new Date(start);
     if (isNaN(curr.getTime())) return [];
     while (curr <= end) {
-      days.push(curr.toISOString().slice(0, 10));
+      days.push(formatLocalDateToYYYYMMDD(curr));
       curr.setDate(curr.getDate() + 1);
     }
     const displayDays = days.length > 15 ? days.slice(-15) : days;
     return displayDays.map(day => {
-      const dStart = new Date(day); dStart.setHours(0, 0, 0, 0);
-      const dEnd = new Date(day); dEnd.setHours(23, 59, 59, 999);
+      const [year, month, dNum] = day.split('-').map(Number);
+      const dStart = new Date(year, month - 1, dNum, 0, 0, 0, 0);
+      const dEnd = new Date(year, month - 1, dNum, 23, 59, 59, 999);
       const daySales = (sales || []).filter(s => { if (!s || !s.date) return false; const d = new Date(s.date); return d >= dStart && d <= dEnd && s.status !== "annulée"; });
       const dayExpenses = (expenses || []).filter(e => { if (!e || !e.date) return false; const d = new Date(e.date); return d >= dStart && d <= dEnd; });
       const dayPurchases = (purchases || []).filter(p => { if (!p || !p.date) return false; const d = new Date(p.date); return d >= dStart && d <= dEnd; });
       const rev = daySales.reduce((sum, s) => sum + (s.total || 0), 0);
       const exp = dayExpenses.reduce((sum, e) => sum + (e.amount || 0), 0) + dayPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
-      return { label: new Date(day).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }), revenue: rev, expenses: exp, profit: rev - exp };
+      
+      const localD = new Date(year, month - 1, dNum);
+      return { label: localD.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }), revenue: rev, expenses: exp, profit: rev - exp };
     });
   }, [sales, expenses, purchases, start, end]);
 
@@ -601,14 +612,14 @@ function SalesHistoryView({
   setShowCancelSaleModal, setShowReceiptModal
 }) {
   const start = React.useMemo(() => {
-    const d = new Date(salesHistStartDate);
-    d.setHours(0, 0, 0, 0);
+    const [year, month, day] = salesHistStartDate.split('-').map(Number);
+    const d = new Date(year, month - 1, day, 0, 0, 0, 0);
     return d;
   }, [salesHistStartDate]);
 
   const end = React.useMemo(() => {
-    const d = new Date(salesHistEndDate);
-    d.setHours(23, 59, 59, 999);
+    const [year, month, day] = salesHistEndDate.split('-').map(Number);
+    const d = new Date(year, month - 1, day, 23, 59, 59, 999);
     return d;
   }, [salesHistEndDate]);
 
@@ -648,8 +659,8 @@ function SalesHistoryView({
         e = new Date(today.getFullYear(), today.getMonth(), 0); break;
       default: break;
     }
-    setSalesHistStartDate(s.toISOString().slice(0, 10));
-    setSalesHistEndDate(e.toISOString().slice(0, 10));
+    setSalesHistStartDate(formatLocalDateToYYYYMMDD(s));
+    setSalesHistEndDate(formatLocalDateToYYYYMMDD(e));
   };
 
   const filteredPeriodSales = React.useMemo(() => {
@@ -1615,10 +1626,10 @@ export default function App() {
   // Comptabilité states
   const [comptaStartDate, setComptaStartDate] = useState(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+    return formatLocalDateToYYYYMMDD(new Date(d.getFullYear(), d.getMonth(), 1));
   });
   const [comptaEndDate, setComptaEndDate] = useState(() => {
-    return new Date().toISOString().slice(0, 10);
+    return formatLocalDateToYYYYMMDD(new Date());
   });
   const [comptaCategoryFilter, setComptaCategoryFilter] = useState("all");
   const [comptaSearchQuery, setComptaSearchQuery] = useState("");
@@ -1629,10 +1640,10 @@ export default function App() {
   // Sales History states
   const [salesHistStartDate, setSalesHistStartDate] = useState(() => {
     const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+    return formatLocalDateToYYYYMMDD(new Date(d.getFullYear(), d.getMonth(), 1));
   });
   const [salesHistEndDate, setSalesHistEndDate] = useState(() => {
-    return new Date().toISOString().slice(0, 10);
+    return formatLocalDateToYYYYMMDD(new Date());
   });
   const [salesHistFilterTab, setSalesHistFilterTab] = useState("toutes"); // "toutes" or "annulees"
   const [salesHistShowFilters, setSalesHistShowFilters] = useState(false);
@@ -4009,6 +4020,25 @@ export default function App() {
       ? consoleObj.ratePerHour * newDurationHours
       : Number(newPrepaidAmount || 0);
 
+    const upfrontSaleId = `VTE-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`;
+    if (gameCost > 0) {
+      const newCompletedSale = {
+        id: upfrontSaleId,
+        customer: fullName,
+        seller: role === "admin" ? "Administrateur" : "Gérant",
+        total: gameCost,
+        paid: gameCost,
+        itemsList: [],
+        gameCost: gameCost,
+        snackCost: 0,
+        date: new Date().toISOString(),
+        status: "Terminée",
+        paymentMethod: "espèces",
+        type: "console"
+      };
+      setSales(prev => [newCompletedSale, ...prev]);
+    }
+
     // Auto register new player or update existing profile
     setPlayers(prev => {
       const exists = prev.some(p => p.nom.toLowerCase() === fullName.toLowerCase());
@@ -4068,7 +4098,8 @@ export default function App() {
             prepaidAmount: gameCost,
             totalAmountDue: 0,
             extraSnacksBill: 0,
-            extraSnacksList: []
+            extraSnacksList: [],
+            upfrontSaleId: gameCost > 0 ? upfrontSaleId : null
           }
         };
       }
@@ -4131,6 +4162,22 @@ export default function App() {
 
   // Cancel session completely (refund)
   const handleCancelSession = (consoleId, playerRef, consoleName, prepaidAmount) => {
+    const consoleObj = consoles.find(c => c.id === consoleId);
+    const upfrontSaleId = consoleObj?.activeSession?.upfrontSaleId;
+    if (upfrontSaleId) {
+      setSales(prev => prev.map(s => {
+        if (s.id === upfrontSaleId) {
+          return {
+            ...s,
+            status: "annulée",
+            cancelReason: "Annulation de session",
+            cancelledAt: new Date().toISOString()
+          };
+        }
+        return s;
+      }));
+    }
+
     // Refund the upfront payment
     setStats(prev => ({
       ...prev,
@@ -4301,6 +4348,23 @@ export default function App() {
       `Session interrompue au prorata sur ${consoleName} par ${playerRef}. Consommé: ${finalGameAmount.toLocaleString('fr-FR')} FCFA (Ajustement: ${gameAdjustment.toLocaleString('fr-FR')} FCFA, Snacks: ${finalSnackAmount.toLocaleString('fr-FR')} FCFA)`, 
       "console"
     );
+
+    const totalAdjustment = gameAdjustment + finalSnackAmount;
+    const newCompletedSale = {
+      id: `VTE-ADJ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`,
+      customer: playerRef || "Client Comptant",
+      seller: role === "admin" ? "Administrateur" : "Gérant",
+      total: totalAdjustment,
+      paid: totalAdjustment,
+      itemsList: extraSnacks,
+      gameCost: gameAdjustment,
+      snackCost: finalSnackAmount,
+      date: new Date().toISOString(),
+      status: "Terminée",
+      paymentMethod: "espèces",
+      type: "console"
+    };
+    setSales(prev => [newCompletedSale, ...prev]);
 
     setShowReceiptModal({
       id: `FAC-${Date.now().toString().slice(-6)}`,
@@ -5221,6 +5285,22 @@ export default function App() {
             ...prev
           ]);
 
+          const newCompletedSale = {
+            id: `VTE-SIM-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`,
+            customer: "Client Comptant [SIMULATION]",
+            seller: "Gérant",
+            total: cost,
+            paid: cost,
+            itemsList: [{ product: randProd, quantity: qty }],
+            gameCost: 0,
+            snackCost: cost,
+            date: new Date().toISOString(),
+            status: "Terminée",
+            paymentMethod: "espèces",
+            type: "pos"
+          };
+          setSales(prev => [newCompletedSale, ...prev]);
+
           addLog(
             "pos_sale",
             `[SIMULATION] Client Comptant achète ${qty}x ${randProd.name} (${cost.toLocaleString('fr-FR')} FCFA)`,
@@ -5300,6 +5380,154 @@ export default function App() {
           return `Console ${rc.name} mise en maintenance`;
         }
         return "Pas de console disponible pour simuler un changement de maintenance";
+      },
+
+      // 4. Player leaves / Closes session [SIMULATION]
+      () => {
+        const occupiedConsoles = consoles.filter(c => c.status === "occupée");
+        if (occupiedConsoles.length === 0) return "Aucune session active à clôturer";
+        
+        const randomConsole = occupiedConsoles[Math.floor(Math.random() * occupiedConsoles.length)];
+        const session = randomConsole.activeSession;
+        
+        // Calculate game cost
+        let gameCost = 0;
+        if (session.durationType === "limited") {
+          const hours = session.durationMinutes / 60;
+          gameCost = hours * randomConsole.ratePerHour;
+        } else {
+          // Unlimited - simulate some time played
+          const elapsedSec = session.timeElapsedSeconds || 3600; // default 1 hour if just started
+          const hours = Math.max(1, Math.round(elapsedSec / 3600));
+          gameCost = hours * randomConsole.ratePerHour;
+        }
+        
+        const snackCost = session.extraSnacksBill || 0;
+        const total = gameCost + snackCost;
+        
+        // Update stats
+        setStats(prev => ({
+          ...prev,
+          gamesRevenue: prev.gamesRevenue + gameCost,
+          snackRevenue: prev.snackRevenue + snackCost,
+          cashBalance: prev.cashBalance + total
+        }));
+
+        if (caisseStatus === "ouverte") {
+          setActiveCaisseSession(prev => ({
+            ...prev,
+            gamesRevenue: prev.gamesRevenue + gameCost,
+            snackRevenue: prev.snackRevenue + snackCost,
+            paymentEspèces: (prev.paymentEspèces || 0) + total,
+            transactionsCount: (prev.transactionsCount || 0) + 1
+          }));
+        }
+
+        // Update top consoles
+        setTopConsolesState(prev => {
+          const exists = prev.find(item => item.name === randomConsole.name);
+          if (exists) {
+            return prev.map(item => 
+              item.name === randomConsole.name 
+                ? { ...item, revenue: item.revenue + gameCost }
+                : item
+            ).sort((a, b) => b.revenue - a.revenue);
+          } else {
+            return [...prev, { name: randomConsole.name, revenue: gameCost, sessions: 1 }]
+              .sort((a, b) => b.revenue - a.revenue)
+              .slice(0, 5);
+          }
+        });
+
+        // Update detailed daily consoles stats
+        setDailyConsolesRevenue(prev => prev.map(item => {
+          if (item.name === randomConsole.name) {
+            return {
+              ...item,
+              revenue: item.revenue + gameCost
+            };
+          }
+          return item;
+        }));
+
+        // Update product stats
+        const extraSnacks = session.extraSnacksList || [];
+        if (extraSnacks.length > 0) {
+          setTopProductsState(prev => {
+            let updated = [...prev];
+            extraSnacks.forEach(cartItem => {
+              const index = updated.findIndex(x => x.name === cartItem.product.name);
+              if (index > -1) {
+                updated[index] = {
+                  ...updated[index],
+                  quantity: updated[index].quantity + cartItem.quantity,
+                  revenue: updated[index].revenue + (cartItem.product.price * cartItem.quantity)
+                };
+              } else {
+                updated.push({
+                  name: cartItem.product.name,
+                  quantity: cartItem.quantity,
+                  revenue: cartItem.product.price * cartItem.quantity,
+                  category: cartItem.product.category
+                });
+              }
+            });
+            return updated.sort((a, b) => b.revenue - a.revenue).slice(0, 5);
+          });
+
+          setDailyProductsRevenue(prev => {
+            return prev.map(item => {
+              const sold = extraSnacks.find(x => x.product.name === item.name);
+              if (sold) {
+                return {
+                  ...item,
+                  quantity: item.quantity + sold.quantity,
+                  revenue: item.revenue + (sold.product.price * sold.quantity)
+                };
+              }
+              return item;
+            });
+          });
+        }
+
+        // Reset console status
+        setConsoles(prev => prev.map(c => {
+          if (c.id === randomConsole.id) {
+            return {
+              ...c,
+              status: "libre",
+              totalSessions: (c.totalSessions || 0) + 1,
+              totalRevenue: (c.totalRevenue || 0) + gameCost,
+              activeSession: null
+            };
+          }
+          return c;
+        }));
+
+        // Add sale to sales history!
+        const newCompletedSale = {
+          id: `VTE-SIM-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`,
+          customer: session.player || "Joueur Simulé",
+          seller: "Gérant",
+          total: total,
+          paid: total,
+          itemsList: extraSnacks,
+          gameCost: gameCost,
+          snackCost: snackCost,
+          date: new Date().toISOString(),
+          status: "Terminée",
+          paymentMethod: "espèces",
+          type: "console"
+        };
+        setSales(prev => [newCompletedSale, ...prev]);
+
+        addLog(
+          "console_stop", 
+          `[SIMULATION] Session clôturée sur ${randomConsole.name} par ${session.player}. Facturé: ${total.toLocaleString('fr-FR')} FCFA (Jeux: ${gameCost.toLocaleString('fr-FR')} FCFA, Snack: ${snackCost.toLocaleString('fr-FR')} FCFA)`, 
+          "console"
+        );
+
+        return `Session clôturée pour ${session.player} sur ${randomConsole.name}`;
       }
     ];
 
