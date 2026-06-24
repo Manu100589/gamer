@@ -4078,24 +4078,15 @@ export default function App() {
       setConsoles(prev => prev.map(c => {
         if (c.status === "occupée" && c.activeSession) {
           const newElapsed = c.activeSession.timeElapsedSeconds + 1;
-          
-          // Calculate live additional game amount due
-          const prepaid = c.activeSession.prepaidAmount || 0;
-          let nextAmount = 0;
-          if (c.activeSession.durationType === "unlimited") {
-            // No hourly billing for unlimited sessions
-            nextAmount = 0;
-          } else {
-            // For limited, they prepaid full forfait, so additional due is 0
-            nextAmount = 0;
-          }
 
           return {
             ...c,
             activeSession: {
               ...c.activeSession,
               timeElapsedSeconds: newElapsed,
-              totalAmountDue: nextAmount
+              // Keep totalAmountDue = prepaidAmount (the session cost)
+              // Only update if not already set from prepaid
+              totalAmountDue: c.activeSession.prepaidAmount || c.activeSession.totalAmountDue || 0
             }
           };
         }
@@ -4142,6 +4133,11 @@ export default function App() {
     const fullName = newPlayerPseudo.trim();
     const cleanPhone = newPlayerPhone.trim();
 
+    // Calculate the session price upfront
+    const sessionPrice = newDurationType === "limited"
+      ? (consoleObj.ratePerHour || 0) * newDurationHours
+      : 0;
+
     // Auto register new player or update existing profile
     setPlayers(prev => {
       const exists = prev.some(p => p.nom.toLowerCase() === fullName.toLowerCase());
@@ -4180,8 +4176,8 @@ export default function App() {
             durationType: newDurationType,
             durationMinutes: durationMinutes,
             timeElapsedSeconds: 0,
-            prepaidAmount: 0,
-            totalAmountDue: 0,
+            prepaidAmount: sessionPrice,
+            totalAmountDue: sessionPrice,
             extraSnacksBill: 0,
             extraSnacksList: [],
             upfrontSaleId: null
@@ -4190,6 +4186,7 @@ export default function App() {
       }
       return c;
     }));
+
 
     // Update detailed daily consoles stats
     setDailyConsolesRevenue(prev => prev.map(item => {
