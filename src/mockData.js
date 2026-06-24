@@ -148,7 +148,8 @@ export const initialStats = {
   playersPresent: 0,
   gamesRevenue: 0.00,
   snackRevenue: 0.00,
-  cashBalance: 0.00
+  cashBalance: 0.00,
+  mobileBalance: 0.00
 };
 
 export const initialTopConsoles = [];

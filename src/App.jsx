@@ -94,7 +94,7 @@ const formatLocalDateToYYYYMMDD = (d) => {
 // COMPTABILITE VIEW COMPONENT
 // ============================================================
 function ComptabiliteView({
-  sales, expenses, purchases, products, formatPrice,
+  stats, sales, expenses, purchases, products, formatPrice,
   comptaStartDate, comptaEndDate, setComptaStartDate, setComptaEndDate,
   comptaCategoryFilter, setComptaCategoryFilter,
   comptaSearchQuery, setComptaSearchQuery,
@@ -218,13 +218,33 @@ function ComptabiliteView({
     return d >= start && d <= end;
   }), [purchases, start, end]);
 
+  const periodDrinksRevenue = React.useMemo(() => (sales || []).filter(s => {
+    if (!s) return false;
+    const d = new Date(s.date || Date.now());
+    return d >= start && d <= end && s.status !== "annulée";
+  }).reduce((sum, s) => {
+    const items = s.itemsList || [];
+    const filteredItems = items.filter(item => item && item.product && item.product.category === "boissons");
+    return sum + filteredItems.reduce((s2, item) => s2 + (item.product.price || 0) * (item.quantity || 0), 0);
+  }, 0), [sales, start, end]);
+
+  const periodDrinksCOGS = React.useMemo(() => (sales || []).filter(s => {
+    if (!s) return false;
+    const d = new Date(s.date || Date.now());
+    return d >= start && d <= end && s.status !== "annulée";
+  }).reduce((sum, s) => {
+    const items = s.itemsList || [];
+    const filteredItems = items.filter(item => item && item.product && item.product.category === "boissons");
+    return sum + filteredItems.reduce((s2, item) => s2 + (item.product.purchasePrice || 0) * (item.quantity || 0), 0);
+  }, 0), [sales, start, end]);
+
   const periodExpensesAmount = comptaPeriodExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
   const periodPurchasesAmount = comptaPeriodPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
   const periodTotalOPEX = periodExpensesAmount + periodPurchasesAmount;
   const periodMargeBrute = periodTotalRevenue - periodCOGS;
-  const periodNetProfit = periodMargeBrute - periodTotalOPEX;
+  const periodNetProfit = (periodDrinksRevenue - periodDrinksCOGS) - periodTotalOPEX;
   const periodMargePercent = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) * 100 : 0;
-  const netProfitMargePercent = periodTotalRevenue > 0 ? (periodNetProfit / periodTotalRevenue) * 100 : 0;
+  const netProfitMargePercent = periodDrinksRevenue > 0 ? (periodNetProfit / periodDrinksRevenue) * 100 : 0;
 
   const periodCancelledSales = (sales || []).filter(s => {
     if (!s) return false;
@@ -303,7 +323,14 @@ function ComptabiliteView({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-center text-zinc-500">
+              <span className="text-[9px] font-extrabold uppercase tracking-wider">Solde en Caisse</span>
+              <span className="text-xs">💰</span>
+            </div>
+            <p className="text-base font-black text-fuchsia-400 font-mono tracking-tight">{formatPrice(stats.cashBalance)}</p>
+          </div>
           <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 hover:border-zinc-750 transition-all duration-300">
             <div className="flex justify-between items-center text-zinc-500">
               <span className="text-[9px] font-extrabold uppercase tracking-wider">Bénéfice Net</span>
@@ -2082,6 +2109,8 @@ export default function App() {
     const target = expenses.find(e => e.id === id);
     if (!target) return;
 
+    if (!window.confirm(`Voulez-vous vraiment supprimer la dépense de ${target.amount.toLocaleString('fr-FR')} FCFA (${target.category}) ?`)) return;
+
     setExpenses(prev => prev.filter(e => e.id !== id));
 
     // refund to stats.cashBalance
@@ -2236,12 +2265,16 @@ export default function App() {
     setStats(prev => {
       const newGamesRev = Math.max(0, prev.gamesRevenue - (sale.gameCost || 0));
       const newSnacksRev = Math.max(0, prev.snackRevenue - (sale.snackCost || (sale.total - (sale.gameCost || 0))));
-      const newCash = prev.cashBalance - (sale.paid || sale.total);
+      const refundCash = sale.cashUsed !== undefined ? sale.cashUsed : (sale.paymentMethod === "mobile money" ? 0 : (sale.paid || sale.total));
+      const refundMobile = sale.mobileUsed !== undefined ? sale.mobileUsed : (sale.paymentMethod === "mobile money" ? (sale.paid || sale.total) : 0);
+      const newCash = prev.cashBalance - refundCash;
+      const newMobile = (prev.mobileBalance || 0) - refundMobile;
       return {
         ...prev,
         gamesRevenue: newGamesRev,
         snackRevenue: newSnacksRev,
-        cashBalance: newCash
+        cashBalance: newCash,
+        mobileBalance: newMobile
       };
     });
 
@@ -2571,6 +2604,8 @@ export default function App() {
     const target = purchases.find(p => p.id === id);
     if (!target) return;
 
+    if (!window.confirm(`Voulez-vous vraiment supprimer l'achat de ${target.totalAmount.toLocaleString('fr-FR')} FCFA (${target.quantity}x ${target.product}) ?`)) return;
+
     setPurchases(prev => prev.filter(p => p.id !== id));
 
     // refund cashBalance
@@ -2650,10 +2685,16 @@ export default function App() {
     setActiveCaisseSession(newSession);
     setCaisseStatus("ouverte");
 
-    // Sync stats.cashBalance with opening balance
+    setDailySessionsCount(0);
+    setDailySalesCount(0);
+
+    // Sync stats.cashBalance with opening balance and reset daily revenues
     setStats(prev => ({
       ...prev,
-      cashBalance: openingBal
+      gamesRevenue: 0,
+      snackRevenue: 0,
+      cashBalance: openingBal,
+      mobileBalance: 0
     }));
 
     addLog(
@@ -3412,9 +3453,9 @@ export default function App() {
     setShowMergeModal(null);
   };
 
-  const handleConfirmPayment = () => {
-    if (!showPaymentModal) return;
-    const inv = showPaymentModal;
+  const handleConfirmPayment = (directInvoice = null) => {
+    const inv = directInvoice || showPaymentModal;
+    if (!inv) return;
     const total = inv.total;
 
     let cashUsed = 0;
@@ -3439,11 +3480,13 @@ export default function App() {
       const newGamesRev = prev.gamesRevenue + inv.gameCost;
       const newSnacksRev = prev.snackRevenue + inv.snackCost;
       const newCash = prev.cashBalance + cashUsed;
+      const newMobile = (prev.mobileBalance || 0) + mobileUsed;
       return {
         ...prev,
         gamesRevenue: newGamesRev,
         snackRevenue: newSnacksRev,
-        cashBalance: newCash
+        cashBalance: newCash,
+        mobileBalance: newMobile
       };
     });
 
@@ -3460,6 +3503,7 @@ export default function App() {
     }
 
     if (inv.type === "pos") {
+      setDailySalesCount(prev => prev + 1);
       setProducts(prev => {
         return prev.map(p => {
           const sold = inv.itemsList.find(x => x.product.id === p.id);
@@ -3626,6 +3670,7 @@ export default function App() {
             ...c,
             status: "libre",
             totalTimeSeconds: (c.totalTimeSeconds || 0) + sessionElapsed,
+            totalRevenue: (c.totalRevenue || 0) + inv.gameCost,
             activeSession: null
           };
         }
@@ -3652,6 +3697,8 @@ export default function App() {
       date: new Date().toISOString(),
       status: "Terminée",
       paymentMethod: pmText,
+      cashUsed: cashUsed,
+      mobileUsed: mobileUsed,
       type: inv.type === "console" ? "console" : "pos"
     };
     setSales(prev => [newCompletedSale, ...prev]);
@@ -3719,6 +3766,7 @@ export default function App() {
 
   const handleDeleteExpenseCategory = (name) => {
     if (role !== "admin") return;
+    if (!window.confirm(`Voulez-vous vraiment supprimer la catégorie de dépenses "${name}" ?`)) return;
     setExpenseCategories(prev => prev.filter(c => c !== name));
     addLog("expense_category_delete", `Catégorie de dépenses supprimée : ${name}`, "console");
   };
@@ -3732,6 +3780,66 @@ export default function App() {
       localStorage.removeItem("system_consoles");
       localStorage.removeItem("system_products");
       localStorage.removeItem("system_pos_tickets");
+      window.location.reload();
+    }
+  };
+
+  const handleResetAccounts = () => {
+    if (role !== "admin") return;
+    if (confirm("⚠️ ATTENTION : Voulez-vous vraiment réinitialiser TOUS les comptes et statistiques à zéro ?\n\nCette action va :\n- Effacer l'historique des ventes, dépenses et achats\n- Effacer l'historique et les sessions de caisse (shifts)\n- Réinitialiser le solde en caisse et toutes les recettes à 0\n- Remettre à zéro les statistiques des consoles et des joueurs\n\nCette action est irréversible !")) {
+      localStorage.removeItem("system_pos_tickets");
+      localStorage.removeItem("system_active_caisse_session");
+      localStorage.removeItem("system_expenses");
+      localStorage.removeItem("system_purchases");
+      localStorage.removeItem("system_activity_log");
+      localStorage.removeItem("system_stock_movements");
+      localStorage.removeItem("system_sales");
+      localStorage.removeItem("system_caisse_sessions");
+      localStorage.removeItem("system_stats");
+      localStorage.removeItem("system_top_consoles");
+      localStorage.removeItem("system_top_products");
+      localStorage.removeItem("system_daily_consoles_revenue");
+      localStorage.removeItem("system_daily_products_revenue");
+
+      // Reset consoles statistics but keep their configurations
+      const savedConsoles = localStorage.getItem("system_consoles");
+      if (savedConsoles) {
+        try {
+          const parsed = JSON.parse(savedConsoles);
+          const resetConsoles = parsed.map(c => ({
+            ...c,
+            status: "libre",
+            totalSessions: 0,
+            totalRevenue: 0,
+            totalTimeSeconds: 0,
+            activeSession: null
+          }));
+          localStorage.setItem("system_consoles", JSON.stringify(resetConsoles));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Reset players statistics but keep their profiles
+      const savedPlayers = localStorage.getItem("system_players");
+      if (savedPlayers) {
+        try {
+          const parsed = JSON.parse(savedPlayers);
+          const resetPlayers = parsed.map(p => ({
+            ...p,
+            totalSessions: 0,
+            totalSpent: 0,
+            totalTimeMinutes: 0
+          }));
+          localStorage.setItem("system_players", JSON.stringify(resetPlayers));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Reset caisse status
+      localStorage.setItem("system_caisse_status", "fermée");
+
       window.location.reload();
     }
   };
@@ -3833,6 +3941,10 @@ export default function App() {
   };
 
   const handleDeleteTicket = (id) => {
+    const ticketObj = tickets.find(t => t.id === id);
+    const ticketName = ticketObj ? ticketObj.name : "ce ticket";
+    if (!window.confirm(`Voulez-vous vraiment supprimer ${ticketName} ?`)) return;
+
     if (tickets.length <= 1) {
       setTickets([
         { id: "default", name: "Ticket 1", cart: [], posCustomer: "", posAssociateConsoleId: "" }
@@ -3916,8 +4028,8 @@ export default function App() {
     }
   }, [showStartModal]);
   const [closeSessionHours, setCloseSessionHours] = useState(1);
-  const [dailySessionsCount, setDailySessionsCount] = useState(3);
-  const [dailySalesCount, setDailySalesCount] = useState(5);
+  const [dailySessionsCount, setDailySessionsCount] = useState(0);
+  const [dailySalesCount, setDailySalesCount] = useState(0);
 
   // Refs for GSAP animations
   const tabContentRef = useRef(null);
@@ -4012,32 +4124,11 @@ export default function App() {
 
   // Start a new console session
   const handleStartSession = (consoleObj) => {
-    if (!newPlayerPseudo.trim() || !newPlayerPhone.trim()) return;
+    if (!newPlayerPseudo.trim()) return;
 
     const durationMinutes = newDurationType === "limited" ? newDurationHours * 60 : 0;
     const fullName = newPlayerPseudo.trim();
-    const gameCost = newDurationType === "limited"
-      ? consoleObj.ratePerHour * newDurationHours
-      : Number(newPrepaidAmount || 0);
-
-    const upfrontSaleId = `VTE-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`;
-    if (gameCost > 0) {
-      const newCompletedSale = {
-        id: upfrontSaleId,
-        customer: fullName,
-        seller: role === "admin" ? "Administrateur" : "Gérant",
-        total: gameCost,
-        paid: gameCost,
-        itemsList: [],
-        gameCost: gameCost,
-        snackCost: 0,
-        date: new Date().toISOString(),
-        status: "Terminée",
-        paymentMethod: "espèces",
-        type: "console"
-      };
-      setSales(prev => [newCompletedSale, ...prev]);
-    }
+    const cleanPhone = newPlayerPhone.trim();
 
     // Auto register new player or update existing profile
     setPlayers(prev => {
@@ -4046,38 +4137,21 @@ export default function App() {
         return prev.map(p => p.nom.toLowerCase() === fullName.toLowerCase() ? {
           ...p,
           totalSessions: (p.totalSessions || 0) + 1,
-          totalSpent: (p.totalSpent || 0) + gameCost,
           totalTimeMinutes: (p.totalTimeMinutes || 0) + durationMinutes
         } : p);
       } else {
         return [{
           id: Date.now(),
           nom: fullName,
-          telephone: newPlayerPhone.trim(),
+          telephone: cleanPhone,
           email: "",
           dateInscription: new Date().toISOString(),
           totalSessions: 1,
-          totalSpent: gameCost,
+          totalSpent: 0,
           totalTimeMinutes: durationMinutes
         }, ...prev];
       }
     });
-    
-    // Update daily revenue stats immediately since payment is made BEFORE playing
-    setStats(prev => ({
-      ...prev,
-      gamesRevenue: prev.gamesRevenue + gameCost,
-      cashBalance: prev.cashBalance + gameCost
-    }));
-
-    if (caisseStatus === "ouverte") {
-      setActiveCaisseSession(prev => ({
-        ...prev,
-        gamesRevenue: prev.gamesRevenue + gameCost,
-        paymentEspèces: (prev.paymentEspèces || 0) + gameCost,
-        transactionsCount: (prev.transactionsCount || 0) + 1
-      }));
-    }
 
     setConsoles(prev => prev.map(c => {
       if (c.id === consoleObj.id) {
@@ -4085,21 +4159,20 @@ export default function App() {
           ...c,
           status: "occupée",
           totalSessions: (c.totalSessions || 0) + 1,
-          totalRevenue: (c.totalRevenue || 0) + gameCost,
           activeSession: {
             player: fullName,
             firstName: fullName,
             lastName: "",
-            phone: newPlayerPhone.trim(),
+            phone: cleanPhone,
             startTime: new Date().toISOString(),
             durationType: newDurationType,
             durationMinutes: durationMinutes,
             timeElapsedSeconds: 0,
-            prepaidAmount: gameCost,
+            prepaidAmount: 0,
             totalAmountDue: 0,
             extraSnacksBill: 0,
             extraSnacksList: [],
-            upfrontSaleId: gameCost > 0 ? upfrontSaleId : null
+            upfrontSaleId: null
           }
         };
       }
@@ -4111,7 +4184,6 @@ export default function App() {
       if (item.name === consoleObj.name) {
         return {
           ...item,
-          revenue: item.revenue + gameCost,
           sessions: item.sessions + 1
         };
       }
@@ -4124,11 +4196,11 @@ export default function App() {
       if (exists) {
         return prev.map(item => 
           item.name === consoleObj.name 
-            ? { ...item, revenue: item.revenue + gameCost, sessions: item.sessions + 1 }
+            ? { ...item, sessions: item.sessions + 1 }
             : item
         ).sort((a, b) => b.revenue - a.revenue);
       } else {
-        return [...prev, { name: consoleObj.name, revenue: gameCost, sessions: 1 }]
+        return [...prev, { name: consoleObj.name, revenue: 0, sessions: 1 }]
           .sort((a, b) => b.revenue - a.revenue)
           .slice(0, 5);
       }
@@ -4136,21 +4208,9 @@ export default function App() {
 
     addLog(
       "console_start", 
-      `Session démarrée et prépayée (${gameCost.toLocaleString('fr-FR')} FCFA) sur ${consoleObj.name} pour ${fullName} (${newDurationType === 'unlimited' ? 'Temps libre' : newDurationHours + 'h00'})`, 
+      `Session démarrée sur ${consoleObj.name} pour ${fullName} (${newDurationType === 'unlimited' ? 'Temps libre' : newDurationHours + 'h00'})`, 
       "console"
     );
-
-    // Show upfront payment invoice
-    setShowReceiptModal({
-      id: `FAC-${Date.now().toString().slice(-6)}`,
-      customer: fullName,
-      item: consoleObj.name,
-      gameCost: gameCost,
-      snackCost: 0,
-      total: gameCost,
-      date: new Date().toLocaleTimeString(),
-      type: "Forfait Prépayé (Démarrage)"
-    });
 
     // Reset forms and close modal
     setNewPlayerPseudo("");
@@ -4160,43 +4220,25 @@ export default function App() {
     setShowStartModal(null);
   };
 
-  // Cancel session completely (refund)
-  const handleCancelSession = (consoleId, playerRef, consoleName, prepaidAmount) => {
-    const consoleObj = consoles.find(c => c.id === consoleId);
-    const upfrontSaleId = consoleObj?.activeSession?.upfrontSaleId;
-    if (upfrontSaleId) {
-      setSales(prev => prev.map(s => {
-        if (s.id === upfrontSaleId) {
-          return {
-            ...s,
-            status: "annulée",
-            cancelReason: "Annulation de session",
-            cancelledAt: new Date().toISOString()
-          };
-        }
-        return s;
-      }));
-    }
-
-    // Refund the upfront payment
-    setStats(prev => ({
-      ...prev,
-      gamesRevenue: prev.gamesRevenue - prepaidAmount,
-      cashBalance: prev.cashBalance - prepaidAmount
+  // Cancel session completely (no refund needed since no prepayment)
+  const handleCancelSession = (consoleId, playerRef, consoleName) => {
+    setConsoles(prev => prev.map(c => {
+      if (c.id === consoleId) {
+        return {
+          ...c,
+          status: "libre",
+          activeSession: null,
+          totalSessions: Math.max(0, (c.totalSessions || 0) - 1)
+        };
+      }
+      return c;
     }));
 
-    if (caisseStatus === "ouverte") {
-      setActiveCaisseSession(prev => ({
-        ...prev,
-        refunds: prev.refunds + prepaidAmount
-      }));
-    }
-
+    // Update detailed daily consoles stats
     setDailyConsolesRevenue(prev => prev.map(item => {
       if (item.name === consoleName) {
         return {
           ...item,
-          revenue: Math.max(0, item.revenue - prepaidAmount),
           sessions: Math.max(0, item.sessions - 1)
         };
       }
@@ -4208,59 +4250,52 @@ export default function App() {
       if (exists) {
         return prev.map(item => 
           item.name === consoleName 
-            ? { ...item, revenue: Math.max(0, item.revenue - prepaidAmount), sessions: Math.max(0, item.sessions - 1) }
+            ? { ...item, sessions: Math.max(0, item.sessions - 1) }
             : item
         ).sort((a, b) => b.revenue - a.revenue);
       }
       return prev;
     });
 
-    setConsoles(prev => prev.map(c => {
-      if (c.id === consoleId) {
+    setPlayers(prev => prev.map(p => {
+      if (p.nom.toLowerCase() === playerRef.toLowerCase()) {
         return {
-          ...c,
-          status: "libre",
-          activeSession: null,
-          totalSessions: Math.max(0, (c.totalSessions || 0) - 1),
-          totalRevenue: Math.max(0, (c.totalRevenue || 0) - prepaidAmount)
+          ...p,
+          totalSessions: Math.max(0, (p.totalSessions || 0) - 1)
         };
       }
-      return c;
+      return p;
     }));
 
     addLog(
       "console_stop", 
-      `Session annulée avec remboursement de ${prepaidAmount.toLocaleString('fr-FR')} FCFA sur ${consoleName} pour ${playerRef}`, 
+      `Session annulée sur ${consoleName} pour ${playerRef}`, 
       "console"
     );
 
     setShowInterruptModal(null);
   };
 
-  // Interrupt and charge prorata (adjust upfront payment)
+  // Interrupt and charge prorata (no prepayment)
   const handleInterruptProrata = (consoleId, elapsedSeconds, finalSnackAmount, playerRef, consoleName, ratePerHour, prepaidAmount, durationType = "unlimited") => {
     const elapsedHours = elapsedSeconds / 3600;
-    const finalGameAmount = durationType === "limited"
-      ? Math.round(elapsedHours * ratePerHour)
-      : prepaidAmount; // No hourly prorata refund for unlimited sessions since pricing is arbitrary
-    
-    // Adjust stats since prepaidAmount was already added at the start.
-    const gameAdjustment = finalGameAmount - prepaidAmount;
-    const cashAdjustment = gameAdjustment + finalSnackAmount;
+    const finalGameAmount = Math.round(elapsedHours * ratePerHour);
+    const totalAmount = finalGameAmount + finalSnackAmount;
 
     setStats(prev => ({
       ...prev,
-      gamesRevenue: prev.gamesRevenue + gameAdjustment,
+      gamesRevenue: prev.gamesRevenue + finalGameAmount,
       snackRevenue: prev.snackRevenue + finalSnackAmount,
-      cashBalance: prev.cashBalance + cashAdjustment
+      cashBalance: prev.cashBalance + totalAmount
     }));
 
     if (caisseStatus === "ouverte") {
       setActiveCaisseSession(prev => ({
         ...prev,
-        gamesRevenue: prev.gamesRevenue + (gameAdjustment > 0 ? gameAdjustment : 0),
+        gamesRevenue: prev.gamesRevenue + finalGameAmount,
         snackRevenue: prev.snackRevenue + finalSnackAmount,
-        refunds: prev.refunds + (gameAdjustment < 0 ? Math.abs(gameAdjustment) : 0)
+        paymentEspèces: (prev.paymentEspèces || 0) + totalAmount,
+        transactionsCount: (prev.transactionsCount || 0) + 1
       }));
     }
 
@@ -4271,7 +4306,7 @@ export default function App() {
       if (exists) {
         return prev.map(item => 
           item.name === consoleName 
-            ? { ...item, revenue: item.revenue + gameAdjustment }
+            ? { ...item, revenue: item.revenue + finalGameAmount }
             : item
         ).sort((a, b) => b.revenue - a.revenue);
       } else {
@@ -4285,7 +4320,7 @@ export default function App() {
       if (item.name === consoleName) {
         return {
           ...item,
-          revenue: item.revenue + gameAdjustment
+          revenue: item.revenue + finalGameAmount
         };
       }
       return item;
@@ -4337,27 +4372,38 @@ export default function App() {
           status: "libre",
           activeSession: null,
           totalTimeSeconds: (c.totalTimeSeconds || 0) + elapsedSeconds,
-          totalRevenue: (c.totalRevenue || 0) + gameAdjustment
+          totalRevenue: (c.totalRevenue || 0) + finalGameAmount
         };
       }
       return c;
     }));
 
+    setPlayers(prev => prev.map(p => {
+      if (p.nom.toLowerCase() === playerRef.toLowerCase()) {
+        const elapsedMin = Math.round(elapsedSeconds / 60);
+        return {
+          ...p,
+          totalSpent: (p.totalSpent || 0) + totalAmount,
+          totalTimeMinutes: (p.totalTimeMinutes || 0) + elapsedMin
+        };
+      }
+      return p;
+    }));
+
     addLog(
       "console_stop", 
-      `Session interrompue au prorata sur ${consoleName} par ${playerRef}. Consommé: ${finalGameAmount.toLocaleString('fr-FR')} FCFA (Ajustement: ${gameAdjustment.toLocaleString('fr-FR')} FCFA, Snacks: ${finalSnackAmount.toLocaleString('fr-FR')} FCFA)`, 
+      `Session interrompue au prorata sur ${consoleName} par ${playerRef}. Facturé: ${totalAmount.toLocaleString('fr-FR')} FCFA (Jeu: ${finalGameAmount.toLocaleString('fr-FR')} FCFA, Snacks: ${finalSnackAmount.toLocaleString('fr-FR')} FCFA)`, 
       "console"
     );
 
-    const totalAdjustment = gameAdjustment + finalSnackAmount;
     const newCompletedSale = {
       id: `VTE-ADJ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`,
       customer: playerRef || "Client Comptant",
       seller: role === "admin" ? "Administrateur" : "Gérant",
-      total: totalAdjustment,
-      paid: totalAdjustment,
+      total: totalAmount,
+      paid: totalAmount,
       itemsList: extraSnacks,
-      gameCost: gameAdjustment,
+      gameCost: finalGameAmount,
       snackCost: finalSnackAmount,
       date: new Date().toISOString(),
       status: "Terminée",
@@ -4372,8 +4418,8 @@ export default function App() {
       item: consoleName,
       gameCost: finalGameAmount,
       snackCost: finalSnackAmount,
-      total: finalGameAmount + finalSnackAmount,
-      prepaid: prepaidAmount,
+      total: totalAmount,
+      prepaid: 0,
       date: new Date().toLocaleTimeString(),
       type: "Interruption Session (Prorata)"
     });
@@ -4387,7 +4433,9 @@ export default function App() {
     if (consoleObj.activeSession?.durationType === "limited") {
       setCloseSessionHours(consoleObj.activeSession.durationMinutes / 60);
     } else {
-      setCloseSessionHours(1); // Default to 1 hour
+      const elapsedSeconds = consoleObj.activeSession?.timeElapsedSeconds || 0;
+      const elapsedHours = Math.round((elapsedSeconds / 3600) * 100) / 100;
+      setCloseSessionHours(elapsedHours);
     }
   };
 
@@ -5051,6 +5099,8 @@ export default function App() {
         cashBalance: newCash
       };
     });
+
+    setDailySalesCount(prev => prev + 1);
 
     if (caisseStatus === "ouverte") {
       setActiveCaisseSession(prev => ({
@@ -5762,13 +5812,28 @@ export default function App() {
             <button
               onClick={() => setActiveTab("caisse")}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                activeTab === "caisse"
+                activeTab === "caisse" && caisseSubTab !== "historique"
                   ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
                   : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
               }`}
             >
               <Wallet className="w-4 h-4 text-amber-500" />
               Gestion Caisse
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab("caisse");
+                setCaisseSubTab("historique");
+              }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "caisse" && caisseSubTab === "historique"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <Clock className="w-4 h-4 text-teal-400" />
+              Historique des Shifts
             </button>
 
             {role === "admin" && (
@@ -6019,34 +6084,54 @@ export default function App() {
                   </div>
 
                   {/* Total cash balance */}
-                  <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex items-center justify-between shadow-md border-zinc-800">
+                  <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-md border-zinc-800">
                     <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-purple-600/5 blur-xl"></div>
-                    <div className="space-y-1 w-full">
-                      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Solde de Caisse Actuel</p>
-                      
-                      {role === "admin" ? (
-                        <>
-                          <h3 className="text-4xl font-extrabold text-white tracking-tight">
-                            {stats.cashBalance.toLocaleString('fr-FR')} FCFA
-                          </h3>
-                          <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                            Caisse équilibrée
-                          </p>
-                        </>
-                      ) : (
-                        <div className="py-2 px-3 bg-zinc-900/80 border border-zinc-800 rounded-xl flex items-center gap-2 mt-1">
-                          <AlertTriangle className="w-4 h-4 text-amber-500" />
-                          <span className="text-xs text-zinc-400 font-bold select-none">
-                            Masqué (Admin Requis)
-                          </span>
+                    <div className="flex items-center justify-between w-full">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Solde de Caisse Actuel</p>
+                        {role === "admin" ? (
+                          <>
+                            <h3 className="text-4xl font-extrabold text-white tracking-tight">
+                              {(stats.cashBalance + (stats.mobileBalance || 0)).toLocaleString('fr-FR')} FCFA
+                            </h3>
+                            <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                              Caisse équilibrée
+                            </p>
+                          </>
+                        ) : (
+                          <div className="py-2 px-3 bg-zinc-900/80 border border-zinc-800 rounded-xl flex items-center gap-2 mt-1">
+                            <AlertTriangle className="w-4 h-4 text-amber-500" />
+                            <span className="text-xs text-zinc-400 font-bold select-none">
+                              Masqué (Admin Requis)
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      {role === "admin" && (
+                        <div className="w-12 h-12 rounded-xl bg-purple-950/80 border border-purple-500/20 flex items-center justify-center self-start">
+                          <Wallet className="w-6 h-6 text-purple-400" />
                         </div>
                       )}
                     </div>
                     {role === "admin" && (
-                      <div className="w-12 h-12 rounded-xl bg-purple-950/80 border border-purple-500/20 flex items-center justify-center">
-                        <Wallet className="w-6 h-6 text-purple-400" />
-                      </div>
+                      <>
+                        <div className="border-t border-zinc-800/80 my-3"></div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="border-r border-zinc-800/80 pr-2">
+                            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Espèces</p>
+                            <p className="text-base font-bold text-emerald-400 font-mono">
+                              {stats.cashBalance.toLocaleString('fr-FR')} FCFA
+                            </p>
+                          </div>
+                          <div className="pl-2">
+                            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Mobile Money</p>
+                            <p className="text-base font-bold text-cyan-400 font-mono">
+                              {(stats.mobileBalance || 0).toLocaleString('fr-FR')} FCFA
+                            </p>
+                          </div>
+                        </div>
+                      </>
                     )}
                   </div>
                 </div>
@@ -8105,7 +8190,7 @@ export default function App() {
                   </div>
 
                   {/* Summary Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
                       <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Joueurs Inscrits</span>
                       <span className="text-xl font-extrabold text-fuchsia-400">{players.length} membres</span>
@@ -8114,12 +8199,6 @@ export default function App() {
                       <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Joueurs Actifs en Salle</span>
                       <span className="text-xl font-extrabold text-white">
                         {consoles.filter(c => c.status === "occupée" && c.activeSession).length} en jeu
-                      </span>
-                    </div>
-                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Fidélité cumulée</span>
-                      <span className="text-xl font-extrabold text-emerald-400 font-mono">
-                        {formatPrice(players.reduce((sum, p) => sum + (p.totalSpent || 0), 0))}
                       </span>
                     </div>
                   </div>
@@ -8264,11 +8343,37 @@ export default function App() {
 
             {/* ==================== VUE : RAPPORTS D'ACTIVITÉ ==================== */}
             {activeTab === "dailyReport" && (() => {
+              const getDrinksRevenueAndCOGS = (periodSales) => {
+                let rev = 0;
+                let cogs = 0;
+                periodSales.forEach(s => {
+                  if (!s || s.status === "annulée") return;
+                  const items = s.itemsList || [];
+                  items.forEach(item => {
+                    if (item && item.product && item.product.category === "boissons") {
+                      rev += (item.product.price || 0) * (item.quantity || 0);
+                      cogs += (item.product.purchasePrice || 0) * (item.quantity || 0);
+                    }
+                  });
+                });
+                return { rev, cogs };
+              };
+
+              const dailyDrinksSales = (sales || []).filter(s => {
+                if (!s || s.status === "annulée") return false;
+                const saleDate = new Date(s.date);
+                const today = new Date();
+                return saleDate.getDate() === today.getDate() &&
+                  saleDate.getMonth() === today.getMonth() &&
+                  saleDate.getFullYear() === today.getFullYear();
+              });
+              const todayDrinks = getDrinksRevenueAndCOGS(dailyDrinksSales);
+
               const totalSessions = dailySessionsCount + consoles.filter(c => c.status === "occupée").length;
               const totalGamesRev = stats.gamesRevenue;
               const totalSnacksRev = stats.snackRevenue;
               const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
-              const netProfit = totalGamesRev + totalSnacksRev - totalExpenses;
+              const netProfit = (todayDrinks.rev - todayDrinks.cogs) - totalExpenses;
 
               // Weekly calculations
               const last7DaysSessions = caisseSessions.filter(s => {
@@ -8276,11 +8381,18 @@ export default function App() {
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 return diffDays <= 7;
               });
+              const last7DaysSales = (sales || []).filter(s => {
+                if (!s || s.status === "annulée") return false;
+                const diffTime = Math.abs(new Date() - new Date(s.date));
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays <= 7;
+              });
+              const weeklyDrinks = getDrinksRevenueAndCOGS(last7DaysSales);
               const weeklySessions = last7DaysSessions.length * 12 + totalSessions;
               const weeklyGamesRev = last7DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
               const weeklySnacksRev = last7DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
               const weeklyExpenses = last7DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
-              const weeklyProfit = weeklyGamesRev + weeklySnacksRev - weeklyExpenses;
+              const weeklyProfit = (weeklyDrinks.rev - weeklyDrinks.cogs) - weeklyExpenses;
 
               // Monthly calculations
               const last30DaysSessions = caisseSessions.filter(s => {
@@ -8288,11 +8400,18 @@ export default function App() {
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                 return diffDays <= 30;
               });
+              const last30DaysSales = (sales || []).filter(s => {
+                if (!s || s.status === "annulée") return false;
+                const diffTime = Math.abs(new Date() - new Date(s.date));
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays <= 30;
+              });
+              const monthlyDrinks = getDrinksRevenueAndCOGS(last30DaysSales);
               const monthlySessions = last30DaysSessions.length * 15 + totalSessions;
               const monthlyGamesRev = last30DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
               const monthlySnacksRev = last30DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
               const monthlyExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
-              const monthlyProfit = monthlyGamesRev + monthlySnacksRev - monthlyExpenses;
+              const monthlyProfit = (monthlyDrinks.rev - monthlyDrinks.cogs) - monthlyExpenses;
 
               // Select active stats
               const reportTitle = reportSubTab === "hebdomadaire" ? "RAPPORT HEBDOMADAIRE" : reportSubTab === "mensuel" ? "RAPPORT MENSUEL" : "RAPPORT JOURNALIER";
@@ -8736,6 +8855,7 @@ export default function App() {
 
             {activeTab === "comptabilite" && (
               <ComptabiliteView
+                stats={stats}
                 sales={sales}
                 expenses={expenses}
                 purchases={purchases}
@@ -8986,10 +9106,14 @@ export default function App() {
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        setPaymentMethodSelected("espèces");
-                                        setPaymentCashAmount(inv.total);
-                                        setPaymentMobileAmount("");
-                                        setShowPaymentModal(inv);
+                                        if (inv.total > 0) {
+                                          setPaymentMethodSelected("espèces");
+                                          setPaymentCashAmount(inv.total);
+                                          setPaymentMobileAmount("");
+                                          setShowPaymentModal(inv);
+                                        } else {
+                                          handleConfirmPayment(inv);
+                                        }
                                       }}
                                       className="py-1 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1 active:scale-95 transition-all"
                                       title="Encaisser"
@@ -9750,6 +9874,31 @@ export default function App() {
                     </div>
                   </div>
 
+                </div>
+
+                {/* Section 4: Zone de Danger & Réinitialisation */}
+                <div className="glass-panel p-6 rounded-2xl border border-rose-900/30 bg-rose-950/5 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-rose-950 pb-3">
+                    <AlertTriangle className="w-5 h-5 text-rose-400" />
+                    <h3 className="text-sm font-bold text-white uppercase tracking-wider text-rose-400">Zone de Danger</h3>
+                  </div>
+
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-zinc-950 border border-zinc-900 rounded-xl">
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-bold text-white uppercase">Réinitialiser les comptes et statistiques à zéro</h4>
+                      <p className="text-[10px] text-zinc-400">
+                        Efface l'historique complet des ventes, dépenses, achats, shifts et remet les compteurs à 0. Les profils des consoles et des joueurs sont conservés mais remis à zéro.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleResetAccounts}
+                      className="py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center gap-1.5 self-start md:self-center cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Réinitialiser les Comptes</span>
+                    </button>
+                  </div>
                 </div>
 
               </div>
@@ -10596,17 +10745,6 @@ export default function App() {
               <span className="font-bold text-emerald-400">{showStartModal.ratePerHour.toLocaleString('fr-FR')} FCFA/h</span>
             </div>
 
-            {/* Prepaid Info Badge */}
-            <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">Paiement d'avance requis</p>
-                <p className="text-[10px] text-zinc-400 leading-normal">
-                  Le client doit régler la session avant de jouer. Un forfait d'une heure minimum est perçu pour les sessions libres.
-                </p>
-              </div>
-            </div>
-
             {/* Forms */}
             <div className="space-y-4">
               
@@ -10689,7 +10827,7 @@ export default function App() {
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Numéro de Téléphone</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Numéro de Téléphone (Optionnel)</label>
                 <input 
                   type="tel"
                   placeholder="Ex: 06 12 34 56 78"
@@ -10727,23 +10865,7 @@ export default function App() {
                 </div>
               </div>
 
-              {newDurationType === "unlimited" ? (
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Montant Prépayé Libre (FCFA)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="100"
-                    placeholder="Saisir le montant paid d'avance"
-                    value={newPrepaidAmount}
-                    onChange={(e) => setNewPrepaidAmount(Math.max(0, Number(e.target.value)))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-xs font-bold text-emerald-400 focus:outline-none focus:border-emerald-500 font-mono"
-                  />
-                  <p className="text-[9px] text-zinc-500 mt-1 italic">
-                    Saisissez le montant arbitraire payé d'avance par le client pour cette session libre.
-                  </p>
-                </div>
-              ) : (
+              {newDurationType === "limited" && (
                 <div>
                   <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Durée (Heures)</label>
                   <select
@@ -10761,28 +10883,21 @@ export default function App() {
             </div>
 
             {/* CTAs */}
-            {(() => {
-              const amountToPay = newDurationType === "limited"
-                ? showStartModal.ratePerHour * newDurationHours
-                : Number(newPrepaidAmount || 0);
-              return (
-                <div className="flex items-center gap-3 pt-2">
-                  <button 
-                    onClick={() => setShowStartModal(null)}
-                    className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
-                  >
-                    Annuler
-                  </button>
-                  <button 
-                    onClick={() => handleStartSession(showStartModal)}
-                    disabled={!newPlayerPseudo.trim() || !newPlayerPhone.trim()}
-                    className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all"
-                  >
-                    Encaisser {amountToPay.toLocaleString('fr-FR')} FCFA & Démarrer
-                  </button>
-                </div>
-              );
-            })()}
+            <div className="flex items-center gap-3 pt-2">
+              <button 
+                onClick={() => setShowStartModal(null)}
+                className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
+              >
+                Annuler
+              </button>
+              <button 
+                onClick={() => handleStartSession(showStartModal)}
+                disabled={!newPlayerPseudo.trim()}
+                className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all"
+              >
+                Démarrer la session
+              </button>
+            </div>
 
           </div>
         </div>
@@ -10946,7 +11061,7 @@ export default function App() {
               const prepaid = showCloseModal.activeSession?.prepaidAmount || 0;
               const gameCost = showCloseModal.activeSession?.durationType === "limited" 
                 ? Math.round((showCloseModal.activeSession.durationMinutes / 60) * showCloseModal.ratePerHour)
-                : prepaid; // For unlimited, the game cost is exactly the prepaid amount (no hourly billing)
+                : Math.round(closeSessionHours * showCloseModal.ratePerHour);
               const gameCostDue = Math.max(0, gameCost - prepaid);
               const snackCost = showCloseModal.activeSession?.extraSnacksBill || 0;
               const totalCost = gameCostDue + snackCost;
@@ -11060,10 +11175,7 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setShowCloseModal(null);
-                        setPaymentMethodSelected("espèces");
-                        setPaymentCashAmount(totalCost);
-                        setPaymentMobileAmount("");
-                        setShowPaymentModal({
+                        const inv = {
                           type: "console",
                           id: `console-${showCloseModal.id}`,
                           name: `${showCloseModal.name} (${showCloseModal.activeSession?.player || "Joueur"})`,
@@ -11073,7 +11185,15 @@ export default function App() {
                           total: totalCost,
                           itemsList: showCloseModal.activeSession?.extraSnacksList || [],
                           consoleId: showCloseModal.id
-                        });
+                        };
+                        if (totalCost > 0) {
+                          setPaymentMethodSelected("espèces");
+                          setPaymentCashAmount(totalCost);
+                          setPaymentMobileAmount("");
+                          setShowPaymentModal(inv);
+                        } else {
+                          handleConfirmPayment(inv);
+                        }
                       }}
                       className="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-rose-950/20 active:scale-95 transition-all"
                     >
@@ -11797,6 +11917,16 @@ export default function App() {
                     </strong>
                   </div>
                 </div>
+              </div>
+
+              <div className="pt-2 border-t border-zinc-850">
+                <button
+                  type="button"
+                  onClick={() => setShowViewPlayerModal(null)}
+                  className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all text-center"
+                >
+                  Fermer
+                </button>
               </div>
 
             </div>
