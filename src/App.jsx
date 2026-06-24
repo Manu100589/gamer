@@ -3680,13 +3680,13 @@ export default function App() {
 
       setConsoles(prev => prev.map(c => {
         if (c.id === inv.consoleId) {
-          const sessionElapsed = c.activeSession?.timeElapsedSeconds || 0;
           return {
             ...c,
-            status: "libre",
-            totalTimeSeconds: (c.totalTimeSeconds || 0) + sessionElapsed,
-            totalRevenue: (c.totalRevenue || 0) + inv.gameCost,
-            activeSession: null
+            totalRevenue: (c.totalRevenue || 0) + (inv.gameCost || 0),
+            activeSession: {
+              ...c.activeSession,
+              isPaid: true
+            }
           };
         }
         return c;
@@ -4452,6 +4452,26 @@ export default function App() {
       const elapsedHours = Math.round((elapsedSeconds / 3600) * 100) / 100;
       setCloseSessionHours(elapsedHours);
     }
+  };
+
+  const handleStopPaidSession = (consoleId) => {
+    setConsoles(prev => prev.map(c => {
+      if (c.id === consoleId) {
+        const sessionElapsed = c.activeSession?.timeElapsedSeconds || 0;
+        addLog(
+          "console_stop", 
+          `Session arrêtée sur ${c.name} pour ${c.activeSession?.player || "Joueur"} (Facture réglée).`, 
+          "console"
+        );
+        return {
+          ...c,
+          status: "libre",
+          totalTimeSeconds: (c.totalTimeSeconds || 0) + sessionElapsed,
+          activeSession: null
+        };
+      }
+      return c;
+    }));
   };
 
   const handleConfirmCloseSession = (consoleId, finalGameAmount, finalSnackAmount, playerRef, consoleName, fullGameCost = 0, prepaidAmount = 0) => {
@@ -6724,8 +6744,8 @@ export default function App() {
                               </div>
                               <div className="flex items-center justify-between text-xs">
                                 <span className="text-zinc-500 font-medium">Solde jeu dû :</span>
-                                <span className="text-rose-400 font-bold font-mono">
-                                  {c.activeSession.totalAmountDue.toLocaleString('fr-FR')} FCFA
+                                <span className={c.activeSession.isPaid ? "text-emerald-400 font-bold font-mono" : "text-rose-400 font-bold font-mono"}>
+                                  {c.activeSession.isPaid ? "0 FCFA (Réglé)" : `${c.activeSession.totalAmountDue.toLocaleString('fr-FR')} FCFA`}
                                 </span>
                               </div>
                               
@@ -6733,7 +6753,16 @@ export default function App() {
                               {c.activeSession.extraSnacksBill > 0 && (
                                 <div className="flex items-center justify-between text-[11px]">
                                   <span className="text-zinc-500 font-medium">Consos (Snack) :</span>
-                                  <span className="text-amber-400 font-semibold font-mono">+{c.activeSession.extraSnacksBill.toLocaleString('fr-FR')} FCFA</span>
+                                  <span className={c.activeSession.isPaid ? "text-emerald-400 font-semibold font-mono" : "text-amber-400 font-semibold font-mono"}>
+                                    {c.activeSession.isPaid ? "0 FCFA (Réglé)" : `+${c.activeSession.extraSnacksBill.toLocaleString('fr-FR')} FCFA`}
+                                  </span>
+                                </div>
+                              )}
+
+                              {c.activeSession.isPaid && (
+                                <div className="flex items-center justify-center gap-1.5 py-1 px-2.5 bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 rounded-lg text-[10px] font-black uppercase tracking-wider mt-1.5 animate-pulse">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                  Facture réglée
                                 </div>
                               )}
                             </div>
@@ -6779,31 +6808,43 @@ export default function App() {
 
                           {isOccupied && (
                             <div className="flex flex-col gap-2 w-full">
-                              <div className="flex gap-2">
+                              {c.activeSession?.isPaid ? (
                                 <button
-                                  onClick={() => setShowAddSnackToConsoleModal(c)}
-                                  className="flex-1 py-1.5 px-3 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1"
-                                  title="Ajouter des boissons/snacks à cette session"
+                                  onClick={() => handleStopPaidSession(c.id)}
+                                  className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-950/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-1.5"
                                 >
-                                  <Plus className="w-3.5 h-3.5 text-violet-400" />
-                                  Snack
-                                </button>
-                                <button
-                                  onClick={() => setShowInterruptModal(c)}
-                                  className="flex-1 py-1.5 px-2.5 bg-zinc-900 border border-zinc-800 hover:bg-orange-950/40 hover:border-orange-500/30 text-zinc-300 hover:text-orange-400 rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1"
-                                  title="Interrompre ou annuler cette session"
-                                >
-                                  <AlertTriangle className="w-3.5 h-3.5 text-orange-400" />
+                                  <Check className="w-4 h-4 text-white" />
                                   Arrêter la session
                                 </button>
-                              </div>
-                              <button
-                                onClick={() => handleCloseSessionRequest(c)}
-                                className="w-full py-2 px-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-950/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-1.5"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                                Clôturer & Régler
-                              </button>
+                              ) : (
+                                <>
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => setShowAddSnackToConsoleModal(c)}
+                                      className="flex-1 py-1.5 px-3 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1"
+                                      title="Ajouter des boissons/snacks à cette session"
+                                    >
+                                      <Plus className="w-3.5 h-3.5 text-violet-400" />
+                                      Snack
+                                    </button>
+                                    <button
+                                      onClick={() => setShowInterruptModal(c)}
+                                      className="flex-1 py-1.5 px-2.5 bg-zinc-900 border border-zinc-800 hover:bg-orange-950/40 hover:border-orange-500/30 text-zinc-300 hover:text-orange-400 rounded-xl text-[10px] font-bold transition-all flex items-center justify-center gap-1"
+                                      title="Interrompre ou annuler cette session"
+                                    >
+                                      <AlertTriangle className="w-3.5 h-3.5 text-orange-400" />
+                                      Arrêter la session
+                                    </button>
+                                  </div>
+                                  <button
+                                    onClick={() => handleCloseSessionRequest(c)}
+                                    className="w-full py-2 px-3 bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-950/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-1.5"
+                                  >
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    Clôturer & Régler
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
 
@@ -8935,7 +8976,7 @@ export default function App() {
                 dateCreated: t.dateCreated || new Date().toISOString()
               }));
 
-              const consoleInvoices = consoles.filter(c => c.status === "occupée" && c.activeSession).map(c => {
+              const consoleInvoices = consoles.filter(c => c.status === "occupée" && c.activeSession && !c.activeSession.isPaid).map(c => {
                 const s = c.activeSession;
                 const gameCost = s.totalAmountDue || 0;
                 const snackCost = s.extraSnacksBill || 0;
