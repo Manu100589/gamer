@@ -3800,7 +3800,6 @@ export default function App() {
   };
 
   const handleResetAccounts = () => {
-    if (role !== "admin") return;
     if (confirm("⚠️ ATTENTION : Voulez-vous vraiment réinitialiser TOUS les comptes et statistiques à zéro ?\n\nCette action va :\n- Effacer l'historique des ventes, dépenses et achats\n- Effacer l'historique et les sessions de caisse (shifts)\n- Réinitialiser le solde en caisse et toutes les recettes à 0\n- Remettre à zéro les statistiques des consoles et des joueurs\n\nCette action est irréversible !")) {
       localStorage.removeItem("system_pos_tickets");
       localStorage.removeItem("system_active_caisse_session");
@@ -5927,6 +5926,15 @@ export default function App() {
               Gérant
             </button>
           </div>
+
+          <button
+            onClick={handleResetAccounts}
+            className="w-full mt-3 py-2 px-3 bg-rose-600/10 border border-rose-500/20 hover:bg-rose-600 hover:text-white text-rose-400 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+            title="Réinitialiser toutes les données"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Réinitialiser les Données</span>
+          </button>
         </div>
       </aside>
 
