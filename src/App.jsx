@@ -2781,6 +2781,7 @@ export default function App() {
 
     const closedSession = {
       ...activeCaisseSession,
+      expenses: (activeCaisseSession.expensesMaintenance || 0) + (activeCaisseSession.expensesDiverses || 0),
       dateClose: new Date().toISOString(),
       closedBy,
       expectedBalance: expectedBal,
@@ -10357,37 +10358,45 @@ export default function App() {
                         </thead>
                         <tbody>
                           {caisseSessions.map((session, idx) => {
-                            const isOk = session.variance === 0;
-                            const isNegative = session.variance < 0;
+                            const varianceVal = session.variance || 0;
+                            const isOk = varianceVal === 0;
+                            const isNegative = varianceVal < 0;
+                            const openingBal = session.openingBalance || 0;
+                            const gamesRev = session.gamesRevenue || 0;
+                            const snackRev = session.snackRevenue || 0;
+                            const expVal = session.expenses !== undefined ? session.expenses : ((session.expensesMaintenance || 0) + (session.expensesDiverses || 0));
+                            const purcVal = session.purchases || 0;
+                            const expectedBal = session.expectedBalance || 0;
+                            const realBal = session.realBalance || 0;
 
                             return (
                               <tr key={idx} className="border-b border-zinc-900/60 hover:bg-zinc-950/40 text-xs text-zinc-300 font-medium">
                                 <td className="p-4 space-y-0.5">
-                                  <p className="text-white font-bold">{new Date(session.dateOpen).toLocaleDateString('fr-FR')}</p>
+                                  <p className="text-white font-bold">{session.dateOpen ? new Date(session.dateOpen).toLocaleDateString('fr-FR') : "N/A"}</p>
                                   <p className="text-[9px] text-zinc-500">
-                                    {new Date(session.dateOpen).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} ➡️ {new Date(session.dateClose).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                                    {session.dateOpen ? new Date(session.dateOpen).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : "N/A"} ➡️ {session.dateClose ? new Date(session.dateClose).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : "N/A"}
                                   </p>
                                 </td>
                                 <td className="p-4 space-y-0.5">
-                                  <p className="text-zinc-300">Open: <span className="text-white font-bold">{session.openedBy}</span></p>
-                                  <p className="text-zinc-400">Close: <span className="text-white font-bold">{session.closedBy}</span></p>
+                                  <p className="text-zinc-300">Open: <span className="text-white font-bold">{session.openedBy || "N/A"}</span></p>
+                                  <p className="text-zinc-400">Close: <span className="text-white font-bold">{session.closedBy || "N/A"}</span></p>
                                 </td>
                                 <td className="p-4 text-right font-mono text-zinc-400">
-                                  {session.openingBalance.toLocaleString('fr-FR')} FCFA
+                                  {openingBal.toLocaleString('fr-FR')} FCFA
                                 </td>
                                 <td className="p-4 text-right font-mono text-emerald-400 space-y-0.5">
-                                  <p>🎮 {session.gamesRevenue.toLocaleString('fr-FR')}</p>
-                                  <p className="text-[10px] text-emerald-500/80">🥤 {session.snackRevenue.toLocaleString('fr-FR')}</p>
+                                  <p>🎮 {gamesRev.toLocaleString('fr-FR')}</p>
+                                  <p className="text-[10px] text-emerald-500/80">🥤 {snackRev.toLocaleString('fr-FR')}</p>
                                 </td>
                                 <td className="p-4 text-right font-mono text-rose-400 space-y-0.5">
-                                  <p>💸 {session.expenses.toLocaleString('fr-FR')}</p>
-                                  <p className="text-[10px] text-rose-500/80">🛒 {session.purchases.toLocaleString('fr-FR')}</p>
+                                  <p>💸 {expVal.toLocaleString('fr-FR')}</p>
+                                  <p className="text-[10px] text-rose-500/80">🛒 {purcVal.toLocaleString('fr-FR')}</p>
                                 </td>
                                 <td className="p-4 text-right font-mono text-zinc-400">
-                                  {session.expectedBalance.toLocaleString('fr-FR')} FCFA
+                                  {expectedBal.toLocaleString('fr-FR')} FCFA
                                 </td>
                                 <td className="p-4 text-right font-mono text-white font-bold">
-                                  {session.realBalance.toLocaleString('fr-FR')} FCFA
+                                  {realBal.toLocaleString('fr-FR')} FCFA
                                 </td>
                                 <td className="p-4 text-center">
                                   <span className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${
@@ -10400,7 +10409,7 @@ export default function App() {
                                     {isOk ? (
                                       "Conforme"
                                     ) : (
-                                      `${session.variance > 0 ? '+' : ''}${session.variance.toLocaleString('fr-FR')} FCFA`
+                                      `${varianceVal > 0 ? '+' : ''}${varianceVal.toLocaleString('fr-FR')} FCFA`
                                     )}
                                   </span>
                                 </td>
