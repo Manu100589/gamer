@@ -242,7 +242,7 @@ function ComptabiliteView({
   const periodPurchasesAmount = comptaPeriodPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
   const periodTotalOPEX = periodExpensesAmount + periodPurchasesAmount;
   const periodMargeBrute = periodTotalRevenue - periodCOGS;
-  const periodNetProfit = (periodDrinksRevenue - periodDrinksCOGS) - periodTotalOPEX;
+  const periodNetProfit = periodDrinksRevenue - periodDrinksCOGS;
   const periodMargePercent = periodTotalRevenue > 0 ? (periodMargeBrute / periodTotalRevenue) * 100 : 0;
   const netProfitMargePercent = periodDrinksRevenue > 0 ? (periodNetProfit / periodDrinksRevenue) * 100 : 0;
 
@@ -333,14 +333,14 @@ function ComptabiliteView({
           </div>
           <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 hover:border-zinc-750 transition-all duration-300">
             <div className="flex justify-between items-center text-zinc-500">
-              <span className="text-[9px] font-extrabold uppercase tracking-wider">Bénéfice Net</span>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider">Bénéfice Boissons</span>
               <span className="text-xs">📉</span>
             </div>
             <p className={`text-base font-black font-mono tracking-tight ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{formatPrice(periodNetProfit)}</p>
           </div>
           <div className="bg-zinc-950/80 border border-zinc-850 p-4 rounded-xl space-y-1 hover:border-zinc-750 transition-all duration-300">
             <div className="flex justify-between items-center text-zinc-500">
-              <span className="text-[9px] font-extrabold uppercase tracking-wider">% Marge</span>
+              <span className="text-[9px] font-extrabold uppercase tracking-wider">% Marge Boissons</span>
               <span className="text-xs">📊</span>
             </div>
             <p className={`text-base font-black font-mono tracking-tight ${netProfitMargePercent >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{netProfitMargePercent.toFixed(1)}%</p>
@@ -425,9 +425,9 @@ function ComptabiliteView({
           <span className="text-[9px] text-zinc-600 block">Point d'équilibre</span>
         </div>
         <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Flux de Trésorerie</span>
+          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Bénéfice Boissons</span>
           <p className={`text-base font-black font-mono tracking-tight ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{formatPrice(periodNetProfit)}</p>
-          <span className="text-[9px] text-zinc-600 block">Bénéfice net période</span>
+          <span className="text-[9px] text-zinc-600 block">Gain sur boissons période</span>
         </div>
         <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
           <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Marge Brute</span>
@@ -491,7 +491,7 @@ function ComptabiliteView({
                   <div className="flex flex-col items-center gap-2 group cursor-pointer">
                     <span className="text-[9px] font-mono text-amber-500 font-bold">{formatPrice(periodNetProfit)}</span>
                     <div className="w-12 bg-gradient-to-t from-amber-600 to-orange-500 rounded-t-lg shadow-lg" style={{ height: `${Math.max(5, hProf)}px` }} />
-                    <span className="text-[9px] font-bold text-zinc-500 uppercase">Bénéfice</span>
+                    <span className="text-[9px] font-bold text-zinc-500 uppercase">Bénéfice Boissons</span>
                   </div>
                 </>
               );
@@ -4642,8 +4642,6 @@ export default function App() {
       finalExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
     }
     
-    const profit = finalGames + finalSnacks - finalExpenses;
-
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
     csvContent += `${reportTitle} - GAMEZONE\r\n`;
     csvContent += `Date;${dateStr}\r\n\r\n`;
@@ -4651,8 +4649,7 @@ export default function App() {
     csvContent += `Joueurs (Sessions);${finalSessions}\r\n`;
     csvContent += `Revenus Jeux (${systemSettings.currency});${finalGames}\r\n`;
     csvContent += `Revenus Snack (${systemSettings.currency});${finalSnacks}\r\n`;
-    csvContent += `Depenses (${systemSettings.currency});${finalExpenses}\r\n`;
-    csvContent += `Benefice (${systemSettings.currency});${profit}\r\n\r\n`;
+    csvContent += `Depenses (${systemSettings.currency});${finalExpenses}\r\n\r\n`;
 
     if (!isWeekly && !isMonthly) {
       csvContent += "DETAIL DES CONSOLES\r\n";
@@ -4725,7 +4722,6 @@ export default function App() {
     }
 
     const grandTotal = finalGames + finalSnacks;
-    const profit = grandTotal - finalExpenses;
 
     let tablesHtml = "";
 
@@ -4856,7 +4852,7 @@ export default function App() {
           }
           .grid-stats {
             display: grid;
-            grid-template-cols: repeat(5, 1fr);
+            grid-template-columns: repeat(4, 1fr);
             gap: 15px;
             margin-bottom: 30px;
           }
@@ -4941,10 +4937,6 @@ export default function App() {
           <div class="card-stat">
             <div class="card-label">Dépenses</div>
             <div class="card-value" style="color: #dc2626;">${formatPrice(finalExpenses)}</div>
-          </div>
-          <div class="card-stat" style="background-color: #ecfdf5; border-color: #a7f3d0;">
-            <div class="card-label" style="color: #059669;">Bénéfice Net</div>
-            <div class="card-value" style="color: #059669;">${formatPrice(profit)}</div>
           </div>
         </div>
 
@@ -8864,20 +8856,6 @@ export default function App() {
                           </div>
                         </div>
                         <span className="text-xl font-extrabold text-rose-400 font-mono pr-2">{formatPrice(displayExpenses)}</span>
-                      </div>
-
-                      {/* Net Profit Row */}
-                      <div className="py-5 flex items-center justify-between gap-4 border-t border-zinc-800">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-emerald-950/40 border border-emerald-500/20 flex items-center justify-center text-emerald-400 animate-fade-in">
-                            <TrendingUp className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <span className="text-base font-black text-white block uppercase tracking-wide">Bénéfice</span>
-                            <span className="text-[10px] text-zinc-500 block">Solde net d'exploitation sur la période</span>
-                          </div>
-                        </div>
-                        <span className="text-2xl font-black text-emerald-400 font-mono pr-2">{formatPrice(displayProfit)}</span>
                       </div>
 
                     </div>
