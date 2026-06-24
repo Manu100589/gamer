@@ -4246,6 +4246,24 @@ export default function App() {
       "console"
     );
 
+    // ── Générer le reçu si paiement encaissé ──
+    if (sessionPrice > 0 && paymentMethod) {
+      const now = new Date();
+      const receiptId = `SESS-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+      setShowReceiptModal({
+        id: receiptId,
+        date: now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        customer: fullName,
+        type: `Forfait ${newDurationHours}h — ${consoleObj.name}`,
+        paymentMethod: paymentMethod === 'espèces' ? 'Espèces 💵' : 'Mobile Money 📱',
+        item: `${consoleObj.name} — ${newDurationHours}h de jeu`,
+        gameCost: sessionPrice,
+        snackCost: 0,
+        total: sessionPrice,
+        prepaid: 0
+      });
+    }
+
     // Reset forms and close modal
     setNewPlayerPseudo("");
     setNewPlayerPhone("");
