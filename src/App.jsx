@@ -4204,7 +4204,9 @@ export default function App() {
             totalAmountDue: sessionPrice,
             extraSnacksBill: 0,
             extraSnacksList: [],
-            upfrontSaleId: null
+            upfrontSaleId: null,
+            isPaid: sessionPrice > 0 && !!paymentMethod,
+            paymentMethod: paymentMethod || null
           }
         };
       }
@@ -6828,14 +6830,16 @@ export default function App() {
                           {isOccupied && (
                             <div className="flex flex-col gap-2 w-full">
                               {c.activeSession?.isPaid ? (
+                                // Session déjà encaissée → juste clôturer
                                 <button
                                   onClick={() => handleStopPaidSession(c.id)}
-                                  className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-950/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-1.5"
+                                  className="w-full py-3 px-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-black shadow-md shadow-emerald-950/20 hover:scale-[1.02] transition-all flex items-center justify-center gap-2"
                                 >
                                   <Check className="w-4 h-4 text-white" />
-                                  Arrêter la session
+                                  Clôturer la session
                                 </button>
                               ) : (
+                                // Session temps libre → pas encore encaissée
                                 <>
                                   <div className="flex gap-2">
                                     <button
@@ -6852,7 +6856,7 @@ export default function App() {
                                       title="Interrompre ou annuler cette session"
                                     >
                                       <AlertTriangle className="w-3.5 h-3.5 text-orange-400" />
-                                      Arrêter la session
+                                      Arrêter
                                     </button>
                                   </div>
                                   <button
