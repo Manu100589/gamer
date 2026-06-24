@@ -3998,6 +3998,7 @@ export default function App() {
 
   // Modals state
   const [showStartModal, setShowStartModal] = useState(null); // stores console object to start
+  const [showPaymentChoiceModal, setShowPaymentChoiceModal] = useState(false); // show espèces/mobile choice before starting
   const [showCloseModal, setShowCloseModal] = useState(null); // stores console object to close
   const [showReceiptModal, setShowReceiptModal] = useState(null); // stores transaction receipt details
   const [showAddSnackToConsoleModal, setShowAddSnackToConsoleModal] = useState(null); // stores console object
@@ -4126,7 +4127,7 @@ export default function App() {
   };
 
   // Start a new console session
-  const handleStartSession = (consoleObj) => {
+  const handleStartSession = (consoleObj, paymentMethod) => {
     if (!newPlayerPseudo.trim()) return;
 
     const durationMinutes = newDurationType === "limited" ? newDurationHours * 60 : 0;
@@ -4137,6 +4138,29 @@ export default function App() {
     const sessionPrice = newDurationType === "limited"
       ? (consoleObj.ratePerHour || 0) * newDurationHours
       : 0;
+
+    // ── Encaissement immédiat en caisse (forfaits uniquement) ──
+    if (sessionPrice > 0 && paymentMethod) {
+      const cashUsed = paymentMethod === "espèces" ? sessionPrice : 0;
+      const mobileUsed = paymentMethod === "mobile" ? sessionPrice : 0;
+
+      setStats(prev => ({
+        ...prev,
+        gamesRevenue: (prev.gamesRevenue || 0) + sessionPrice,
+        cashBalance: (prev.cashBalance || 0) + cashUsed,
+        mobileBalance: (prev.mobileBalance || 0) + mobileUsed
+      }));
+
+      if (caisseStatus === "ouverte") {
+        setActiveCaisseSession(prev => ({
+          ...prev,
+          gamesRevenue: (prev.gamesRevenue || 0) + sessionPrice,
+          "paymentEspèces": (prev["paymentEspèces"] || 0) + cashUsed,
+          paymentMobileMoney: (prev.paymentMobileMoney || 0) + mobileUsed,
+          transactionsCount: (prev.transactionsCount || 0) + 1
+        }));
+      }
+    }
 
     // Auto register new player or update existing profile
     setPlayers(prev => {
@@ -4187,7 +4211,6 @@ export default function App() {
       return c;
     }));
 
-
     // Update detailed daily consoles stats
     setDailyConsolesRevenue(prev => prev.map(item => {
       if (item.name === consoleObj.name) {
@@ -4217,7 +4240,7 @@ export default function App() {
 
     addLog(
       "console_start", 
-      `Session démarrée sur ${consoleObj.name} pour ${fullName} (${newDurationType === 'unlimited' ? 'Temps libre' : newDurationHours + 'h00'})`, 
+      `Session démarrée sur ${consoleObj.name} pour ${fullName} (${newDurationType === 'unlimited' ? 'Temps libre' : newDurationHours + 'h00'}${ paymentMethod ? ' — ' + (paymentMethod === 'espèces' ? '💵 Espèces' : '📱 Mobile Money') : ''})`, 
       "console"
     );
 
@@ -4226,6 +4249,7 @@ export default function App() {
     setNewPlayerPhone("");
     setNewDurationType("unlimited");
     setNewDurationHours(1);
+    setShowPaymentChoiceModal(false);
     setShowStartModal(null);
   };
 
@@ -10774,7 +10798,7 @@ export default function App() {
                 <h3 className="text-base font-bold text-white">Lancer une session</h3>
               </div>
               <button 
-                onClick={() => setShowStartModal(null)}
+                onClick={() => { setShowStartModal(null); setShowPaymentChoiceModal(false); }}
                 className="text-zinc-500 hover:text-zinc-300 text-sm font-bold"
               >
                 ✖
@@ -10842,21 +10866,70 @@ export default function App() {
             </div>
 
             {/* CTAs */}
-            <div className="flex items-center gap-3 pt-2">
-              <button 
-                onClick={() => setShowStartModal(null)}
-                className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
-              >
-                Annuler
-              </button>
-              <button 
-                onClick={() => handleStartSession(showStartModal)}
-                disabled={!newPlayerPseudo.trim()}
-                className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all"
-              >
-                Démarrer la session
-              </button>
-            </div>
+            {!showPaymentChoiceModal ? (
+              <div className="flex items-center gap-3 pt-2">
+                <button 
+                  onClick={() => { setShowStartModal(null); setShowPaymentChoiceModal(false); }}
+                  className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
+                >
+                  Annuler
+                </button>
+                <button 
+                  onClick={() => {
+                    if (!newPlayerPseudo.trim()) return;
+                    if (newDurationType === 'unlimited') {
+                      // Temps libre → pas de paiement, démarrer directement
+                      handleStartSession(showStartModal, null);
+                    } else {
+                      // Forfait → afficher le choix de paiement
+                      setShowPaymentChoiceModal(true);
+                    }
+                  }}
+                  disabled={!newPlayerPseudo.trim()}
+                  className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all"
+                >
+                  {newDurationType === 'limited' ? '💳 Encaisser & Démarrer' : '▶ Démarrer la session'}
+                </button>
+              </div>
+            ) : (
+              // ── Étape paiement ──
+              <div className="space-y-3 pt-2">
+                {/* Montant à encaisser */}
+                <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-center">
+                  <p className="text-[10px] text-emerald-400/70 uppercase font-bold mb-0.5">Montant à encaisser</p>
+                  <p className="text-2xl font-black text-emerald-400">
+                    {(showStartModal.ratePerHour * newDurationHours).toLocaleString('fr-FR')} <span className="text-sm font-semibold">FCFA</span>
+                  </p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">{newPlayerPseudo} · {newDurationHours}h de jeu</p>
+                </div>
+
+                <p className="text-[10px] font-bold text-zinc-500 uppercase text-center">Mode de paiement</p>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => handleStartSession(showStartModal, 'espèces')}
+                    className="py-4 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-amber-950/30 hover:border-amber-500/50 text-zinc-300 hover:text-amber-300 transition-all flex flex-col items-center gap-1 font-bold active:scale-[0.97]"
+                  >
+                    <span className="text-2xl">💵</span>
+                    <span className="text-xs">Espèces</span>
+                  </button>
+                  <button
+                    onClick={() => handleStartSession(showStartModal, 'mobile')}
+                    className="py-4 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-blue-950/30 hover:border-blue-500/50 text-zinc-300 hover:text-blue-300 transition-all flex flex-col items-center gap-1 font-bold active:scale-[0.97]"
+                  >
+                    <span className="text-2xl">📱</span>
+                    <span className="text-xs">Mobile Money</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setShowPaymentChoiceModal(false)}
+                  className="w-full py-2 text-zinc-500 hover:text-zinc-300 text-xs font-bold transition-colors"
+                >
+                  ← Retour
+                </button>
+              </div>
+            )}
 
           </div>
         </div>
