@@ -10792,139 +10792,53 @@ export default function App() {
 
             {/* Forms */}
             <div className="space-y-4">
-              
-              {/* Recherche Joueur Existant */}
-              <div className="relative">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">
-                  🔍 Rechercher un joueur existant (Optionnel) :
-                </label>
-                <input 
-                  type="text"
-                  placeholder="Saisir un nom ou téléphone..."
-                  value={playerSearchVal}
-                  onChange={(e) => {
-                    setPlayerSearchVal(e.target.value);
-                    setShowPlayerDropdown(true);
-                  }}
-                  onFocus={() => setShowPlayerDropdown(true)}
-                  className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
-                />
-                {playerSearchVal && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPlayerSearchVal("");
-                      setShowPlayerDropdown(false);
-                      setNewPlayerPseudo("");
-                      setNewPlayerPhone("");
-                    }}
-                    className="absolute right-3.5 top-[27px] text-zinc-500 hover:text-zinc-300 text-xs font-bold cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                )}
-                
-                {showPlayerDropdown && playerSearchVal.trim().length > 0 && (() => {
-                  const filtered = players.filter(p => {
-                    const search = playerSearchVal.toLowerCase();
-                    const pNom = (p.nom || "").toLowerCase();
-                    const pPhone = (p.phone || p.telephone || "").toLowerCase();
-                    return pNom.includes(search) || pPhone.includes(search);
-                  });
 
-                  if (filtered.length === 0) return null;
-
-                  return (
-                    <div className="absolute left-0 right-0 mt-1 bg-zinc-950/95 border border-zinc-800 rounded-xl shadow-xl z-30 max-h-40 overflow-y-auto divide-y divide-zinc-900/60 backdrop-blur-md">
-                      {filtered.map(p => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => {
-                            setNewPlayerPseudo(p.nom || "");
-                            setNewPlayerPhone(p.phone || p.telephone || "");
-                            setPlayerSearchVal(p.nom || "");
-                            setShowPlayerDropdown(false);
-                          }}
-                          className="w-full text-left px-4 py-2.5 hover:bg-zinc-900 text-xs text-zinc-300 hover:text-white flex items-center justify-between transition-colors font-medium cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-emerald-400">👤</span>
-                            <span>{p.nom}</span>
-                          </div>
-                          <span className="text-[10px] text-zinc-500 font-mono">{p.phone || p.telephone}</span>
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
-              </div>
-
+              {/* Nom du joueur */}
               <div>
-                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Pseudo (Surnom)</label>
-                <input 
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Nom du joueur</label>
+                <input
                   type="text"
                   placeholder="Ex: Sofiane"
                   value={newPlayerPseudo}
                   onChange={(e) => setNewPlayerPseudo(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
+                  autoFocus
+                  className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-3 text-sm font-semibold text-white focus:outline-none focus:border-emerald-500 placeholder-zinc-600"
                 />
               </div>
 
+              {/* Forfaits */}
               <div>
-                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Numéro de Téléphone (Optionnel)</label>
-                <input 
-                  type="tel"
-                  placeholder="Ex: 06 12 34 56 78"
-                  value={newPlayerPhone}
-                  onChange={(e) => setNewPlayerPhone(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500 font-mono"
-                />
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-2">Forfait</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[1, 2, 3, 4].map(h => (
+                    <button
+                      key={h}
+                      type="button"
+                      onClick={() => { setNewDurationType("limited"); setNewDurationHours(h); }}
+                      className={`py-3 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-0.5 ${
+                        newDurationType === "limited" && newDurationHours === h
+                          ? "bg-emerald-950/50 text-emerald-400 border-emerald-500/60 shadow-lg shadow-emerald-950/30"
+                          : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-600 hover:text-zinc-200"
+                      }`}
+                    >
+                      <span className="text-base font-black">{h}h</span>
+                      <span className="text-[10px] font-mono opacity-80">{(showStartModal.ratePerHour * h).toLocaleString('fr-FR')} FCFA</span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setNewDurationType("unlimited"); setNewDurationHours(0); }}
+                  className={`w-full mt-2 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                    newDurationType === "unlimited"
+                      ? "bg-cyan-950/40 text-cyan-400 border-cyan-500/50"
+                      : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-600 hover:text-zinc-300"
+                  }`}
+                >
+                  ⏱ Temps libre (sans forfait)
+                </button>
               </div>
 
-              <div>
-                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1.5">Mode de Facturation</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setNewDurationType("unlimited")}
-                    className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                      newDurationType === "unlimited"
-                        ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/50"
-                        : "bg-zinc-900 text-zinc-400 border-zinc-800"
-                    }`}
-                  >
-                    Temps libre (Illimité)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewDurationType("limited")}
-                    className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                      newDurationType === "limited"
-                        ? "bg-emerald-950/40 text-emerald-400 border-emerald-500/50"
-                        : "bg-zinc-900 text-zinc-400 border-zinc-800"
-                    }`}
-                  >
-                    Temps Limité (Forfait)
-                  </button>
-                </div>
-              </div>
-
-              {newDurationType === "limited" && (
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Durée (Heures)</label>
-                  <select
-                    value={newDurationHours}
-                    onChange={(e) => setNewDurationHours(Number(e.target.value))}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs font-semibold text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value={1}>1 Heure ({showStartModal.ratePerHour.toLocaleString('fr-FR')} FCFA)</option>
-                    <option value={2}>2 Heures ({(showStartModal.ratePerHour * 2).toLocaleString('fr-FR')} FCFA)</option>
-                    <option value={3}>3 Heures ({(showStartModal.ratePerHour * 3).toLocaleString('fr-FR')} FCFA)</option>
-                    <option value={4}>4 Heures ({(showStartModal.ratePerHour * 4).toLocaleString('fr-FR')} FCFA)</option>
-                  </select>
-                </div>
-              )}
             </div>
 
             {/* CTAs */}
