@@ -3956,9 +3956,6 @@ export default function App() {
   };
 
   const handleDeleteTicket = (id) => {
-    const ticketObj = tickets.find(t => t.id === id);
-    const ticketName = ticketObj ? ticketObj.name : "ce ticket";
-    if (!window.confirm(`Voulez-vous vraiment supprimer ${ticketName} ?`)) return;
 
     if (tickets.length <= 1) {
       setTickets([
