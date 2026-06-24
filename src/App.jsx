@@ -1457,7 +1457,16 @@ export default function App() {
 
   const [stats, setStats] = useState(() => {
     const saved = localStorage.getItem("system_stats");
-    return saved ? JSON.parse(saved) : initialStats;
+    const parsed = saved ? JSON.parse(saved) : initialStats;
+    return {
+      ...initialStats,
+      ...parsed,
+      playersPresent: Number(parsed?.playersPresent || 0),
+      gamesRevenue: Number(parsed?.gamesRevenue || 0),
+      snackRevenue: Number(parsed?.snackRevenue || 0),
+      cashBalance: Number(parsed?.cashBalance || 0),
+      mobileBalance: Number(parsed?.mobileBalance || 0)
+    };
   });
   useEffect(() => {
     localStorage.setItem("system_stats", JSON.stringify(stats));
@@ -3454,7 +3463,8 @@ export default function App() {
   };
 
   const handleConfirmPayment = (directInvoice = null) => {
-    const inv = directInvoice || showPaymentModal;
+    const isEvent = directInvoice && (directInvoice.nativeEvent || typeof directInvoice.preventDefault === "function");
+    const inv = isEvent ? showPaymentModal : (directInvoice || showPaymentModal);
     if (!inv) return;
     const total = inv.total;
 
@@ -3477,10 +3487,15 @@ export default function App() {
     }
 
     setStats(prev => {
-      const newGamesRev = prev.gamesRevenue + inv.gameCost;
-      const newSnacksRev = prev.snackRevenue + inv.snackCost;
-      const newCash = prev.cashBalance + cashUsed;
-      const newMobile = (prev.mobileBalance || 0) + mobileUsed;
+      const prevGamesRev = isNaN(prev.gamesRevenue) ? 0 : (prev.gamesRevenue || 0);
+      const prevSnacksRev = isNaN(prev.snackRevenue) ? 0 : (prev.snackRevenue || 0);
+      const prevCash = isNaN(prev.cashBalance) ? 0 : (prev.cashBalance || 0);
+      const prevMobile = isNaN(prev.mobileBalance) ? 0 : (prev.mobileBalance || 0);
+
+      const newGamesRev = prevGamesRev + (inv.gameCost || 0);
+      const newSnacksRev = prevSnacksRev + (inv.snackCost || 0);
+      const newCash = prevCash + cashUsed;
+      const newMobile = prevMobile + mobileUsed;
       return {
         ...prev,
         gamesRevenue: newGamesRev,
