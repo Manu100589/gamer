@@ -1648,6 +1648,107 @@ export default function App() {
     return `${amt.toLocaleString(locale)} ${symbol}`;
   };
 
+  const getPeriodStats = (period) => {
+    const today = new Date();
+    
+    // Define period start and end (with boundaries at 00:00:00 and 23:59:59)
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+    let start = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+
+    if (period === "hebdomadaire") {
+      start.setDate(start.getDate() - 6); // Last 7 days (including today)
+    } else if (period === "mensuel") {
+      start.setDate(start.getDate() - 29); // Last 30 days (including today)
+    }
+
+    const isInPeriod = (dateStr) => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      return !isNaN(d.getTime()) && d >= start && d <= end;
+    };
+
+    // Filter sales, expenses, purchases in the period
+    const periodSales = (sales || []).filter(s => s && s.status !== "annulée" && isInPeriod(s.date));
+    const periodExpenses = (expenses || []).filter(e => e && isInPeriod(e.date));
+    const periodPurchases = (purchases || []).filter(p => p && isInPeriod(p.date));
+
+    // Calculate revenue components
+    const gamesRevenue = periodSales.reduce((sum, s) => sum + (s.gameCost || 0), 0);
+    const snackRevenue = periodSales.reduce((sum, s) => sum + (s.snackCost || 0), 0);
+    const totalRevenue = gamesRevenue + snackRevenue;
+
+    // Calculate sessions count
+    const completedSessions = periodSales.filter(s => s.type === "console").length;
+    // Active console sessions (only count for today, i.e. journalier)
+    const activeSessions = period === "journalier" ? consoles.filter(c => c.status === "occupée").length : 0;
+    const sessionsCount = completedSessions + activeSessions;
+
+    // Calculate expenses
+    const expensesAmount = periodExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const purchasesAmount = periodPurchases.reduce((sum, p) => sum + (p.totalAmount || 0), 0);
+    const totalExpenses = expensesAmount + purchasesAmount;
+
+    // Calculate credits
+    const creditsMade = periodSales.filter(s => s.status === "À crédit").reduce((sum, s) => sum + (s.total || 0), 0);
+    
+    // Repayments in the period (status is Terminée, has dateReglement which fell inside the period)
+    const periodRepayments = (sales || []).filter(s => s && s.status === "Terminée" && s.dateReglement && isInPeriod(s.dateReglement));
+    const creditsRepaid = periodRepayments.reduce((sum, s) => sum + (s.total || 0), 0);
+
+    // Cash metrics
+    const realCashRevenue = totalRevenue - creditsMade + creditsRepaid;
+    const netProfit = realCashRevenue - totalExpenses;
+
+    // Dynamic console details
+    const consolesDetail = consoles.map(c => {
+      const cSales = periodSales.filter(s => s.consoleName === c.name || (s.type === "console" && s.consoleName === c.name));
+      const cCompleted = cSales.length;
+      const cActive = (period === "journalier" && c.status === "occupée") ? 1 : 0;
+      const cRevenue = cSales.reduce((sum, s) => sum + (s.gameCost || 0), 0);
+      return {
+        name: c.name,
+        type: c.type,
+        sessions: cCompleted + cActive,
+        revenue: cRevenue
+      };
+    });
+
+    // Dynamic snack details
+    const snacksDetail = products.map(p => {
+      let quantity = 0;
+      let revenue = 0;
+      periodSales.forEach(s => {
+        const items = s.itemsList || [];
+        items.forEach(item => {
+          if (item && item.product && item.product.name === p.name) {
+            quantity += (item.quantity || 0);
+            revenue += (item.quantity || 0) * (item.product.price || 0);
+          }
+        });
+      });
+      return {
+        name: p.name,
+        category: p.category,
+        quantity,
+        revenue
+      };
+    });
+
+    return {
+      sessionsCount,
+      gamesRevenue,
+      snackRevenue,
+      totalRevenue,
+      totalExpenses,
+      creditsMade,
+      creditsRepaid,
+      realCashRevenue,
+      netProfit,
+      consolesDetail,
+      snacksDetail
+    };
+  };
+
   const [stats, setStats] = useState(() => {
     const saved = localStorage.getItem("system_stats");
     const parsed = saved ? JSON.parse(saved) : initialStats;
@@ -5208,58 +5309,32 @@ export default function App() {
     const reportTitle = isWeekly ? "RAPPORT HEBDOMADAIRE" : isMonthly ? "RAPPORT MENSUEL" : "RAPPORT JOURNALIER";
     const dateStr = currentDateTime.toLocaleDateString('fr-FR');
     
-    const totalSessions = dailySessionsCount + consoles.filter(c => c.status === "occupée").length;
-    const totalGamesRev = stats.gamesRevenue;
-    const totalSnacksRev = stats.snackRevenue;
-    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
-
-    let finalSessions = totalSessions;
-    let finalGames = totalGamesRev;
-    let finalSnacks = totalSnacksRev;
-    let finalExpenses = totalExpenses;
-
-    if (isWeekly) {
-      const last7DaysSessions = caisseSessions.filter(s => {
-        const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays <= 7;
-      });
-      finalSessions = last7DaysSessions.length * 12 + totalSessions;
-      finalGames = last7DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
-      finalSnacks = last7DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
-      finalExpenses = last7DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
-    } else if (isMonthly) {
-      const last30DaysSessions = caisseSessions.filter(s => {
-        const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays <= 30;
-      });
-      finalSessions = last30DaysSessions.length * 15 + totalSessions;
-      finalGames = last30DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
-      finalSnacks = last30DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
-      finalExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
-    }
+    const rStats = getPeriodStats(reportSubTab);
     
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
     csvContent += `${reportTitle} - GAMEZONE\r\n`;
     csvContent += `Date;${dateStr}\r\n\r\n`;
     csvContent += "Indicateur;Valeur\r\n";
-    csvContent += `Joueurs (Sessions);${finalSessions}\r\n`;
-    csvContent += `Revenus Jeux (${systemSettings.currency});${finalGames}\r\n`;
-    csvContent += `Revenus Snack (${systemSettings.currency});${finalSnacks}\r\n`;
-    csvContent += `Depenses (${systemSettings.currency});${finalExpenses}\r\n\r\n`;
+    csvContent += `Joueurs (Sessions);${rStats.sessionsCount}\r\n`;
+    csvContent += `Revenus Jeux (${systemSettings.currency});${rStats.gamesRevenue}\r\n`;
+    csvContent += `Revenus Snack (${systemSettings.currency});${rStats.snackRevenue}\r\n`;
+    csvContent += `Depenses (${systemSettings.currency});${rStats.totalExpenses}\r\n`;
+    csvContent += `Credits Accordes (${systemSettings.currency});${rStats.creditsMade}\r\n`;
+    csvContent += `Reglements Credits (${systemSettings.currency});${rStats.creditsPaid}\r\n`;
+    csvContent += `CA Reel Encaisse (${systemSettings.currency});${rStats.realCashRevenue}\r\n`;
+    csvContent += `Solde Net (${systemSettings.currency});${rStats.netProfit}\r\n\r\n`;
 
     if (!isWeekly && !isMonthly) {
       csvContent += "DETAIL DES CONSOLES\r\n";
       csvContent += "Console;Type;Sessions;Revenus\r\n";
-      dailyConsolesRevenue.forEach(c => {
+      rStats.consolesDetail.forEach(c => {
         csvContent += `${c.name};${c.type};${c.sessions};${c.revenue}\r\n`;
       });
       csvContent += "\r\n";
 
       csvContent += "DETAIL DES VENTES SNACK\r\n";
       csvContent += "Produit;Categorie;Quantite;Revenus\r\n";
-      dailyProductsRevenue.filter(p => p.quantity > 0).forEach(p => {
+      rStats.snacksDetail.filter(p => p.quantity > 0).forEach(p => {
         csvContent += `${p.name};${p.category};${p.quantity};${p.revenue}\r\n`;
       });
     }
@@ -5287,97 +5362,20 @@ export default function App() {
     const dateStr = currentDateTime.toLocaleDateString(systemSettings.currencyLocale || 'fr-FR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
     const timeStr = currentDateTime.toLocaleTimeString(systemSettings.currencyLocale || 'fr-FR');
 
-    const totalSessions = dailySessionsCount + consoles.filter(c => c.status === "occupée").length;
-    const totalGamesRev = stats.gamesRevenue;
-    const totalSnacksRev = stats.snackRevenue;
-    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
-
-    let finalSessions = totalSessions;
-    let finalGames = totalGamesRev;
-    let finalSnacks = totalSnacksRev;
-    let finalExpenses = totalExpenses;
-
-    if (isWeekly) {
-      const last7DaysSessions = caisseSessions.filter(s => {
-        const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays <= 7;
-      });
-      finalSessions = last7DaysSessions.length * 12 + totalSessions;
-      finalGames = last7DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
-      finalSnacks = last7DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
-      finalExpenses = last7DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
-    } else if (isMonthly) {
-      const last30DaysSessions = caisseSessions.filter(s => {
-        const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays <= 30;
-      });
-      finalSessions = last30DaysSessions.length * 15 + totalSessions;
-      finalGames = last30DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
-      finalSnacks = last30DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
-      finalExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
-    }
-
-    let finalCreditsMade = 0;
-    let finalCreditsRepaid = 0;
-
-    const getPDFCreditsAndRepayments = (period) => {
-      const today = new Date();
-      const periodSales = (sales || []).filter(s => {
-        if (!s || s.status === "annulée") return false;
-        const saleDate = new Date(s.date);
-        if (period === "journalier") {
-          return saleDate.getDate() === today.getDate() &&
-            saleDate.getMonth() === today.getMonth() &&
-            saleDate.getFullYear() === today.getFullYear();
-        } else if (period === "hebdomadaire") {
-          const diffTime = Math.abs(today - saleDate);
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          return diffDays <= 7;
-        } else {
-          const diffTime = Math.abs(today - saleDate);
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          return diffDays <= 30;
-        }
-      });
-
-      const periodRepayments = (sales || []).filter(s => {
-        if (!s || s.status !== "Terminée" || !s.dateReglement) return false;
-        const regDate = new Date(s.dateReglement);
-        if (period === "journalier") {
-          return regDate.getDate() === today.getDate() &&
-            regDate.getMonth() === today.getMonth() &&
-            regDate.getFullYear() === today.getFullYear();
-        } else if (period === "hebdomadaire") {
-          const diffTime = Math.abs(today - regDate);
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          return diffDays <= 7;
-        } else {
-          const diffTime = Math.abs(today - regDate);
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          return diffDays <= 30;
-        }
-      });
-
-      return {
-        creditsMade: periodSales.filter(s => s.status === "À crédit").reduce((sum, s) => sum + s.total, 0),
-        creditsRepaid: periodRepayments.reduce((sum, s) => sum + s.total, 0)
-      };
-    };
-
-    const pdfCreditStats = getPDFCreditsAndRepayments(reportSubTab);
-    finalCreditsMade = pdfCreditStats.creditsMade;
-    finalCreditsRepaid = pdfCreditStats.creditsRepaid;
-
-    const grandTotal = finalGames + finalSnacks;
-    const realCashRevenue = grandTotal - finalCreditsMade + finalCreditsRepaid;
-    const netRealCash = realCashRevenue - finalExpenses;
+    const rStats = getPeriodStats(reportSubTab);
+    const finalSessions = rStats.sessionsCount;
+    const finalGames = rStats.gamesRevenue;
+    const finalSnacks = rStats.snackRevenue;
+    const finalExpenses = rStats.totalExpenses;
+    const finalCreditsMade = rStats.creditsMade;
+    const finalCreditsRepaid = rStats.creditsPaid;
+    const realCashRevenue = rStats.realCashRevenue;
+    const netRealCash = rStats.netProfit;
 
     let tablesHtml = "";
 
     if (!isWeekly && !isMonthly) {
-      const consolesHtml = dailyConsolesRevenue
+      const consolesHtml = rStats.consolesDetail
         .map(c => `
           <tr style="border-bottom: 1px solid #e4e4e7;">
             <td style="padding: 12px; font-weight: 600; color: #18181b;">${c.name}</td>
@@ -5387,7 +5385,7 @@ export default function App() {
           </tr>
         `).join("");
 
-      const snacksHtml = dailyProductsRevenue
+      const snacksHtml = rStats.snacksDetail
         .filter(p => p.quantity > 0)
         .map(p => `
           <tr style="border-bottom: 1px solid #e4e4e7;">
@@ -9449,133 +9447,20 @@ export default function App() {
 
             {/* ==================== VUE : RAPPORTS D'ACTIVITÉ ==================== */}
             {activeTab === "dailyReport" && (() => {
-              const getDrinksRevenueAndCOGS = (periodSales) => {
-                let rev = 0;
-                let cogs = 0;
-                periodSales.forEach(s => {
-                  if (!s || s.status === "annulée") return;
-                  const items = s.itemsList || [];
-                  items.forEach(item => {
-                    if (item && item.product && item.product.category === "boissons") {
-                      rev += (item.product.price || 0) * (item.quantity || 0);
-                      cogs += (item.product.purchasePrice || 0) * (item.quantity || 0);
-                    }
-                  });
-                });
-                return { rev, cogs };
-              };
-
-              const dailyDrinksSales = (sales || []).filter(s => {
-                if (!s || s.status === "annulée") return false;
-                const saleDate = new Date(s.date);
-                const today = new Date();
-                return saleDate.getDate() === today.getDate() &&
-                  saleDate.getMonth() === today.getMonth() &&
-                  saleDate.getFullYear() === today.getFullYear();
-              });
-              const todayDrinks = getDrinksRevenueAndCOGS(dailyDrinksSales);
-
-              const totalSessions = dailySessionsCount + consoles.filter(c => c.status === "occupée").length;
-              const totalGamesRev = stats.gamesRevenue;
-              const totalSnacksRev = stats.snackRevenue;
-              const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0) + purchases.reduce((sum, p) => sum + p.totalAmount, 0);
-              const netProfit = (todayDrinks.rev - todayDrinks.cogs) - totalExpenses;
-
-              // Weekly calculations
-              const last7DaysSessions = caisseSessions.filter(s => {
-                const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                return diffDays <= 7;
-              });
-              const last7DaysSales = (sales || []).filter(s => {
-                if (!s || s.status === "annulée") return false;
-                const diffTime = Math.abs(new Date() - new Date(s.date));
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                return diffDays <= 7;
-              });
-              const weeklyDrinks = getDrinksRevenueAndCOGS(last7DaysSales);
-              const weeklySessions = last7DaysSessions.length * 12 + totalSessions;
-              const weeklyGamesRev = last7DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
-              const weeklySnacksRev = last7DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
-              const weeklyExpenses = last7DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
-              const weeklyProfit = (weeklyDrinks.rev - weeklyDrinks.cogs) - weeklyExpenses;
-
-              // Monthly calculations
-              const last30DaysSessions = caisseSessions.filter(s => {
-                const diffTime = Math.abs(new Date() - new Date(s.dateOpen));
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                return diffDays <= 30;
-              });
-              const last30DaysSales = (sales || []).filter(s => {
-                if (!s || s.status === "annulée") return false;
-                const diffTime = Math.abs(new Date() - new Date(s.date));
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                return diffDays <= 30;
-              });
-              const monthlyDrinks = getDrinksRevenueAndCOGS(last30DaysSales);
-              const monthlySessions = last30DaysSessions.length * 15 + totalSessions;
-              const monthlyGamesRev = last30DaysSessions.reduce((sum, s) => sum + (s.gamesRevenue || 0), 0) + totalGamesRev;
-              const monthlySnacksRev = last30DaysSessions.reduce((sum, s) => sum + (s.snackRevenue || 0), 0) + totalSnacksRev;
-              const monthlyExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
-              const monthlyProfit = (monthlyDrinks.rev - monthlyDrinks.cogs) - monthlyExpenses;
-
-              const displayProfit = reportSubTab === "hebdomadaire" ? weeklyProfit : reportSubTab === "mensuel" ? monthlyProfit : netProfit;
-
-              const getCreditsAndRepayments = (period) => {
-                const today = new Date();
-                const periodSales = (sales || []).filter(s => {
-                  if (!s || s.status === "annulée") return false;
-                  const saleDate = new Date(s.date);
-                  if (period === "journalier") {
-                    return saleDate.getDate() === today.getDate() &&
-                      saleDate.getMonth() === today.getMonth() &&
-                      saleDate.getFullYear() === today.getFullYear();
-                  } else if (period === "hebdomadaire") {
-                    const diffTime = Math.abs(today - saleDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    return diffDays <= 7;
-                  } else {
-                    const diffTime = Math.abs(today - saleDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    return diffDays <= 30;
-                  }
-                });
-
-                const periodRepayments = (sales || []).filter(s => {
-                  if (!s || s.status !== "Terminée" || !s.dateReglement) return false;
-                  const regDate = new Date(s.dateReglement);
-                  if (period === "journalier") {
-                    return regDate.getDate() === today.getDate() &&
-                      regDate.getMonth() === today.getMonth() &&
-                      regDate.getFullYear() === today.getFullYear();
-                  } else if (period === "hebdomadaire") {
-                    const diffTime = Math.abs(today - regDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    return diffDays <= 7;
-                  } else {
-                    const diffTime = Math.abs(today - regDate);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                    return diffDays <= 30;
-                  }
-                });
-
-                return {
-                  creditsMade: periodSales.filter(s => s.status === "À crédit").reduce((sum, s) => sum + s.total, 0),
-                  creditsRepaid: periodRepayments.reduce((sum, s) => sum + s.total, 0)
-                };
-              };
-
-              const currentCreditStats = getCreditsAndRepayments(reportSubTab);
-              const displayCreditMade = currentCreditStats.creditsMade;
-              const displayCreditRepaid = currentCreditStats.creditsRepaid;
+              const rStats = getPeriodStats(reportSubTab);
+              
+              const displaySessions = rStats.sessionsCount;
+              const displayGamesRev = rStats.gamesRevenue;
+              const displaySnacksRev = rStats.snackRevenue;
+              const displayExpenses = rStats.totalExpenses;
+              const displayCreditMade = rStats.creditsMade;
+              const displayCreditRepaid = rStats.creditsRepaid;
+              const displayRealCashRevenue = rStats.realCashRevenue;
+              const displayNetProfit = rStats.netProfit;
 
               // Select active stats
               const reportTitle = reportSubTab === "hebdomadaire" ? "RAPPORT HEBDOMADAIRE" : reportSubTab === "mensuel" ? "RAPPORT MENSUEL" : "RAPPORT JOURNALIER";
               const reportDesc = reportSubTab === "hebdomadaire" ? "Bilan d'activité consolidé des 7 derniers jours" : reportSubTab === "mensuel" ? "Bilan d'activité consolidé des 30 derniers jours" : "Bilan d'activité consolidé pour la journée";
-              const displaySessions = reportSubTab === "hebdomadaire" ? weeklySessions : reportSubTab === "mensuel" ? monthlySessions : totalSessions;
-              const displayGamesRev = reportSubTab === "hebdomadaire" ? weeklyGamesRev : reportSubTab === "mensuel" ? monthlyGamesRev : totalGamesRev;
-              const displaySnacksRev = reportSubTab === "hebdomadaire" ? weeklySnacksRev : reportSubTab === "mensuel" ? monthlySnacksRev : totalSnacksRev;
-              const displayExpenses = reportSubTab === "hebdomadaire" ? weeklyExpenses : reportSubTab === "mensuel" ? monthlyExpenses : totalExpenses;
 
               // Graphs calculations
               const totalRev = displayGamesRev + displaySnacksRev;
@@ -9615,7 +9500,7 @@ export default function App() {
               trendHistory.push({
                 label: "En cours",
                 revenue: totalRev,
-                profit: displayProfit,
+                profit: displayNetProfit,
                 expenses: displayExpenses
               });
 
@@ -9982,6 +9867,34 @@ export default function App() {
                           </div>
                         </div>
                         <span className="text-xl font-extrabold text-teal-400 font-mono pr-2">{formatPrice(displayCreditRepaid)}</span>
+                      </div>
+
+                      {/* CA Réel Encaissé Row */}
+                      <div className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-950/40 border border-blue-500/20 flex items-center justify-center text-blue-400 animate-fade-in">
+                            <Wallet className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-bold text-white block">CA Réel Encaissé</span>
+                            <span className="text-[10px] text-zinc-500 block">Chiffre d'affaires réel encaissé en espèces/mobile money</span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-extrabold text-blue-400 font-mono pr-2">{formatPrice(displayRealCashRevenue)}</span>
+                      </div>
+
+                      {/* Solde Net Row */}
+                      <div className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-emerald-950/40 border border-emerald-500/20 flex items-center justify-center text-emerald-400 animate-fade-in">
+                            <TrendingUp className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-bold text-white block">Solde / Bénéfice Net</span>
+                            <span className="text-[10px] text-zinc-500 block">Recettes nettes moins dépenses de la période</span>
+                          </div>
+                        </div>
+                        <span className={`text-xl font-black font-mono pr-2 ${displayNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{formatPrice(displayNetProfit)}</span>
                       </div>
 
                     </div>
