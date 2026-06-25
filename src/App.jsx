@@ -1423,8 +1423,8 @@ export default function App() {
       alertConsoleMaintenance: true,
       highExpenseThreshold: 50000,
       theme: "sombre",
-      adminPassword: "admin",
-      gerantPassword: "gerant",
+      adminPassword: "housepub",
+      gerantPassword: "housepub",
     };
     return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
@@ -1442,8 +1442,8 @@ export default function App() {
   const handleLoginSubmit = (e) => {
     e.preventDefault();
     const correctPassword = loginRole === "admin" 
-      ? (systemSettings.adminPassword || "admin")
-      : (systemSettings.gerantPassword || "gerant");
+      ? (systemSettings.adminPassword || "housepub")
+      : (systemSettings.gerantPassword || "housepub");
 
     if (loginPassword === correctPassword) {
       localStorage.setItem("is_logged_in", "true");
@@ -1504,8 +1504,8 @@ export default function App() {
       case "info":
         newHistory.push(
           `Company Name:   ${systemSettings.companyName || "HOUSEPUB"}`,
-          `Admin Password: ${systemSettings.adminPassword || "admin"}`,
-          `Gérant Password: ${systemSettings.gerantPassword || "gerant"}`
+          `Admin Password: ${systemSettings.adminPassword || "housepub"}`,
+          `Gérant Password: ${systemSettings.gerantPassword || "housepub"}`
         );
         break;
       case "set":
@@ -10657,7 +10657,7 @@ export default function App() {
                         <label className="text-[10px] font-bold text-zinc-400 uppercase">Mot de passe Administrateur :</label>
                         <input 
                           type="text" 
-                          value={systemSettings.adminPassword || "admin"}
+                          value={systemSettings.adminPassword || "housepub"}
                           onChange={(e) => setSystemSettings(prev => ({ ...prev, adminPassword: e.target.value }))}
                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono font-semibold"
                         />
@@ -10666,7 +10666,7 @@ export default function App() {
                         <label className="text-[10px] font-bold text-zinc-400 uppercase">Mot de passe Gérant / Manager :</label>
                         <input 
                           type="text" 
-                          value={systemSettings.gerantPassword || "gerant"}
+                          value={systemSettings.gerantPassword || "housepub"}
                           onChange={(e) => setSystemSettings(prev => ({ ...prev, gerantPassword: e.target.value }))}
                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono font-semibold"
                         />
