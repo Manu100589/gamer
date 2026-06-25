@@ -1606,22 +1606,8 @@ export default function App() {
         }
       }
 
-      // Reset players statistics but keep their profiles
-      const savedPlayers = localStorage.getItem("system_players");
-      if (savedPlayers) {
-        try {
-          const parsed = JSON.parse(savedPlayers);
-          const resetPlayers = parsed.map(p => ({
-            ...p,
-            totalSessions: 0,
-            totalSpent: 0,
-            totalTimeMinutes: 0
-          }));
-          localStorage.setItem("system_players", JSON.stringify(resetPlayers));
-        } catch (e) {
-          console.error(e);
-        }
-      }
+      // Wipe players profiles
+      localStorage.setItem("system_players", JSON.stringify([]));
 
       localStorage.setItem("system_test_reset_v7_demo_cleanup", "true");
       window.location.reload();
@@ -4396,12 +4382,7 @@ export default function App() {
         activeSession: null
       }));
 
-      const resetPlayers = players.map(p => ({
-        ...p,
-        totalSessions: 0,
-        totalSpent: 0,
-        totalTimeMinutes: 0
-      }));
+      const resetPlayers = [];
 
       const resetDailyConsoles = consoles.map(c => ({
         name: c.name,
