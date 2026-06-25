@@ -1423,11 +1423,46 @@ export default function App() {
       alertConsoleMaintenance: true,
       highExpenseThreshold: 50000,
       theme: "sombre",
+      adminPassword: "admin",
+      gerantPassword: "gerant",
     };
     return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
 
   const [toastText, setToastText] = useState("Événement simulé appliqué avec succès !");
+
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem("is_logged_in") === "true";
+  });
+  const [loginRole, setLoginRole] = useState("admin");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
+  const handleLoginSubmit = (e) => {
+    e.preventDefault();
+    const correctPassword = loginRole === "admin" 
+      ? (systemSettings.adminPassword || "admin")
+      : (systemSettings.gerantPassword || "gerant");
+
+    if (loginPassword === correctPassword) {
+      localStorage.setItem("is_logged_in", "true");
+      setIsLoggedIn(true);
+      setRole(loginRole);
+      setLoginPassword("");
+      setLoginError("");
+      addLog("system_login", `Utilisateur connecté : ${loginRole === "admin" ? "Administrateur" : "Gérant"}`, "console");
+    } else {
+      setLoginError("Mot de passe incorrect. Veuillez réessayer.");
+      addLog("system_login_fail", `Échec de connexion : Tentative en tant que ${loginRole === "admin" ? "Administrateur" : "Gérant"}`, "console");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("is_logged_in");
+    setIsLoggedIn(false);
+    addLog("system_logout", `Utilisateur déconnecté : ${role === "admin" ? "Administrateur" : "Gérant"}`, "console");
+  };
   const [tempAlertLowStock, setTempAlertLowStock] = useState(() => systemSettings.alertLowStock);
   const [tempAlertOutOfStock, setTempAlertOutOfStock] = useState(() => systemSettings.alertOutOfStock);
   const [tempAlertHighExpense, setTempAlertHighExpense] = useState(() => systemSettings.alertHighExpense);
@@ -6032,6 +6067,118 @@ export default function App() {
     return matchesCategory && matchesSearch;
   });
 
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen w-full bg-zinc-950 flex items-center justify-center p-4 relative overflow-hidden font-sans">
+        {/* Animated background glows */}
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-600/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "2s" }}></div>
+        
+        {/* Login container */}
+        <div className="w-full max-w-md glass-panel p-8 rounded-3xl border border-zinc-850 shadow-2xl relative z-10 space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-850/50 flex items-center justify-center mx-auto shadow-md">
+              <ShieldCheck className="w-8 h-8 text-purple-400" />
+            </div>
+            <h2 className="text-2xl font-black text-white tracking-wide uppercase italic">
+              {systemSettings.companyName || "GAMEZONE"}
+            </h2>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+              Système de Contrôle d'Accès
+            </p>
+          </div>
+
+          {/* Role Tabs */}
+          <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-900/60 border border-zinc-850/50 rounded-2xl">
+            <button
+              onClick={() => {
+                setLoginRole("admin");
+                setLoginError("");
+              }}
+              className={`py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                loginRole === "admin"
+                  ? "bg-purple-600/20 text-purple-300 border border-purple-500/20 shadow-md"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Admin</span>
+            </button>
+            <button
+              onClick={() => {
+                setLoginRole("gerant");
+                setLoginError("");
+              }}
+              className={`py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                loginRole === "gerant"
+                  ? "bg-amber-600/20 text-amber-300 border border-amber-500/20 shadow-md"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              <UserCheck className="w-4 h-4" />
+              <span>Gérant</span>
+            </button>
+          </div>
+
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                Mot de Passe :
+              </label>
+              <div className="relative">
+                <input
+                  type={showLoginPassword ? "text" : "password"}
+                  value={loginPassword}
+                  onChange={(e) => {
+                    setLoginPassword(e.target.value);
+                    setLoginError("");
+                  }}
+                  placeholder="Saisir le mot de passe..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-10 pr-10 py-3 text-sm text-white focus:outline-none focus:border-purple-500 font-semibold"
+                  autoFocus
+                />
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500">
+                  <Unlock className="w-4.5 h-4.5" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  {showLoginPassword ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
+                </button>
+              </div>
+            </div>
+
+            {loginError && (
+              <p className="text-xs font-bold text-rose-500 bg-rose-950/20 border border-rose-500/10 px-3 py-2 rounded-lg flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{loginError}</span>
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-widest shadow-lg transition-all duration-300 active:scale-95 ${
+                loginRole === "admin"
+                  ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-indigo-950/20"
+                  : "bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-amber-950/20"
+              }`}
+            >
+              Se Connecter
+            </button>
+          </form>
+          
+          <div className="text-center pt-2">
+            <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-wider block">
+              GameZone Control &bull; v1.0.0
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-full bg-zinc-950 text-zinc-100 overflow-hidden font-sans">
       
@@ -6285,43 +6432,25 @@ export default function App() {
             </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 p-1 bg-zinc-900 rounded-xl">
-            <button
-              onClick={() => {
-                setRole("admin");
-                addLog("system_role", "Changement d'accès : Administrateur", "console");
-              }}
-              className={`py-2 px-3 text-xs font-semibold rounded-lg transition-all ${
-                role === "admin"
-                  ? "bg-zinc-800 text-violet-300 shadow-sm"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Admin
-            </button>
-            <button
-              onClick={() => {
-                setRole("gerant");
-                addLog("system_role", "Changement d'accès : Gérant / Manager", "console");
-              }}
-              className={`py-2 px-3 text-xs font-semibold rounded-lg transition-all ${
-                role === "gerant"
-                  ? "bg-zinc-800 text-amber-300 shadow-sm"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Gérant
-            </button>
-          </div>
-
           <button
-            onClick={handleResetAccounts}
-            className="w-full mt-3 py-2 px-3 bg-rose-600/10 border border-rose-500/20 hover:bg-rose-600 hover:text-white text-rose-400 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
-            title="Réinitialiser toutes les données"
+            onClick={handleLogout}
+            className="w-full py-2 px-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold border border-zinc-800 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+            title="Se déconnecter de la session"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Réinitialiser les Données</span>
+            <LogOut className="w-3.5 h-3.5 text-rose-400" />
+            <span>Déconnexion</span>
           </button>
+
+          {role === "admin" && (
+            <button
+              onClick={handleResetAccounts}
+              className="w-full mt-2 py-2 px-3 bg-rose-600/10 border border-rose-500/20 hover:bg-rose-600 hover:text-white text-rose-400 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+              title="Réinitialiser toutes les données"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Réinitialiser les Données</span>
+            </button>
+          )}
         </div>
       </aside>
 
@@ -10403,6 +10532,39 @@ export default function App() {
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Card 5: SÉCURITÉ & ACCÈS */}
+                  <div className="glass-panel p-6 rounded-2xl border border-zinc-800/80 space-y-5 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl"></div>
+                    <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
+                      <ShieldCheck className="w-5 h-5 text-purple-400" />
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">Sécurité & Accès</h3>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Mot de passe Administrateur :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.adminPassword || "admin"}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, adminPassword: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono font-semibold"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-zinc-400 uppercase">Mot de passe Gérant / Manager :</label>
+                        <input 
+                          type="text" 
+                          value={systemSettings.gerantPassword || "gerant"}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, gerantPassword: e.target.value }))}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono font-semibold"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-zinc-500 italic">
+                      Ces mots de passe contrôlent l'accès à l'application. L'Admin a un accès complet aux rapports, stocks et paramètres, tandis que le Gérant possède un accès opérationnel restreint.
+                    </p>
                   </div>
 
                 </div>
