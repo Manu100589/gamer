@@ -4175,15 +4175,19 @@ export default function App() {
       setConsoles(prev => prev.map(c => {
         if (c.status === "occupée" && c.activeSession) {
           const newElapsed = c.activeSession.timeElapsedSeconds + 1;
+          
+          let amountDue = c.activeSession.prepaidAmount || 0;
+          if (c.activeSession.durationType === "unlimited") {
+            const elapsedHours = newElapsed / 3600;
+            amountDue = Math.round(elapsedHours * (c.ratePerHour || 0));
+          }
 
           return {
             ...c,
             activeSession: {
               ...c.activeSession,
               timeElapsedSeconds: newElapsed,
-              // Keep totalAmountDue = prepaidAmount (the session cost)
-              // Only update if not already set from prepaid
-              totalAmountDue: c.activeSession.prepaidAmount || c.activeSession.totalAmountDue || 0
+              totalAmountDue: amountDue
             }
           };
         }
@@ -4288,7 +4292,8 @@ export default function App() {
         return prev.map(p => p.nom.toLowerCase() === fullName.toLowerCase() ? {
           ...p,
           totalSessions: (p.totalSessions || 0) + 1,
-          totalTimeMinutes: (p.totalTimeMinutes || 0) + durationMinutes
+          totalTimeMinutes: (p.totalTimeMinutes || 0) + durationMinutes,
+          totalSpent: (p.totalSpent || 0) + sessionPrice
         } : p);
       } else {
         return [{
@@ -4298,7 +4303,7 @@ export default function App() {
           email: "",
           dateInscription: new Date().toISOString(),
           totalSessions: 1,
-          totalSpent: 0,
+          totalSpent: sessionPrice,
           totalTimeMinutes: durationMinutes
         }, ...prev];
       }
