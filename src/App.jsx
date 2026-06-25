@@ -11964,10 +11964,8 @@ export default function App() {
                             const isOk = varianceVal === 0;
                             const isNegative = varianceVal < 0;
                             const openingBal = session.openingBalance || 0;
-                            const gamesRev = session.gamesRevenue || 0;
-                            const snackRev = session.snackRevenue || 0;
                             const expVal = session.expenses !== undefined ? session.expenses : ((session.expensesMaintenance || 0) + (session.expensesDiverses || 0));
-                            const purcVal = session.purchases || 0;
+                            const purcCash = session.purchasesCash !== undefined ? session.purchasesCash : (session.purchases || 0);
                             const expectedBal = session.expectedBalance || 0;
                             const realBal = session.realBalance || 0;
 
@@ -11987,12 +11985,12 @@ export default function App() {
                                   {openingBal.toLocaleString('fr-FR')} FCFA
                                 </td>
                                 <td className="p-4 text-right font-mono text-emerald-400 space-y-0.5">
-                                  <p>🎮 {gamesRev.toLocaleString('fr-FR')}</p>
-                                  <p className="text-[10px] text-emerald-500/80">🥤 {snackRev.toLocaleString('fr-FR')}</p>
+                                  <p>💵 +{(session.paymentEspèces || 0).toLocaleString('fr-FR')}</p>
+                                  <p className="text-[10px] text-blue-450 font-semibold">📱 +{(session.paymentMobileMoney || 0).toLocaleString('fr-FR')}</p>
                                 </td>
                                 <td className="p-4 text-right font-mono text-rose-400 space-y-0.5">
-                                  <p>💸 {expVal.toLocaleString('fr-FR')}</p>
-                                  <p className="text-[10px] text-rose-500/80">🛒 {purcVal.toLocaleString('fr-FR')}</p>
+                                  <p>💸 -{expVal.toLocaleString('fr-FR')}</p>
+                                  <p className="text-[10px] text-rose-500/80">🛒 -{purcCash.toLocaleString('fr-FR')}</p>
                                 </td>
                                 <td className="p-4 text-right font-mono text-zinc-400">
                                   {expectedBal.toLocaleString('fr-FR')} FCFA
@@ -14385,9 +14383,52 @@ export default function App() {
         const isOk = s.variance === 0;
         const isNegative = s.variance < 0;
 
+        const movements = s.movements || [];
+        const manualCashInflows = movements
+          .filter(m => m.type === "entrée" && (m.method === "espèces" || !m.method))
+          .reduce((sum, m) => sum + m.amount, 0);
+        const manualCashOutflows = movements
+          .filter(m => m.type === "sortie" && (m.method === "espèces" || !m.method))
+          .reduce((sum, m) => sum + m.amount, 0);
+        const manualMomoInflows = movements
+          .filter(m => m.type === "entrée" && m.method === "mobile_money")
+          .reduce((sum, m) => sum + m.amount, 0);
+        const manualMomoOutflows = movements
+          .filter(m => m.type === "sortie" && m.method === "mobile_money")
+          .reduce((sum, m) => sum + m.amount, 0);
+
+        const transferMomoToCash = movements
+          .filter(m => m.type === "transfert" && m.transferDir === "momo_to_cash")
+          .reduce((sum, m) => sum + m.amount, 0);
+        const transferCashToMomo = movements
+          .filter(m => m.type === "transfert" && m.transferDir === "cash_to_momo")
+          .reduce((sum, m) => sum + m.amount, 0);
+
+        const expMaintenance = s.expensesMaintenance || 0;
+        const expDiverses = s.expensesDiverses || 0;
+        const purcCash = s.purchasesCash || 0;
+        const refunds = s.refunds || 0;
+
+        const expectedCash = s.openingBalance 
+          + (s.paymentEspèces || 0) 
+          + manualCashInflows 
+          - manualCashOutflows 
+          + transferMomoToCash
+          - transferCashToMomo
+          - expMaintenance 
+          - expDiverses 
+          - purcCash 
+          - refunds;
+
+        const expectedMobile = (s.paymentMobileMoney || 0)
+          + manualMomoInflows
+          - manualMomoOutflows
+          + transferCashToMomo
+          - transferMomoToCash;
+
         return (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="glass-panel w-full max-w-lg rounded-2xl border border-zinc-850 p-6 space-y-5 animate-scale-up relative overflow-hidden">
+            <div className="glass-panel w-full max-w-lg rounded-2xl border border-zinc-850 p-6 space-y-4 animate-scale-up relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/5 rounded-full blur-3xl"></div>
               
               <div className="flex items-start justify-between border-b border-zinc-850 pb-3">
@@ -14405,7 +14446,8 @@ export default function App() {
                 <button onClick={() => setShowViewShiftModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
               </div>
 
-              <div className="space-y-4 text-xs">
+              <div className="space-y-3.5 text-xs">
+                {/* Opérateurs et Période */}
                 <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-2 gap-3">
                   <div>
                     <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Période du Shift</span>
@@ -14418,54 +14460,100 @@ export default function App() {
                   <div>
                     <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Opérateurs</span>
                     <p className="text-zinc-300 font-medium">Ouvert par : <strong className="text-white">{s.openedBy}</strong></p>
-                    <p className="text-zinc-300 font-medium">Clôturé par : <strong className="text-white">{s.closedBy}</strong></p>
+                    <p className="text-zinc-300 font-medium">Clôturé par : <strong className="text-white">{s.closedBy || "N/A"}</strong></p>
                   </div>
                 </div>
 
-                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 space-y-2.5">
-                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block border-b border-zinc-900 pb-1.5">Flux Financiers du Shift</span>
+                {/* Répartition Ventes */}
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 space-y-2">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block border-b border-zinc-900 pb-1">Répartition des Ventes</span>
+                  <div className="grid grid-cols-3 gap-2 text-[10px]">
+                    <div className="bg-zinc-900/50 p-2 rounded-lg border border-zinc-850 flex flex-col">
+                      <span className="text-zinc-500">Espèces</span>
+                      <strong className="text-emerald-450 font-mono">+{formatPrice(s.paymentEspèces || 0)}</strong>
+                    </div>
+                    <div className="bg-zinc-900/50 p-2 rounded-lg border border-zinc-850 flex flex-col">
+                      <span className="text-zinc-500">Momo</span>
+                      <strong className="text-blue-450 font-mono">+{formatPrice(s.paymentMobileMoney || 0)}</strong>
+                    </div>
+                    <div className="bg-zinc-900/50 p-2 rounded-lg border border-zinc-850 flex flex-col">
+                      <span className="text-zinc-500">Carte/Crédit</span>
+                      <strong className="text-teal-450 font-mono">+{formatPrice((s.paymentCarte || 0) + (s.paymentCrédit || 0))}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Flux Caisse Physique */}
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 space-y-2">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block border-b border-zinc-900 pb-1">Détails Trésorerie (Flux)</span>
                   
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
                     <div className="flex justify-between items-center text-zinc-400">
-                      <span>Fond de caisse initial :</span>
+                      <span>Fond Initial (Espèces) :</span>
                       <span className="font-mono text-zinc-300">{formatPrice(s.openingBalance)}</span>
                     </div>
                     <div className="flex justify-between items-center text-zinc-400">
-                      <span>Total Remboursements :</span>
-                      <span className="font-mono text-zinc-300">{formatPrice(s.refunds || 0)}</span>
+                      <span>Remboursements :</span>
+                      <span className="font-mono text-zinc-300">-{formatPrice(s.refunds || 0)}</span>
                     </div>
 
-                    <div className="flex justify-between items-center text-emerald-400 border-t border-zinc-900/50 pt-1.5">
-                      <span>Revenus Sessions Console :</span>
-                      <span className="font-mono font-bold">+{formatPrice(s.gamesRevenue)}</span>
+                    <div className="flex justify-between items-center text-emerald-500 border-t border-zinc-900/40 pt-1">
+                      <span>Ventes Espèces :</span>
+                      <span className="font-mono font-bold">+{formatPrice(s.paymentEspèces || 0)}</span>
                     </div>
-                    <div className="flex justify-between items-center text-emerald-400 border-t border-zinc-900/50 pt-1.5">
-                      <span>Revenus Snack / POS :</span>
-                      <span className="font-mono font-bold">+{formatPrice(s.snackRevenue)}</span>
+                    <div className="flex justify-between items-center text-blue-400 border-t border-zinc-900/40 pt-1">
+                      <span>Ventes Momo :</span>
+                      <span className="font-mono font-bold">+{formatPrice(s.paymentMobileMoney || 0)}</span>
                     </div>
 
-                    <div className="flex justify-between items-center text-rose-400 border-t border-zinc-900/50 pt-1.5">
-                      <span>Dépenses Diverses / Maintenance :</span>
-                      <span className="font-mono font-bold">-{formatPrice(s.expenses)}</span>
+                    <div className="flex justify-between items-center text-rose-450 pt-1">
+                      <span>Dépenses Cash :</span>
+                      <span className="font-mono">-{formatPrice(expMaintenance + expDiverses)}</span>
                     </div>
-                    <div className="flex justify-between items-center text-rose-400 border-t border-zinc-900/50 pt-1.5">
-                      <span>Achats Fournisseurs :</span>
-                      <span className="font-mono font-bold">-{formatPrice(s.purchases)}</span>
+                    <div className="flex justify-between items-center text-rose-450 pt-1">
+                      <span>Achats Cash :</span>
+                      <span className="font-mono">-{formatPrice(purcCash)}</span>
                     </div>
+                    
+                    {manualCashInflows > 0 && (
+                      <div className="flex justify-between items-center text-zinc-400">
+                        <span>+ Entrées Espèces :</span>
+                        <span className="font-mono text-emerald-500">+{formatPrice(manualCashInflows)}</span>
+                      </div>
+                    )}
+                    {manualCashOutflows > 0 && (
+                      <div className="flex justify-between items-center text-zinc-400">
+                        <span>- Sorties Espèces :</span>
+                        <span className="font-mono text-rose-500">-{formatPrice(manualCashOutflows)}</span>
+                      </div>
+                    )}
+                    {transferMomoToCash > 0 && (
+                      <div className="flex justify-between items-center text-zinc-400">
+                        <span>+ Momo ➔ Cash :</span>
+                        <span className="font-mono text-emerald-500">+{formatPrice(transferMomoToCash)}</span>
+                      </div>
+                    )}
+                    {transferCashToMomo > 0 && (
+                      <div className="flex justify-between items-center text-zinc-400">
+                        <span>- Cash ➔ Momo :</span>
+                        <span className="font-mono text-rose-500">-{formatPrice(transferCashToMomo)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
+                {/* Écarts et Attendus */}
                 <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 grid grid-cols-3 gap-3 items-center">
                   <div>
-                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Solde Théorique</span>
-                    <strong className="text-zinc-300 font-mono text-xs">{formatPrice(s.expectedBalance)}</strong>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Espèces Théorique</span>
+                    <strong className="text-emerald-400 font-mono text-xs">{formatPrice(expectedCash)}</strong>
                   </div>
                   <div>
-                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Solde Physique Réel</span>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Espèces Réel</span>
                     <strong className="text-white font-mono text-sm">{formatPrice(s.realBalance)}</strong>
                   </div>
                   <div className="text-center">
-                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Écart de Caisse</span>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Écart Cash</span>
                     <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-full border mt-0.5 ${
                       isOk 
                         ? "bg-emerald-950/60 text-emerald-400 border-emerald-500/30" 
@@ -14476,6 +14564,14 @@ export default function App() {
                       {isOk ? "Conforme" : `${s.variance > 0 ? '+' : ''}${formatPrice(s.variance)}`}
                     </span>
                   </div>
+                </div>
+
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 flex justify-between items-center">
+                  <div>
+                    <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Solde Mobile Money Théorique Attendu</span>
+                    <p className="text-[10px] text-zinc-400 font-medium">Flux Momo restés en compte digital</p>
+                  </div>
+                  <strong className="text-blue-400 font-mono text-xs">{formatPrice(expectedMobile)}</strong>
                 </div>
 
                 <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
