@@ -1681,8 +1681,9 @@ export default function App() {
     const periodRepayments = (sales || []).filter(s => s && s.status === "Terminée" && s.dateReglement && isInPeriod(s.dateReglement));
     const creditsRepaid = periodRepayments.reduce((sum, s) => sum + (s.total || 0), 0);
 
-    // Cash metrics
-    const realCashRevenue = totalRevenue - creditsMade + creditsRepaid;
+    // Cash metrics (immediately paid sales in the period + credit repayments received in the period)
+    const immediateSales = periodSales.filter(s => s.status === "Terminée" && !s.dateReglement).reduce((sum, s) => sum + (s.total || 0), 0);
+    const realCashRevenue = immediateSales + creditsRepaid;
     const netProfit = realCashRevenue - totalExpenses;
 
     // Dynamic console details
