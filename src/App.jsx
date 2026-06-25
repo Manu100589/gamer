@@ -429,29 +429,7 @@ function ComptabiliteView({
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">ROI</span>
-          <p className="text-base font-black text-white font-mono tracking-tight">{Math.max(0, periodROI).toFixed(1)}%</p>
-          <span className="text-[9px] text-zinc-600 block">Retour sur investissement</span>
-        </div>
-        <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Seuil de Rentabilité</span>
-          <p className="text-base font-black text-amber-500 font-mono tracking-tight">{formatPrice(periodSR)}</p>
-          <span className="text-[9px] text-zinc-600 block">Point d'équilibre</span>
-        </div>
-        <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Bénéfice Boissons</span>
-          <p className={`text-base font-black font-mono tracking-tight ${periodNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>{formatPrice(periodNetProfit)}</p>
-          <span className="text-[9px] text-zinc-600 block">Gain sur boissons période</span>
-        </div>
-        <div className="glass-panel p-4 rounded-xl border border-zinc-850/60 space-y-1 hover:border-zinc-750 transition-all duration-300">
-          <span className="text-[9px] text-zinc-500 font-extrabold uppercase tracking-wider block">Marge Brute</span>
-          <p className="text-base font-black text-blue-400 font-mono tracking-tight">{periodMargePercent.toFixed(1)}%</p>
-          <span className="text-[9px] text-zinc-600 block">{formatPrice(periodMargeBrute)}</span>
-        </div>
-      </div>
+
 
       {/* Ventes Summary */}
       <div className="glass-panel p-5 rounded-2xl border border-zinc-850/60 space-y-4">
