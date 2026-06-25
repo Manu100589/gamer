@@ -1463,6 +1463,89 @@ export default function App() {
     setIsLoggedIn(false);
     addLog("system_logout", `Utilisateur déconnecté : ${role === "admin" ? "Administrateur" : "Gérant"}`, "console");
   };
+
+  const [showAdminTerminal, setShowAdminTerminal] = useState(false);
+  const [terminalInput, setTerminalInput] = useState("");
+  const [terminalHistory, setTerminalHistory] = useState([]);
+  const terminalBottomRef = useRef(null);
+
+  useEffect(() => {
+    if (showAdminTerminal && terminalBottomRef.current) {
+      setTimeout(() => {
+        if (terminalBottomRef.current) {
+          terminalBottomRef.current.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 50);
+    }
+  }, [terminalHistory, showAdminTerminal]);
+
+  const handleTerminalSubmit = (e) => {
+    e.preventDefault();
+    const cmd = terminalInput.trim();
+    if (!cmd) return;
+
+    const newHistory = [...terminalHistory, `root@gamezone:~# ${cmd}`];
+    const args = cmd.split(" ");
+    const commandName = args[0].toLowerCase();
+
+    switch (commandName) {
+      case "help":
+        newHistory.push(
+          "Commands available:",
+          "  help                  Show this list",
+          "  info                  Show current company and credentials",
+          "  set admin <pwd>       Change Administrator password",
+          "  set gerant <pwd>      Change Gérant password",
+          "  set company <name>    Change company name",
+          "  clear                 Clear terminal history",
+          "  exit                  Close terminal"
+        );
+        break;
+      case "info":
+        newHistory.push(
+          `Company Name:   ${systemSettings.companyName || "HOUSEPUB"}`,
+          `Admin Password: ${systemSettings.adminPassword || "admin"}`,
+          `Gérant Password: ${systemSettings.gerantPassword || "gerant"}`
+        );
+        break;
+      case "set":
+        if (args.length < 3) {
+          newHistory.push("Error: Missing arguments. Usage: set [admin|gerant|company] [value]");
+        } else {
+          const type = args[1].toLowerCase();
+          const value = args.slice(2).join(" ");
+          if (type === "admin") {
+            setSystemSettings(prev => ({ ...prev, adminPassword: value }));
+            newHistory.push(`[SUCCESS] Administrator password changed to: "${value}"`);
+            addLog("terminal_change", `Mot de passe Admin changé via Terminal en : ${value}`, "console");
+          } else if (type === "gerant") {
+            setSystemSettings(prev => ({ ...prev, gerantPassword: value }));
+            newHistory.push(`[SUCCESS] Gérant password changed to: "${value}"`);
+            addLog("terminal_change", `Mot de passe Gérant changé via Terminal en : ${value}`, "console");
+          } else if (type === "company") {
+            setSystemSettings(prev => ({ ...prev, companyName: value }));
+            newHistory.push(`[SUCCESS] Company name changed to: "${value}"`);
+            addLog("terminal_change", `Nom entreprise changé via Terminal en : ${value}`, "console");
+          } else {
+            newHistory.push(`Error: Unknown target "${type}". Options: admin, gerant, company`);
+          }
+        }
+        break;
+      case "clear":
+        setTerminalHistory([]);
+        setTerminalInput("");
+        return;
+      case "exit":
+        setShowAdminTerminal(false);
+        setTerminalInput("");
+        return;
+      default:
+        newHistory.push(`Error: Command not found: "${commandName}". Type 'help' for valid options.`);
+    }
+
+    setTerminalHistory(newHistory);
+    setTerminalInput("");
+  };
   const [tempAlertLowStock, setTempAlertLowStock] = useState(() => systemSettings.alertLowStock);
   const [tempAlertOutOfStock, setTempAlertOutOfStock] = useState(() => systemSettings.alertOutOfStock);
   const [tempAlertHighExpense, setTempAlertHighExpense] = useState(() => systemSettings.alertHighExpense);
@@ -6501,7 +6584,34 @@ export default function App() {
 
 
 
-            <div className="flex items-center gap-3">
+            <div 
+              onClick={() => {
+                if (role === 'admin') {
+                  setShowAdminTerminal(true);
+                  setTerminalHistory([
+                    "Welcome to GAMEZONE TERMINAL v1.0.0",
+                    "-------------------------------------------------------------",
+                    "Session: root@gamezone",
+                    `Active Company: ${systemSettings.companyName || "HOUSEPUB"}`,
+                    "Status: SECURE - ADMINISTRATOR PRIVILEGES GRANTED",
+                    "Type 'help' for commands or click the shortcuts below.",
+                    ""
+                  ]);
+                } else {
+                  setToastText("Accès Refusé : Privilèges Administrateur requis pour le Terminal.");
+                  gsap.fromTo(
+                    ".notification-toast",
+                    { opacity: 0, y: -20 },
+                    { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+                      setTimeout(() => {
+                        gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+                      }, 3000);
+                    }}
+                  );
+                }
+              }}
+              className="flex items-center gap-3 cursor-pointer hover:bg-zinc-900/50 p-1.5 rounded-xl transition-all active:scale-98 select-none border border-transparent hover:border-zinc-800/60"
+            >
               <div className="text-right">
                 <p className="text-xs font-bold text-zinc-200">Terminal #01</p>
                 <p className="text-[10px] text-zinc-500 font-medium">{role === 'admin' ? 'Administrateur' : 'Gérant'}</p>
@@ -15212,6 +15322,87 @@ export default function App() {
             setShowCancelSaleModal(null);
           }}
         />
+      )}
+
+      {/* ========== MODAL VIRTUAL ADMIN TERMINAL ========== */}
+      {showAdminTerminal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-zinc-950/95 border border-emerald-500/35 rounded-2xl shadow-2xl shadow-emerald-950/20 overflow-hidden flex flex-col h-[480px] font-mono">
+            {/* Terminal Header */}
+            <div className="bg-zinc-900 border-b border-zinc-800 px-4 py-3 flex items-center justify-between select-none">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full bg-rose-500 block"></span>
+                <span className="w-3 h-3 rounded-full bg-amber-500 block"></span>
+                <span className="w-3 h-3 rounded-full bg-emerald-500 block"></span>
+                <span className="text-[11px] text-zinc-400 font-bold ml-2">Terminal #01 - root@gamezone:~</span>
+              </div>
+              <button 
+                onClick={() => setShowAdminTerminal(false)}
+                className="text-zinc-500 hover:text-zinc-300 transition-colors text-[10px] font-bold border border-zinc-800 hover:border-zinc-700 bg-zinc-950 px-2 py-1 rounded"
+              >
+                ESC / FERMER
+              </button>
+            </div>
+
+            {/* Terminal Console Output */}
+            <div className="flex-1 p-4 overflow-y-auto space-y-1.5 text-xs text-emerald-400 selection:bg-emerald-900/40 select-text">
+              {terminalHistory.map((line, idx) => (
+                <div key={idx} className="whitespace-pre-wrap">
+                  {line}
+                </div>
+              ))}
+              <div ref={terminalBottomRef} />
+            </div>
+
+            {/* Quick Shortcuts */}
+            <div className="px-4 py-2 bg-zinc-900/60 border-t border-zinc-900 flex flex-wrap gap-2 text-[10px] items-center text-zinc-400 select-none">
+              <span className="font-bold text-zinc-500 uppercase mr-1">Raccourcis :</span>
+              <button 
+                onClick={() => setTerminalInput("info")}
+                className="px-2 py-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-emerald-300 rounded cursor-pointer transition-colors"
+              >
+                info
+              </button>
+              <button 
+                onClick={() => setTerminalInput("set admin ")}
+                className="px-2 py-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-emerald-300 rounded cursor-pointer transition-colors"
+              >
+                set admin
+              </button>
+              <button 
+                onClick={() => setTerminalInput("set gerant ")}
+                className="px-2 py-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-emerald-300 rounded cursor-pointer transition-colors"
+              >
+                set gerant
+              </button>
+              <button 
+                onClick={() => setTerminalInput("help")}
+                className="px-2 py-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-emerald-300 rounded cursor-pointer transition-colors"
+              >
+                help
+              </button>
+              <button 
+                onClick={() => setTerminalHistory([])}
+                className="px-2 py-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-rose-400 rounded cursor-pointer transition-colors ml-auto"
+              >
+                clear
+              </button>
+            </div>
+
+            {/* Terminal Input Form */}
+            <form onSubmit={handleTerminalSubmit} className="bg-zinc-900/90 border-t border-zinc-800 flex items-center px-4 py-3 gap-2">
+              <span className="text-emerald-500 text-sm font-bold select-none">root@gamezone:~#</span>
+              <input
+                type="text"
+                value={terminalInput}
+                onChange={(e) => setTerminalInput(e.target.value)}
+                placeholder="Entrez votre commande (ex: help, set admin 123)..."
+                className="flex-1 bg-transparent border-none outline-none text-emerald-400 text-xs font-mono placeholder:text-emerald-950 focus:ring-0 focus:outline-none"
+                autoFocus
+              />
+            </form>
+          </div>
+        </div>
       )}
 
     </div>
