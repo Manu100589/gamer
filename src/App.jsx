@@ -1894,7 +1894,13 @@ export default function App() {
   }, [purchaseQuantity, purchaseUnitPrice]);
 
   // Caisse (Cash register) management states
-  const [caisseStatus, setCaisseStatus] = useState("ouverte");
+  const [caisseStatus, setCaisseStatus] = useState(() => {
+    return localStorage.getItem("system_caisse_status") || "ouverte";
+  });
+  useEffect(() => {
+    localStorage.setItem("system_caisse_status", caisseStatus);
+  }, [caisseStatus]);
+
   const [caisseSessions, setCaisseSessions] = useState(() => {
     const saved = localStorage.getItem("system_caisse_sessions");
     return saved ? JSON.parse(saved) : initialCaisseSessions;
@@ -1905,7 +1911,18 @@ export default function App() {
 
   const [activeCaisseSession, setActiveCaisseSession] = useState(() => {
     const saved = localStorage.getItem("system_active_caisse_session");
-    return saved ? JSON.parse(saved) : {
+    if (saved && saved !== "null" && saved !== "undefined") {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Error parsing system_active_caisse_session:", e);
+      }
+    }
+    const status = localStorage.getItem("system_caisse_status") || "ouverte";
+    if (status === "fermée") {
+      return null;
+    }
+    return {
       id: "shift-permanent",
       dateOpen: new Date().toISOString(),
       openedBy: "Gérant",
