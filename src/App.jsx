@@ -3583,6 +3583,90 @@ export default function App() {
       }
       cashUsed = cash;
       mobileUsed = mob;
+    } else if (paymentMethodSelected === "crédit") {
+      cashUsed = 0;
+      mobileUsed = 0;
+    }
+
+    // 1. Debt payment check (early exit)
+    if (inv.isDebtPayment) {
+      // Update caisse balances
+      setStats(prev => ({
+        ...prev,
+        cashBalance: (prev.cashBalance || 0) + cashUsed,
+        mobileBalance: (prev.mobileBalance || 0) + mobileUsed
+      }));
+
+      if (caisseStatus === "ouverte") {
+        setActiveCaisseSession(prev => ({
+          ...prev,
+          paymentEspèces: (prev.paymentEspèces || 0) + cashUsed,
+          paymentMobileMoney: (prev.paymentMobileMoney || 0) + mobileUsed,
+          transactionsCount: (prev.transactionsCount || 0) + 1
+        }));
+      }
+
+      // Update player loyalty spent (since debt is cleared now)
+      setPlayers(prev => prev.map(p => {
+        if (p.nom.toLowerCase() === inv.customer.toLowerCase()) {
+          return {
+            ...p,
+            totalSpent: (p.totalSpent || 0) + total
+          };
+        }
+        return p;
+      }));
+
+      // Update sale status in sales array
+      const pmText = paymentMethodSelected === "mixte" ? `Mixte (Espèces: ${formatPrice(cashUsed)}, Mobile: ${formatPrice(mobileUsed)})` : paymentMethodSelected;
+      setSales(prev => prev.map(s => {
+        if (s.id === inv.saleId) {
+          return {
+            ...s,
+            status: "Terminée",
+            paymentMethod: pmText,
+            paid: total,
+            cashUsed: cashUsed,
+            mobileUsed: mobileUsed
+          };
+        }
+        return s;
+      }));
+
+      addLog(
+        "payment_complete",
+        `Dette réglée pour "${inv.customer}". Total: ${formatPrice(total)} (Méthode: ${pmText})`,
+        inv.type === "console" ? "console" : "snack"
+      );
+
+      // Show receipt modal
+      setShowReceiptModal({
+        id: `REC-${inv.saleId.slice(-6)}`,
+        customer: inv.customer,
+        itemsList: inv.itemsList,
+        gameCost: inv.gameCost || 0,
+        snackCost: inv.snackCost || 0,
+        total: total,
+        date: new Date().toLocaleTimeString(),
+        type: inv.type === "console" ? "Règlement Dette Session" : "Règlement Dette Snack",
+        paymentMethod: pmText,
+        item: inv.consoleName || "Session Station"
+      });
+
+      setShowPaymentModal(null);
+      setPaymentCashAmount("");
+      setPaymentMobileAmount("");
+      setPaymentMethodSelected("espèces");
+      return;
+    }
+
+    let finalCustomerName = inv.customer || "Client Comptant";
+    if (paymentMethodSelected === "crédit") {
+      if (!creditCustomerName.trim()) {
+        alert("Erreur : Un nom de client débiteur est obligatoire pour enregistrer une vente à crédit.");
+        return;
+      }
+      finalCustomerName = creditCustomerName.trim();
     }
 
     setStats(prev => {
@@ -3605,13 +3689,16 @@ export default function App() {
     });
 
     if (caisseStatus === "ouverte") {
+      const carteAmt = paymentMethodSelected === "crédit" ? 0 : (total - cashUsed - mobileUsed);
+      const creditAmt = paymentMethodSelected === "crédit" ? total : 0;
       setActiveCaisseSession(prev => ({
         ...prev,
         gamesRevenue: prev.gamesRevenue + inv.gameCost,
         snackRevenue: prev.snackRevenue + inv.snackCost,
         paymentEspèces: (prev.paymentEspèces || 0) + cashUsed,
         paymentMobileMoney: (prev.paymentMobileMoney || 0) + mobileUsed,
-        paymentCarte: (prev.paymentCarte || 0) + (total - cashUsed - mobileUsed),
+        paymentCarte: (prev.paymentCarte || 0) + carteAmt,
+        paymentCrédit: (prev.paymentCrédit || 0) + creditAmt,
         transactionsCount: (prev.transactionsCount || 0) + 1
       }));
     }
@@ -3636,7 +3723,7 @@ export default function App() {
           productName: cartItem.product.name,
           type: "sortie",
           quantity: cartItem.quantity,
-          reason: `Vente POS direct (${inv.customer})`,
+          reason: `Vente POS direct (${finalCustomerName})`,
           user: role === "admin" ? "Administrateur" : "Gérant"
         }));
         return [...newMovements, ...prev];
@@ -3678,21 +3765,32 @@ export default function App() {
         });
       });
 
-      // Update player loyalty spent
-      setPlayers(prev => prev.map(p => {
-        if (p.nom.toLowerCase() === inv.customer.toLowerCase()) {
-          return {
+      // Update player loyalty spent (only if not credit)
+      setPlayers(prev => {
+        const exists = prev.some(p => p.nom.toLowerCase() === finalCustomerName.toLowerCase());
+        if (exists) {
+          return prev.map(p => p.nom.toLowerCase() === finalCustomerName.toLowerCase() ? {
             ...p,
-            totalSpent: (p.totalSpent || 0) + total,
+            totalSpent: (p.totalSpent || 0) + (paymentMethodSelected === "crédit" ? 0 : total),
             totalSessions: (p.totalSessions || 0) + 1
-          };
+          } : p);
+        } else {
+          return [{
+            id: Date.now(),
+            nom: finalCustomerName,
+            telephone: "",
+            email: "",
+            dateInscription: new Date().toISOString(),
+            totalSessions: 1,
+            totalSpent: paymentMethodSelected === "crédit" ? 0 : total,
+            totalTimeMinutes: 0
+          }, ...prev];
         }
-        return p;
-      }));
+      });
     }
 
     if (inv.type === "console" && inv.consoleId) {
-       setDailySessionsCount(prev => prev + 1);
+      setDailySessionsCount(prev => prev + 1);
 
       setTopConsolesState(prev => {
         const exists = prev.find(item => item.name === consoleName);
@@ -3758,21 +3856,37 @@ export default function App() {
       }
 
       // Update player loyalty spent & time spent (deducting prepaid registered at session start)
-      setPlayers(prev => prev.map(p => {
-        if (p.nom.toLowerCase() === inv.customer.toLowerCase()) {
-          const elapsedSec = consoleObj?.activeSession?.timeElapsedSeconds || 0;
-          const elapsedMin = Math.round(elapsedSec / 60);
-          const prepaidAmount = consoleObj?.activeSession?.prepaidAmount || 0;
-          const extraSpent = Math.max(0, total - prepaidAmount);
+      setPlayers(prev => {
+        const exists = prev.some(p => p.nom.toLowerCase() === finalCustomerName.toLowerCase());
+        const elapsedSec = consoleObj?.activeSession?.timeElapsedSeconds || 0;
+        const elapsedMin = Math.round(elapsedSec / 60);
+        const prepaidAmount = consoleObj?.activeSession?.prepaidAmount || 0;
+        const extraSpent = Math.max(0, total - prepaidAmount);
 
-          return {
-            ...p,
-            totalSpent: (p.totalSpent || 0) + extraSpent,
-            totalTimeMinutes: (p.totalTimeMinutes || 0) + elapsedMin
-          };
+        if (exists) {
+          return prev.map(p => {
+            if (p.nom.toLowerCase() === finalCustomerName.toLowerCase()) {
+              return {
+                ...p,
+                totalSpent: (p.totalSpent || 0) + (paymentMethodSelected === "crédit" ? 0 : extraSpent),
+                totalTimeMinutes: (p.totalTimeMinutes || 0) + elapsedMin
+              };
+            }
+            return p;
+          });
+        } else {
+          return [{
+            id: Date.now(),
+            nom: finalCustomerName,
+            telephone: consoleObj?.activeSession?.phone || "",
+            email: "",
+            dateInscription: new Date().toISOString(),
+            totalSessions: 1,
+            totalSpent: paymentMethodSelected === "crédit" ? 0 : extraSpent,
+            totalTimeMinutes: elapsedMin
+          }, ...prev];
         }
-        return p;
-      }));
+      });
 
       setConsoles(prev => prev.map(c => {
         if (c.id === inv.consoleId) {
@@ -3789,24 +3903,31 @@ export default function App() {
       }));
     }
 
-    const pmText = paymentMethodSelected === "mixte" ? `Mixte (Espèces: ${formatPrice(cashUsed)}, Mobile: ${formatPrice(mobileUsed)})` : paymentMethodSelected;
+    const pmText = paymentMethodSelected === "mixte"
+      ? `Mixte (Espèces: ${formatPrice(cashUsed)}, Mobile: ${formatPrice(mobileUsed)})`
+      : paymentMethodSelected === "crédit"
+        ? "À crédit"
+        : paymentMethodSelected;
+
     addLog(
       "payment_complete",
-      `Paiement reçu pour "${inv.name}". Total: ${formatPrice(total)} (Méthode: ${pmText})`,
+      paymentMethodSelected === "crédit"
+        ? `Vente à crédit enregistrée pour "${finalCustomerName}". Total: ${formatPrice(total)}`
+        : `Paiement reçu pour "${inv.name}". Total: ${formatPrice(total)} (Méthode: ${pmText})`,
       inv.type === "console" ? "console" : "snack"
     );
 
     const newCompletedSale = {
       id: `VTE-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Date.now().toString().slice(-6)}`,
-      customer: inv.customer || "Client Comptant",
+      customer: finalCustomerName,
       seller: role === "admin" ? "Administrateur" : "Gérant",
       total: total,
-      paid: total,
+      paid: paymentMethodSelected === "crédit" ? 0 : total,
       itemsList: inv.itemsList || [],
       gameCost: inv.gameCost || 0,
       snackCost: inv.snackCost || 0,
       date: new Date().toISOString(),
-      status: "Terminée",
+      status: paymentMethodSelected === "crédit" ? "À crédit" : "Terminée",
       paymentMethod: pmText,
       cashUsed: cashUsed,
       mobileUsed: mobileUsed,
@@ -3817,13 +3938,15 @@ export default function App() {
 
     setShowReceiptModal({
       id: `REC-${Date.now().toString().slice(-6)}`,
-      customer: inv.customer,
+      customer: finalCustomerName,
       itemsList: inv.itemsList,
       gameCost: inv.gameCost,
       snackCost: inv.snackCost,
       total: total,
       date: new Date().toLocaleTimeString(),
-      type: inv.type === "console" ? "Clôture Station & Snacks" : "Facture Directe",
+      type: inv.type === "console" 
+        ? (paymentMethodSelected === "crédit" ? "Crédit Station & Snacks" : "Clôture Station & Snacks")
+        : (paymentMethodSelected === "crédit" ? "Crédit Direct" : "Facture Directe"),
       paymentMethod: pmText
     });
 
@@ -4105,6 +4228,7 @@ export default function App() {
   const [paymentMethodSelected, setPaymentMethodSelected] = useState("espèces"); // 'espèces', 'mobile money', 'mixte'
   const [paymentCashAmount, setPaymentCashAmount] = useState("");
   const [paymentMobileAmount, setPaymentMobileAmount] = useState("");
+  const [creditCustomerName, setCreditCustomerName] = useState("");
   const [showMergeModal, setShowMergeModal] = useState(null); // stores source invoice object to merge
   const [targetMergeInvoiceId, setTargetMergeInvoiceId] = useState(""); // stores console object to interrupt
   
@@ -4136,6 +4260,13 @@ export default function App() {
       setShowPlayerDropdown(false);
     }
   }, [showStartModal]);
+
+  // When showing payment modal, reset credit customer name
+  useEffect(() => {
+    if (showPaymentModal) {
+      setCreditCustomerName(showPaymentModal.customer && showPaymentModal.customer !== "Client Comptant" ? showPaymentModal.customer : "");
+    }
+  }, [showPaymentModal]);
   const [closeSessionHours, setCloseSessionHours] = useState(1);
   const [dailySessionsCount, setDailySessionsCount] = useState(0);
   const [dailySalesCount, setDailySalesCount] = useState(0);
@@ -9349,6 +9480,116 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* --- NEW: SECTION DETTES ET ARRIÉRÉS --- */}
+                  <div className="pt-6 border-t border-zinc-800 space-y-4">
+                    <div>
+                      <span className="sticker-badge bg-rose-950/40 text-rose-400 border border-rose-500/20 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">
+                        Dettes & Arriérés (À crédit)
+                      </span>
+                    </div>
+
+                    {/* Debt indicators */}
+                    {(() => {
+                      const unpaidSales = sales.filter(s => s.status === "À crédit");
+                      const totalDebtAmount = unpaidSales.reduce((sum, s) => sum + s.total, 0);
+
+                      return (
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 border border-rose-950/30 bg-rose-950/5">
+                              <span className="text-[10px] text-rose-500 font-extrabold uppercase tracking-wider">Montant total dû (Arriérés)</span>
+                              <span className="text-xl font-mono font-extrabold text-rose-400">{formatPrice(totalDebtAmount)}</span>
+                            </div>
+                            <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 border border-rose-950/30">
+                              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Nombre de clients endettés</span>
+                              <span className="text-xl font-extrabold text-white">{unpaidSales.length} dossier(s)</span>
+                            </div>
+                          </div>
+
+                          {/* Debt list table */}
+                          <div className="glass-panel rounded-2xl border border-zinc-850 overflow-hidden mt-4">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left border-collapse text-xs">
+                                <thead>
+                                  <tr className="bg-zinc-900/50 border-b border-zinc-800 text-zinc-400 font-bold uppercase tracking-wider">
+                                    <th className="p-4">N° Facture</th>
+                                    <th className="p-4">Client Débiteur</th>
+                                    <th className="p-4">Détails</th>
+                                    <th className="p-4 text-right">Montant</th>
+                                    <th className="p-4 text-center">Statut</th>
+                                    <th className="p-4 text-center">Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-zinc-900">
+                                  {unpaidSales.map((sale, idx) => {
+                                    const items = (sale.itemsList || []).map(it => `${it.quantity}x ${it.product.name}`).join(", ");
+                                    const details = sale.gameCost > 0
+                                      ? `🕹️ Session Console (${formatPrice(sale.gameCost)})${items ? ` + 🍿 ${items}` : ""}`
+                                      : `🍿 Vente Snack: ${items || "Snack"}`;
+
+                                    return (
+                                      <tr key={sale.id} className="hover:bg-zinc-900/20 transition-all font-medium">
+                                        <td className="p-4 font-mono font-bold text-zinc-400">
+                                          #{sale.id.slice(-6)}
+                                        </td>
+                                        <td className="p-4">
+                                          <span className="text-white font-bold block">{sale.customer}</span>
+                                          <span className="text-[9px] text-zinc-500 block font-mono">Enregistré par {sale.seller}</span>
+                                        </td>
+                                        <td className="p-4 max-w-xs text-[10px] text-zinc-400">
+                                          {details}
+                                        </td>
+                                        <td className="p-4 text-right font-mono font-extrabold text-rose-400 text-sm">
+                                          {formatPrice(sale.total)}
+                                        </td>
+                                        <td className="p-4 text-center">
+                                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-950/60 text-rose-400 border border-rose-500/20 animate-pulse">
+                                            À Crédit
+                                          </span>
+                                        </td>
+                                        <td className="p-4">
+                                          <div className="flex items-center justify-center gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setPaymentMethodSelected("espèces");
+                                                setPaymentCashAmount(sale.total);
+                                                setPaymentMobileAmount("");
+                                                setShowPaymentModal({
+                                                  ...sale,
+                                                  isDebtPayment: true,
+                                                  saleId: sale.id,
+                                                  name: `Règlement Dette - ${sale.customer}`
+                                                });
+                                              }}
+                                              className="py-1 px-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-1 active:scale-95 transition-all"
+                                              title="Régler la dette"
+                                            >
+                                              <Check className="w-3 h-3" />
+                                              <span>Encaisser</span>
+                                            </button>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+
+                                  {unpaidSales.length === 0 && (
+                                    <tr>
+                                      <td colSpan="6" className="p-8 text-center text-zinc-500 italic">
+                                        Aucune dette ou arriéré en cours. Tout est réglé ! 🎉
+                                      </td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+
                 </div>
               );
             })()}
@@ -11650,11 +11891,12 @@ export default function App() {
               <div className="space-y-3">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase block">Mode de règlement :</label>
                 
-                <div className="grid grid-cols-3 gap-3">
+                <div className={`grid gap-3 ${showPaymentModal.isDebtPayment ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4"}`}>
                   {[
                     { id: "espèces", label: "Espèces", desc: "Tiroir caisse" },
                     { id: "mobile money", label: "Mobile Money", desc: "Orange, Wave, MTN" },
-                    { id: "mixte", label: "Paiement Mixte", desc: "Espèces + Mobile" }
+                    { id: "mixte", label: "Paiement Mixte", desc: "Espèces + Mobile" },
+                    ...(!showPaymentModal.isDebtPayment ? [{ id: "crédit", label: "À Crédit", desc: "Payer plus tard" }] : [])
                   ].map(pm => {
                     const isSelected = paymentMethodSelected === pm.id;
                     return (
@@ -11687,6 +11929,25 @@ export default function App() {
                   })}
                 </div>
               </div>
+
+              {paymentMethodSelected === "crédit" && (
+                <div className="p-4 bg-zinc-950 border border-zinc-900 rounded-xl space-y-3 animate-fade-in">
+                  <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 border-b border-zinc-900 pb-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse"></span>
+                    <span>Client Débiteur</span>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold text-zinc-500 uppercase block">Nom du client débiteur (Obligatoire) :</label>
+                    <input 
+                      type="text" 
+                      placeholder="Saisissez le nom du client (ex: Thomas, Rayan...)"
+                      value={creditCustomerName}
+                      onChange={(e) => setCreditCustomerName(e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-white font-bold focus:outline-none focus:border-rose-500/50"
+                    />
+                  </div>
+                </div>
+              )}
 
               {paymentMethodSelected === "mixte" && (
                 <div className="p-4 bg-zinc-950 border border-zinc-900 rounded-xl space-y-4 animate-fade-in">
@@ -11744,11 +12005,15 @@ export default function App() {
                 <button
                   type="button"
                   onClick={handleConfirmPayment}
-                  disabled={!isMixedValid}
-                  className="px-6 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-extrabold shadow-md active:scale-95 transition-all flex items-center gap-1"
+                  disabled={!isMixedValid || (paymentMethodSelected === "crédit" && !creditCustomerName.trim())}
+                  className={`px-6 py-2.5 bg-gradient-to-r ${
+                    paymentMethodSelected === "crédit"
+                      ? "from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 animate-pulse"
+                      : "from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500"
+                  } disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-extrabold shadow-md active:scale-95 transition-all flex items-center gap-1`}
                 >
                   <Check className="w-4 h-4" />
-                  <span>Encaisser {formatPrice(total)}</span>
+                  <span>{paymentMethodSelected === "crédit" ? "Enregistrer le Crédit" : (showPaymentModal.isDebtPayment ? "Régler la dette" : `Encaisser ${formatPrice(total)}`)}</span>
                 </button>
               </div>
             </div>
