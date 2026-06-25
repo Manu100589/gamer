@@ -4040,8 +4040,9 @@ export default function App() {
     if (!inv) return;
     const total = inv.total;
     let consoleName = null;
+    let consoleObj = null;
     if (inv.type === "console" && inv.consoleId) {
-      const consoleObj = consoles.find(c => c.id === inv.consoleId);
+      consoleObj = consoles.find(c => c.id === inv.consoleId);
       consoleName = consoleObj ? consoleObj.name : `Console ID ${inv.consoleId}`;
     }
 
@@ -4932,9 +4933,10 @@ export default function App() {
 
     // Auto register new player or update existing profile
     setPlayers(prev => {
-      const exists = prev.some(p => p.nom.toLowerCase() === fullName.toLowerCase());
+      const playersList = prev || [];
+      const exists = playersList.some(p => p && p.nom && p.nom.toLowerCase() === fullName.toLowerCase());
       if (exists) {
-        return prev.map(p => p.nom.toLowerCase() === fullName.toLowerCase() ? {
+        return playersList.map(p => (p && p.nom && p.nom.toLowerCase() === fullName.toLowerCase()) ? {
           ...p,
           totalSessions: (p.totalSessions || 0) + 1,
           totalTimeMinutes: (p.totalTimeMinutes || 0) + durationMinutes,
@@ -4950,7 +4952,7 @@ export default function App() {
           totalSessions: 1,
           totalSpent: sessionPrice,
           totalTimeMinutes: durationMinutes
-        }, ...prev];
+        }, ...playersList];
       }
     });
 
