@@ -252,6 +252,23 @@ function ComptabiliteView({
     return d >= start && d <= end && s.status === "annulée";
   });
   const periodCancelledAmount = periodCancelledSales.reduce((sum, s) => sum + (s.total || 0), 0);
+
+  const periodCreditMade = React.useMemo(() => {
+    return (sales || []).filter(s => {
+      if (!s || s.status !== "À crédit") return false;
+      const d = new Date(s.date || Date.now());
+      return d >= start && d <= end;
+    }).reduce((sum, s) => sum + (s.total || 0), 0);
+  }, [sales, start, end]);
+
+  const periodCreditRepaid = React.useMemo(() => {
+    return (sales || []).filter(s => {
+      if (!s || s.status !== "Terminée" || !s.dateReglement) return false;
+      const d = new Date(s.dateReglement);
+      return d >= start && d <= end;
+    }).reduce((sum, s) => sum + (s.total || 0), 0);
+  }, [sales, start, end]);
+
   const durationDays = Math.max(1, Math.round(Math.abs(end - start) / (1000 * 60 * 60 * 24)) + 1);
 
   let healthStatus = "Situation critique";
@@ -446,7 +463,7 @@ function ComptabiliteView({
             <span className="font-bold text-rose-400">{periodCancelledSales.length} annulée(s)</span>
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
           <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-xl text-center">
             <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Jeux</span>
             <p className="text-sm font-black text-blue-400 font-mono">{formatPrice(periodGamesRevenue)}</p>
@@ -458,6 +475,14 @@ function ComptabiliteView({
           <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-xl text-center">
             <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Annulées</span>
             <p className="text-sm font-black text-rose-400 font-mono">{formatPrice(periodCancelledAmount)}</p>
+          </div>
+          <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-xl text-center">
+            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Crédits Accordés</span>
+            <p className="text-sm font-black text-orange-400 font-mono">{formatPrice(periodCreditMade)}</p>
+          </div>
+          <div className="bg-zinc-950/60 border border-zinc-900 p-3 rounded-xl text-center">
+            <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block">Règlements Reçus</span>
+            <p className="text-sm font-black text-teal-400 font-mono">{formatPrice(periodCreditRepaid)}</p>
           </div>
         </div>
       </div>
@@ -3627,7 +3652,8 @@ export default function App() {
             paymentMethod: pmText,
             paid: total,
             cashUsed: cashUsed,
-            mobileUsed: mobileUsed
+            mobileUsed: mobileUsed,
+            dateReglement: new Date().toISOString()
           };
         }
         return s;
@@ -5016,7 +5042,60 @@ export default function App() {
       finalExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
     }
 
+    let finalCreditsMade = 0;
+    let finalCreditsRepaid = 0;
+
+    const getPDFCreditsAndRepayments = (period) => {
+      const today = new Date();
+      const periodSales = (sales || []).filter(s => {
+        if (!s || s.status === "annulée") return false;
+        const saleDate = new Date(s.date);
+        if (period === "journalier") {
+          return saleDate.getDate() === today.getDate() &&
+            saleDate.getMonth() === today.getMonth() &&
+            saleDate.getFullYear() === today.getFullYear();
+        } else if (period === "hebdomadaire") {
+          const diffTime = Math.abs(today - saleDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return diffDays <= 7;
+        } else {
+          const diffTime = Math.abs(today - saleDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return diffDays <= 30;
+        }
+      });
+
+      const periodRepayments = (sales || []).filter(s => {
+        if (!s || s.status !== "Terminée" || !s.dateReglement) return false;
+        const regDate = new Date(s.dateReglement);
+        if (period === "journalier") {
+          return regDate.getDate() === today.getDate() &&
+            regDate.getMonth() === today.getMonth() &&
+            regDate.getFullYear() === today.getFullYear();
+        } else if (period === "hebdomadaire") {
+          const diffTime = Math.abs(today - regDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return diffDays <= 7;
+        } else {
+          const diffTime = Math.abs(today - regDate);
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return diffDays <= 30;
+        }
+      });
+
+      return {
+        creditsMade: periodSales.filter(s => s.status === "À crédit").reduce((sum, s) => sum + s.total, 0),
+        creditsRepaid: periodRepayments.reduce((sum, s) => sum + s.total, 0)
+      };
+    };
+
+    const pdfCreditStats = getPDFCreditsAndRepayments(reportSubTab);
+    finalCreditsMade = pdfCreditStats.creditsMade;
+    finalCreditsRepaid = pdfCreditStats.creditsRepaid;
+
     const grandTotal = finalGames + finalSnacks;
+    const realCashRevenue = grandTotal - finalCreditsMade + finalCreditsRepaid;
+    const netRealCash = realCashRevenue - finalExpenses;
 
     let tablesHtml = "";
 
@@ -5232,6 +5311,25 @@ export default function App() {
           <div class="card-stat">
             <div class="card-label">Dépenses</div>
             <div class="card-value" style="color: #dc2626;">${formatPrice(finalExpenses)}</div>
+          </div>
+        </div>
+
+        <div class="grid-stats" style="margin-top: -15px; margin-bottom: 30px;">
+          <div class="card-stat">
+            <div class="card-label">Crédits Accordés</div>
+            <div class="card-value" style="color: #ea580c;">${formatPrice(finalCreditsMade)}</div>
+          </div>
+          <div class="card-stat">
+            <div class="card-label">Règlements Crédits</div>
+            <div class="card-value" style="color: #0d9488;">${formatPrice(finalCreditsRepaid)}</div>
+          </div>
+          <div class="card-stat">
+            <div class="card-label">CA Réel Encaissé</div>
+            <div class="card-value" style="color: #2563eb;">${formatPrice(realCashRevenue)}</div>
+          </div>
+          <div class="card-stat">
+            <div class="card-label">Solde Shift Net</div>
+            <div class="card-value" style="color: #16a34a;">${formatPrice(netRealCash)}</div>
           </div>
         </div>
 
@@ -6302,171 +6400,366 @@ export default function App() {
           <div className="view-container">
 
             {/* ==================== VUE 1 : DASHBOARD ==================== */}
-            {activeTab === "dashboard" && (
-              <div className="space-y-8 graffiti-spray-blue">
-                <div>
-                  <span className="sticker-badge bg-blue-600 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Tableau de Bord</span>
-                </div>
+            {activeTab === "dashboard" && (() => {
+              const unpaidSales = sales.filter(s => s.status === "À crédit");
+              const totalCreditUnpaid = unpaidSales.reduce((sum, s) => sum + s.total, 0);
 
-                {/* Notification / Alert Banners */}
-                {((systemSettings.alertUnclosedCaisse && caisseStatus === "ouverte") || 
-                  (systemSettings.alertConsoleMaintenance && consoles.some(c => c.status === "maintenance"))) && (
-                  <div className="space-y-4">
-                    {/* Caisse Non Fermée Alert */}
-                    {systemSettings.alertUnclosedCaisse && caisseStatus === "ouverte" && (
-                      <div className="glass-panel p-4 rounded-xl border border-amber-500/25 bg-amber-500/5 flex items-center justify-between text-xs animate-pulse">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
-                            <Unlock className="w-4.5 h-4.5" />
-                          </div>
-                          <div>
-                            <span className="font-extrabold text-white uppercase block tracking-wider">Alerte : Session Caisse Active</span>
-                            <span className="text-zinc-400">La caisse de shift est actuellement ouverte et n'a pas encore été clôturée.</span>
-                          </div>
-                        </div>
-                        <button 
-                          onClick={() => setActiveTab("caisse")} 
-                          className="py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-lg uppercase tracking-wider text-[10px] active:scale-95 transition-all"
-                        >
-                          Voir la caisse
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Maintenance Console Alert */}
-                    {systemSettings.alertConsoleMaintenance && consoles.some(c => c.status === "maintenance") && (
-                      <div className="glass-panel p-4 rounded-xl border border-red-500/25 bg-red-500/5 flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-400 animate-bounce">
-                            <Gamepad2 className="w-4.5 h-4.5" />
-                          </div>
-                          <div>
-                            <span className="font-extrabold text-white uppercase block tracking-wider">Alerte : Stations en Maintenance</span>
-                            <span className="text-zinc-400">
-                              {consoles.filter(c => c.status === "maintenance").length} station(s) de jeu hors-service : {" "}
-                              <span className="text-zinc-200 font-bold">{consoles.filter(c => c.status === "maintenance").map(c => c.name).join(", ")}</span>
-                            </span>
-                          </div>
-                        </div>
-                        <button 
-                          onClick={() => setActiveTab("consoles")} 
-                          className="py-1.5 px-3 bg-red-500 hover:bg-red-400 text-white font-extrabold rounded-lg uppercase tracking-wider text-[10px] active:scale-95 transition-all"
-                        >
-                          Gérer les stations
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+              const creditProducts = (() => {
+                const map = {};
+                let gameCreditTotal = 0;
+                let gameCreditCount = 0;
                 
-                {/* 4 Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                  {/* Players present */}
-                  <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex items-center justify-between shadow-md">
-                    <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-violet-600/5 blur-xl"></div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Joueurs Présents</p>
-                      <h3 className="text-4xl font-extrabold text-white tracking-tight">
-                        {stats.playersPresent}
-                      </h3>
-                      <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                        {consoles.filter(c => c.status === "libre").length} postes libres
-                      </p>
-                    </div>
-                    <div className="w-12 h-12 rounded-xl bg-violet-950/80 border border-violet-500/20 flex items-center justify-center">
-                      <UserCheck className="w-6 h-6 text-violet-400" />
-                    </div>
+                sales.forEach(s => {
+                  if (s.status !== "À crédit") return;
+                  if (s.gameCost > 0) {
+                    gameCreditTotal += s.gameCost;
+                    gameCreditCount += 1;
+                  }
+                  if (s.itemsList && s.itemsList.length > 0) {
+                    s.itemsList.forEach(item => {
+                      if (!item || !item.product) return;
+                      const name = item.product.name;
+                      if (!map[name]) {
+                        map[name] = {
+                          name: name,
+                          quantity: 0,
+                          revenue: 0,
+                          image: item.product.image,
+                          category: item.product.category
+                        };
+                      }
+                      map[name].quantity += item.quantity;
+                      map[name].revenue += item.product.price * item.quantity;
+                    });
+                  }
+                });
+
+                const list = Object.values(map).sort((a, b) => b.revenue - a.revenue);
+                if (gameCreditTotal > 0) {
+                  list.unshift({
+                    name: "Sessions de Jeux (Consoles)",
+                    quantity: gameCreditCount,
+                    revenue: gameCreditTotal,
+                    isSession: true,
+                    category: "Jeux"
+                  });
+                }
+                return list;
+              })();
+
+              return (
+                <div className="space-y-8 graffiti-spray-blue">
+                  <div>
+                    <span className="sticker-badge bg-blue-600 text-white font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block">Tableau de Bord</span>
                   </div>
 
-                  {/* Games revenue today */}
-                  <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex items-center justify-between shadow-md">
-                    <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-cyan-600/5 blur-xl"></div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Revenus Jeux (Jour)</p>
-                      <h3 className="text-4xl font-extrabold text-white tracking-tight">
-                        {stats.gamesRevenue.toLocaleString('fr-FR')} FCFA
-                      </h3>
-                      <p className="text-[10px] text-zinc-400 font-semibold flex items-center gap-1">
-                        <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
-                        Aujourd'hui
-                      </p>
-                    </div>
-                    <div className="w-12 h-12 rounded-xl bg-cyan-950/80 border border-cyan-500/20 flex items-center justify-center">
-                      <Gamepad2 className="w-6 h-6 text-cyan-400" />
-                    </div>
-                  </div>
+                  {/* Notification / Alert Banners */}
+                  {((systemSettings.alertUnclosedCaisse && caisseStatus === "ouverte") || 
+                    (systemSettings.alertConsoleMaintenance && consoles.some(c => c.status === "maintenance"))) && (
+                    <div className="space-y-4">
+                      {/* Caisse Non Fermée Alert */}
+                      {systemSettings.alertUnclosedCaisse && caisseStatus === "ouverte" && (
+                        <div className="glass-panel p-4 rounded-xl border border-amber-500/25 bg-amber-500/5 flex items-center justify-between text-xs animate-pulse">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-400">
+                              <Unlock className="w-4.5 h-4.5" />
+                            </div>
+                            <div>
+                              <span className="font-extrabold text-white uppercase block tracking-wider">Alerte : Session Caisse Active</span>
+                              <span className="text-zinc-400">La caisse de shift est actuellement ouverte et n'a pas encore été clôturée.</span>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setActiveTab("caisse")} 
+                            className="py-1.5 px-3 bg-amber-500 hover:bg-amber-400 text-black font-extrabold rounded-lg uppercase tracking-wider text-[10px] active:scale-95 transition-all"
+                          >
+                            Voir la caisse
+                          </button>
+                        </div>
+                      )}
 
-                  {/* Snack revenue today */}
-                  <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex items-center justify-between shadow-md">
-                    <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-amber-600/5 blur-xl"></div>
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Revenus Snack (Jour)</p>
-                      <h3 className="text-4xl font-extrabold text-white tracking-tight">
-                        {stats.snackRevenue.toLocaleString('fr-FR')} FCFA
-                      </h3>
-                      <p className="text-[10px] text-zinc-400 font-semibold flex items-center gap-1">
-                        <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                        Aujourd'hui
-                      </p>
+                      {/* Maintenance Console Alert */}
+                      {systemSettings.alertConsoleMaintenance && consoles.some(c => c.status === "maintenance") && (
+                        <div className="glass-panel p-4 rounded-xl border border-red-500/25 bg-red-500/5 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-400 animate-bounce">
+                              <Gamepad2 className="w-4.5 h-4.5" />
+                            </div>
+                            <div>
+                              <span className="font-extrabold text-white uppercase block tracking-wider">Alerte : Stations en Maintenance</span>
+                              <span className="text-zinc-400">
+                                {consoles.filter(c => c.status === "maintenance").length} station(s) de jeu hors-service : {" "}
+                                <span className="text-zinc-200 font-bold">{consoles.filter(c => c.status === "maintenance").map(c => c.name).join(", ")}</span>
+                              </span>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => setActiveTab("consoles")} 
+                            className="py-1.5 px-3 bg-red-500 hover:bg-red-400 text-white font-extrabold rounded-lg uppercase tracking-wider text-[10px] active:scale-95 transition-all"
+                          >
+                            Gérer les stations
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div className="w-12 h-12 rounded-xl bg-amber-950/80 border border-amber-500/20 flex items-center justify-center">
-                      <GlassWater className="w-6 h-6 text-amber-400" />
-                    </div>
-                  </div>
-
-                  {/* Total cash balance */}
-                  <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-md border-zinc-800">
-                    <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-purple-600/5 blur-xl"></div>
-                    <div className="flex items-center justify-between w-full">
+                  )}
+                  
+                  {/* 5 Stats Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
+                    {/* Players present */}
+                    <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex items-center justify-between shadow-md">
+                      <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-violet-600/5 blur-xl"></div>
                       <div className="space-y-1">
-                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Solde de Caisse Actuel</p>
-                        {role === "admin" ? (
-                          <>
-                            <h3 className="text-4xl font-extrabold text-white tracking-tight">
-                              {(stats.cashBalance + (stats.mobileBalance || 0)).toLocaleString('fr-FR')} FCFA
-                            </h3>
-                            <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                              Caisse équilibrée
-                            </p>
-                          </>
-                        ) : (
-                          <div className="py-2 px-3 bg-zinc-900/80 border border-zinc-800 rounded-xl flex items-center gap-2 mt-1">
-                            <AlertTriangle className="w-4 h-4 text-amber-500" />
-                            <span className="text-xs text-zinc-400 font-bold select-none">
-                              Masqué (Admin Requis)
-                            </span>
+                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Joueurs Présents</p>
+                        <h3 className="text-4xl font-extrabold text-white tracking-tight">
+                          {stats.playersPresent}
+                        </h3>
+                        <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                          {consoles.filter(c => c.status === "libre").length} postes libres
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 rounded-xl bg-violet-950/80 border border-violet-500/20 flex items-center justify-center">
+                        <UserCheck className="w-6 h-6 text-violet-400" />
+                      </div>
+                    </div>
+
+                    {/* Games revenue today */}
+                    <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex items-center justify-between shadow-md">
+                      <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-cyan-600/5 blur-xl"></div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Revenus Jeux (Jour)</p>
+                        <h3 className="text-4xl font-extrabold text-white tracking-tight">
+                          {stats.gamesRevenue.toLocaleString('fr-FR')} FCFA
+                        </h3>
+                        <p className="text-[10px] text-zinc-400 font-semibold flex items-center gap-1">
+                          <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                          Aujourd'hui
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 rounded-xl bg-cyan-950/80 border border-cyan-500/20 flex items-center justify-center">
+                        <Gamepad2 className="w-6 h-6 text-cyan-400" />
+                      </div>
+                    </div>
+
+                    {/* Snack revenue today */}
+                    <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex items-center justify-between shadow-md">
+                      <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-amber-600/5 blur-xl"></div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Revenus Snack (Jour)</p>
+                        <h3 className="text-4xl font-extrabold text-white tracking-tight">
+                          {stats.snackRevenue.toLocaleString('fr-FR')} FCFA
+                        </h3>
+                        <p className="text-[10px] text-zinc-400 font-semibold flex items-center gap-1">
+                          <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                          Aujourd'hui
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 rounded-xl bg-amber-950/80 border border-amber-500/20 flex items-center justify-center">
+                        <GlassWater className="w-6 h-6 text-amber-400" />
+                      </div>
+                    </div>
+
+                    {/* Credits outstanding */}
+                    <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex items-center justify-between shadow-md border-amber-500/20 bg-amber-500/5">
+                      <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-amber-600/5 blur-xl"></div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Crédits en Cours</p>
+                        <h3 className="text-4xl font-extrabold text-amber-500 tracking-tight">
+                          {totalCreditUnpaid.toLocaleString('fr-FR')} FCFA
+                        </h3>
+                        <p className="text-[10px] text-zinc-400 font-semibold flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                          {unpaidSales.length} dossier(s) débiteur(s)
+                        </p>
+                      </div>
+                      <div className="w-12 h-12 rounded-xl bg-amber-950/80 border border-amber-500/20 flex items-center justify-center">
+                        <CreditCard className="w-6 h-6 text-amber-400" />
+                      </div>
+                    </div>
+
+                    {/* Total cash balance */}
+                    <div className="glass-panel p-6 rounded-2xl relative overflow-hidden flex flex-col justify-between shadow-md border-zinc-800">
+                      <div className="absolute -right-6 -bottom-6 w-24 h-24 rounded-full bg-purple-600/5 blur-xl"></div>
+                      <div className="flex items-center justify-between w-full">
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Solde de Caisse Actuel</p>
+                          {role === "admin" ? (
+                            <>
+                              <h3 className="text-4xl font-extrabold text-white tracking-tight">
+                                {(stats.cashBalance + (stats.mobileBalance || 0)).toLocaleString('fr-FR')} FCFA
+                              </h3>
+                              <p className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                Caisse équilibrée
+                              </p>
+                            </>
+                          ) : (
+                            <div className="py-2 px-3 bg-zinc-900/80 border border-zinc-800 rounded-xl flex items-center gap-2 mt-1">
+                              <AlertTriangle className="w-4 h-4 text-amber-500" />
+                              <span className="text-xs text-zinc-400 font-bold select-none">
+                                Masqué (Admin Requis)
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        {role === "admin" && (
+                          <div className="w-12 h-12 rounded-xl bg-purple-950/80 border border-purple-500/20 flex items-center justify-center self-start">
+                            <Wallet className="w-6 h-6 text-purple-400" />
                           </div>
                         )}
                       </div>
                       {role === "admin" && (
-                        <div className="w-12 h-12 rounded-xl bg-purple-950/80 border border-purple-500/20 flex items-center justify-center self-start">
-                          <Wallet className="w-6 h-6 text-purple-400" />
-                        </div>
+                        <>
+                          <div className="border-t border-zinc-800/80 my-3"></div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="border-r border-zinc-800/80 pr-2">
+                              <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Espèces</p>
+                              <p className="text-base font-bold text-emerald-400 font-mono">
+                                {stats.cashBalance.toLocaleString('fr-FR')} FCFA
+                              </p>
+                            </div>
+                            <div className="pl-2">
+                              <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Mobile Money</p>
+                              <p className="text-base font-bold text-cyan-400 font-mono">
+                                {(stats.mobileBalance || 0).toLocaleString('fr-FR')} FCFA
+                              </p>
+                            </div>
+                          </div>
+                        </>
                       )}
                     </div>
-                    {role === "admin" && (
-                      <>
-                        <div className="border-t border-zinc-800/80 my-3"></div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="border-r border-zinc-800/80 pr-2">
-                            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Espèces</p>
-                            <p className="text-base font-bold text-emerald-400 font-mono">
-                              {stats.cashBalance.toLocaleString('fr-FR')} FCFA
-                            </p>
-                          </div>
-                          <div className="pl-2">
-                            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Mobile Money</p>
-                            <p className="text-base font-bold text-cyan-400 font-mono">
-                              {(stats.mobileBalance || 0).toLocaleString('fr-FR')} FCFA
-                            </p>
-                          </div>
-                        </div>
-                      </>
-                    )}
                   </div>
-                </div>
+
+                  {/* Section: Rapport & Règlements des Crédits */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Panel: Produits pris à crédit */}
+                    <div className="glass-panel p-6 rounded-2xl border border-zinc-850/60 shadow-lg space-y-4">
+                      <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-rose-950/40 border border-rose-500/20 flex items-center justify-center">
+                            <Tag className="w-4.5 h-4.5 text-rose-400" />
+                          </div>
+                          <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                            Consommations sous Crédit
+                          </h4>
+                        </div>
+                        <span className="text-[10px] bg-rose-950/60 border border-rose-500/30 text-rose-400 font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider">
+                          Détail des encours
+                        </span>
+                      </div>
+
+                      <div className="max-h-60 overflow-y-auto space-y-2.5 pr-1">
+                        {creditProducts.map((p, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all animate-fade-in">
+                            <div className="flex items-center gap-2.5">
+                              {p.isSession ? (
+                                <div className="w-6 h-6 rounded-lg bg-cyan-950 border border-cyan-800/45 flex items-center justify-center text-xs text-cyan-400 font-bold">🎮</div>
+                              ) : (
+                                renderProductImage(p.image, "🥤", "w-6 h-6 rounded-lg object-cover", "text-xl")
+                              )}
+                              <div>
+                                <span className="text-xs font-extrabold text-white block">{p.name}</span>
+                                <span className="text-[9px] text-zinc-500 font-semibold">
+                                  Catégorie : <span className="text-zinc-400 font-bold uppercase">{p.category}</span>
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right font-sans">
+                              <span className="text-xs font-black text-rose-400 font-mono block">
+                                {p.revenue.toLocaleString('fr-FR')} FCFA
+                              </span>
+                              <span className="text-[9px] text-zinc-500 font-semibold">
+                                Quantité : <strong className="text-zinc-300 font-mono">{p.quantity}</strong>
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+
+                        {creditProducts.length === 0 && (
+                          <div className="py-8 text-center text-zinc-500 text-xs italic flex flex-col items-center justify-center gap-1.5">
+                            <span className="text-xl">🙌</span>
+                            <span>Aucun produit ni session actuellement à crédit !</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Panel: Portion de Règlement de Crédits */}
+                    <div className="glass-panel p-6 rounded-2xl border border-zinc-850/60 shadow-lg space-y-4">
+                      <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-950/40 border border-emerald-500/20 flex items-center justify-center">
+                            <Coins className="w-4.5 h-4.5 text-emerald-400" />
+                          </div>
+                          <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                            Règlements de Crédits Rapides
+                          </h4>
+                        </div>
+                        <button 
+                          onClick={() => setActiveTab("invoices")} 
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider flex items-center gap-1"
+                        >
+                          Voir tout →
+                        </button>
+                      </div>
+
+                      <div className="max-h-60 overflow-y-auto space-y-2.5 pr-1">
+                        {sales.filter(s => s.status === "À crédit").slice(0, 5).map((sale) => {
+                          const items = (sale.itemsList || []).map(it => `${it.quantity}x ${it.product.name}`).join(", ");
+                          const details = sale.gameCost > 0
+                            ? `🕹️ Session (${formatPrice(sale.gameCost)})${items ? ` + 🍿 ${items}` : ""}`
+                            : `🍿 Snacks: ${items || "Snacks"}`;
+
+                          return (
+                            <div key={sale.id} className="flex items-center justify-between p-2.5 bg-zinc-950/60 border border-zinc-900 rounded-xl hover:bg-zinc-900/40 transition-all">
+                              <div className="flex flex-col gap-0.5 flex-1 min-w-0 pr-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-extrabold text-white truncate">{sale.customer}</span>
+                                  <span className="text-[8px] bg-amber-950/60 text-amber-400 font-bold px-1.5 py-0.5 rounded border border-amber-500/10">
+                                    #{sale.id.slice(-4)}
+                                  </span>
+                                </div>
+                                <span className="text-[9px] text-zinc-500 truncate">{details}</span>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                <span className="text-xs font-black text-rose-400 font-mono">
+                                  {sale.total.toLocaleString('fr-FR')} F
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPaymentMethodSelected("espèces");
+                                    setPaymentCashAmount(sale.total);
+                                    setPaymentMobileAmount("");
+                                    setShowPaymentModal({
+                                      ...sale,
+                                      isDebtPayment: true,
+                                      saleId: sale.id,
+                                      name: `Règlement Dette - ${sale.customer}`
+                                    });
+                                  }}
+                                  className="p-1 px-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-lg font-bold text-[10px] shadow-sm flex items-center gap-0.5 active:scale-95 transition-all"
+                                  title="Régler la dette"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Encaisser</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {sales.filter(s => s.status === "À crédit").length === 0 && (
+                          <div className="py-8 text-center text-zinc-500 text-xs italic flex flex-col items-center justify-center gap-1.5">
+                            <span className="text-xl">🎉</span>
+                            <span>Aucune dette en cours. Tout est en ordre !</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
 
                 {/* Alert Panels: Out of Stock & Low Stock */}
                 {(systemSettings.alertOutOfStock || systemSettings.alertLowStock) && (
@@ -6884,7 +7177,8 @@ export default function App() {
                 </div>
 
               </div>
-            )}
+            );
+          })()}
 
             {/* ==================== VUE 2 : GESTION DES CONSOLES ==================== */}
             {activeTab === "consoles" && (
@@ -8768,6 +9062,56 @@ export default function App() {
               const monthlyExpenses = last30DaysSessions.reduce((sum, s) => sum + (s.expensesMaintenance || 0) + (s.expensesDiverses || 0) + (s.purchases || 0), 0) + totalExpenses;
               const monthlyProfit = (monthlyDrinks.rev - monthlyDrinks.cogs) - monthlyExpenses;
 
+              const displayProfit = reportSubTab === "hebdomadaire" ? weeklyProfit : reportSubTab === "mensuel" ? monthlyProfit : netProfit;
+
+              const getCreditsAndRepayments = (period) => {
+                const today = new Date();
+                const periodSales = (sales || []).filter(s => {
+                  if (!s || s.status === "annulée") return false;
+                  const saleDate = new Date(s.date);
+                  if (period === "journalier") {
+                    return saleDate.getDate() === today.getDate() &&
+                      saleDate.getMonth() === today.getMonth() &&
+                      saleDate.getFullYear() === today.getFullYear();
+                  } else if (period === "hebdomadaire") {
+                    const diffTime = Math.abs(today - saleDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays <= 7;
+                  } else {
+                    const diffTime = Math.abs(today - saleDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays <= 30;
+                  }
+                });
+
+                const periodRepayments = (sales || []).filter(s => {
+                  if (!s || s.status !== "Terminée" || !s.dateReglement) return false;
+                  const regDate = new Date(s.dateReglement);
+                  if (period === "journalier") {
+                    return regDate.getDate() === today.getDate() &&
+                      regDate.getMonth() === today.getMonth() &&
+                      regDate.getFullYear() === today.getFullYear();
+                  } else if (period === "hebdomadaire") {
+                    const diffTime = Math.abs(today - regDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays <= 7;
+                  } else {
+                    const diffTime = Math.abs(today - regDate);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    return diffDays <= 30;
+                  }
+                });
+
+                return {
+                  creditsMade: periodSales.filter(s => s.status === "À crédit").reduce((sum, s) => sum + s.total, 0),
+                  creditsRepaid: periodRepayments.reduce((sum, s) => sum + s.total, 0)
+                };
+              };
+
+              const currentCreditStats = getCreditsAndRepayments(reportSubTab);
+              const displayCreditMade = currentCreditStats.creditsMade;
+              const displayCreditRepaid = currentCreditStats.creditsRepaid;
+
               // Select active stats
               const reportTitle = reportSubTab === "hebdomadaire" ? "RAPPORT HEBDOMADAIRE" : reportSubTab === "mensuel" ? "RAPPORT MENSUEL" : "RAPPORT JOURNALIER";
               const reportDesc = reportSubTab === "hebdomadaire" ? "Bilan d'activité consolidé des 7 derniers jours" : reportSubTab === "mensuel" ? "Bilan d'activité consolidé des 30 derniers jours" : "Bilan d'activité consolidé pour la journée";
@@ -8775,7 +9119,6 @@ export default function App() {
               const displayGamesRev = reportSubTab === "hebdomadaire" ? weeklyGamesRev : reportSubTab === "mensuel" ? monthlyGamesRev : totalGamesRev;
               const displaySnacksRev = reportSubTab === "hebdomadaire" ? weeklySnacksRev : reportSubTab === "mensuel" ? monthlySnacksRev : totalSnacksRev;
               const displayExpenses = reportSubTab === "hebdomadaire" ? weeklyExpenses : reportSubTab === "mensuel" ? monthlyExpenses : totalExpenses;
-              const displayProfit = reportSubTab === "hebdomadaire" ? weeklyProfit : reportSubTab === "mensuel" ? monthlyProfit : netProfit;
 
               // Graphs calculations
               const totalRev = displayGamesRev + displaySnacksRev;
@@ -9154,6 +9497,34 @@ export default function App() {
                           </div>
                         </div>
                         <span className="text-xl font-extrabold text-rose-400 font-mono pr-2">{formatPrice(displayExpenses)}</span>
+                      </div>
+
+                      {/* Crédits Accordés Row */}
+                      <div className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-amber-950/40 border border-amber-500/20 flex items-center justify-center text-amber-400 animate-fade-in">
+                            <CreditCard className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-bold text-white block">Crédits Accordés</span>
+                            <span className="text-[10px] text-zinc-500 block">Dettes créées (produits ou sessions non encaissés) sur la période</span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-extrabold text-amber-500 font-mono pr-2">{formatPrice(displayCreditMade)}</span>
+                      </div>
+
+                      {/* Règlements de Crédits Row */}
+                      <div className="py-4 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-teal-950/40 border border-teal-500/20 flex items-center justify-center text-teal-400 animate-fade-in">
+                            <Coins className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-sm font-bold text-white block">Règlements de Crédits</span>
+                            <span className="text-[10px] text-zinc-500 block">Remboursements de dettes reçus en caisse sur la période</span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-extrabold text-teal-400 font-mono pr-2">{formatPrice(displayCreditRepaid)}</span>
                       </div>
 
                     </div>
