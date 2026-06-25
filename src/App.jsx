@@ -4257,60 +4257,92 @@ export default function App() {
 
   const handleResetAccounts = () => {
     if (confirm("⚠️ ATTENTION : Voulez-vous vraiment réinitialiser TOUS les comptes et statistiques à zéro ?\n\nCette action va :\n- Effacer l'historique des ventes, dépenses et achats\n- Effacer l'historique et les sessions de caisse (shifts)\n- Réinitialiser le solde en caisse et toutes les recettes à 0\n- Remettre à zéro les statistiques des consoles et des joueurs\n\nCette action est irréversible !")) {
-      localStorage.removeItem("system_pos_tickets");
-      localStorage.removeItem("system_active_caisse_session");
-      localStorage.removeItem("system_expenses");
-      localStorage.removeItem("system_purchases");
-      localStorage.removeItem("system_activity_log");
-      localStorage.removeItem("system_stock_movements");
-      localStorage.removeItem("system_sales");
-      localStorage.removeItem("system_caisse_sessions");
-      localStorage.removeItem("system_stats");
-      localStorage.removeItem("system_top_consoles");
-      localStorage.removeItem("system_top_products");
-      localStorage.removeItem("system_daily_consoles_revenue");
-      localStorage.removeItem("system_daily_products_revenue");
 
-      // Reset consoles statistics but keep their configurations
-      const savedConsoles = localStorage.getItem("system_consoles");
-      if (savedConsoles) {
-        try {
-          const parsed = JSON.parse(savedConsoles);
-          const resetConsoles = parsed.map(c => ({
-            ...c,
-            status: "libre",
-            totalSessions: 0,
-            totalRevenue: 0,
-            totalTimeSeconds: 0,
-            activeSession: null
-          }));
-          localStorage.setItem("system_consoles", JSON.stringify(resetConsoles));
-        } catch (e) {
-          console.error(e);
-        }
-      }
+      const emptyStats = {
+        playersPresent: 0,
+        gamesRevenue: 0,
+        snackRevenue: 0,
+        cashBalance: 0,
+        mobileBalance: 0,
+        totalRevenue: 0,
+        totalExpenses: 0,
+        totalPurchases: 0
+      };
 
-      // Reset players statistics but keep their profiles
-      const savedPlayers = localStorage.getItem("system_players");
-      if (savedPlayers) {
-        try {
-          const parsed = JSON.parse(savedPlayers);
-          const resetPlayers = parsed.map(p => ({
-            ...p,
-            totalSessions: 0,
-            totalSpent: 0,
-            totalTimeMinutes: 0
-          }));
-          localStorage.setItem("system_players", JSON.stringify(resetPlayers));
-        } catch (e) {
-          console.error(e);
-        }
-      }
+      const resetConsoles = consoles.map(c => ({
+        ...c,
+        status: "libre",
+        totalSessions: 0,
+        totalRevenue: 0,
+        totalTimeSeconds: 0,
+        activeSession: null
+      }));
 
-      // Reset caisse status
+      const resetPlayers = players.map(p => ({
+        ...p,
+        totalSessions: 0,
+        totalSpent: 0,
+        totalTimeMinutes: 0
+      }));
+
+      const resetDailyConsoles = consoles.map(c => ({
+        name: c.name,
+        type: c.type,
+        revenue: 0,
+        sessions: 0
+      }));
+
+      const resetDailyProducts = products.map(p => ({
+        name: p.name,
+        category: p.category,
+        quantity: 0,
+        revenue: 0
+      }));
+
+      const emptyTickets = [
+        { id: "default", name: "Ticket 1", cart: [], posCustomer: "", posAssociateConsoleId: "" }
+      ];
+
+      // Write clean values to localStorage FIRST (before useEffects can overwrite)
+      localStorage.setItem("system_stats", JSON.stringify(emptyStats));
+      localStorage.setItem("system_sales", JSON.stringify([]));
+      localStorage.setItem("system_expenses", JSON.stringify([]));
+      localStorage.setItem("system_purchases", JSON.stringify([]));
+      localStorage.setItem("system_caisse_sessions", JSON.stringify([]));
+      localStorage.setItem("system_activity_log", JSON.stringify([]));
+      localStorage.setItem("system_stock_movements", JSON.stringify([]));
+      localStorage.setItem("system_top_consoles", JSON.stringify([]));
+      localStorage.setItem("system_top_products", JSON.stringify([]));
+      localStorage.setItem("system_pos_tickets", JSON.stringify(emptyTickets));
+      localStorage.setItem("system_consoles", JSON.stringify(resetConsoles));
+      localStorage.setItem("system_players", JSON.stringify(resetPlayers));
+      localStorage.setItem("system_daily_consoles_revenue", JSON.stringify(resetDailyConsoles));
+      localStorage.setItem("system_daily_products_revenue", JSON.stringify(resetDailyProducts));
       localStorage.setItem("system_caisse_status", "fermée");
+      localStorage.removeItem("system_active_caisse_session");
+      localStorage.setItem("system_test_reset_v7_demo_cleanup", "true"); // Ensure this stays true to prevent falling back to demo data
 
-      window.location.reload();
+      // Update React states to prevent useEffects from re-writing stale data
+      setStats(emptyStats);
+      setSales([]);
+      setExpenses([]);
+      setPurchases([]);
+      setCaisseSessions([]);
+      setActivityLog([]);
+      setStockMovements([]);
+      setTopConsolesState([]);
+      setTopProductsState([]);
+      setConsoles(resetConsoles);
+      setPlayers(resetPlayers);
+      setDailyConsolesRevenue(resetDailyConsoles);
+      setDailyProductsRevenue(resetDailyProducts);
+      setActiveCaisseSession(null);
+      setCaisseStatus("fermée");
+
+      // Short delay to let useEffects write clean values, then reload
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
     }
   };
 
