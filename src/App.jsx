@@ -3004,8 +3004,7 @@ export default function App() {
       ...prev,
       gamesRevenue: 0,
       snackRevenue: 0,
-      cashBalance: openingBal,
-      mobileBalance: 0
+      cashBalance: openingBal
     }));
 
     addLog(
