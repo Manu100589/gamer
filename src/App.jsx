@@ -10502,17 +10502,6 @@ export default function App() {
                         <Lock className="w-4 h-4 text-zinc-650" />
                         <span>Mot de passe</span>
                       </button>
-                      <button
-                        onClick={() => setProfileActiveTab("auth")}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-xl transition-all duration-150 ${
-                          profileActiveTab === "auth"
-                            ? "bg-white text-zinc-950 shadow-sm border border-zinc-200/50"
-                            : "text-zinc-500 hover:text-zinc-800 bg-transparent"
-                        }`}
-                      >
-                        <ShieldCheck className="w-4 h-4 text-zinc-650" />
-                        <span>Authentification</span>
-                      </button>
                     </div>
 
                     {/* Tab contents */}
@@ -10612,7 +10601,7 @@ export default function App() {
                             className="w-auto px-6 py-3 bg-[#00898a] hover:bg-[#007677] active:scale-98 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-teal-900/10 flex items-center justify-center gap-2 cursor-pointer"
                           >
                             <Check className="w-4 h-4 text-white" />
-                            <span>Enregistrer</span>
+                            <span>Validez</span>
                           </button>
                         </div>
                       </div>
@@ -10660,48 +10649,8 @@ export default function App() {
                             className="w-auto px-6 py-3 bg-[#00898a] hover:bg-[#007677] active:scale-98 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-teal-900/10 flex items-center justify-center gap-2 cursor-pointer"
                           >
                             <Check className="w-4 h-4 text-white" />
-                            <span>Enregistrer le mot de passe</span>
+                            <span>Valisez</span>
                           </button>
-                        </div>
-                      </div>
-                    )}
-
-                    {profileActiveTab === "auth" && (
-                      <div className="space-y-5 text-zinc-700 animate-fade-in">
-                        <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl flex items-start gap-3">
-                          <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                          <div className="space-y-1 text-xs">
-                            <h4 className="font-bold text-zinc-900">Authentification à double facteur (2FA)</h4>
-                            <p className="text-zinc-500 leading-relaxed">Renforcez la sécurité de votre compte en activant l'authentification à double facteur pour empêcher les accès non autorisés.</p>
-                          </div>
-                        </div>
-
-                        <div className="border border-zinc-200 rounded-2xl p-5 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs font-bold text-zinc-900">Application d'authentification</p>
-                              <p className="text-[10px] text-zinc-400">Utiliser Google Authenticator ou Microsoft Authenticator</p>
-                            </div>
-                            <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full uppercase tracking-wider">Recommandé</span>
-                          </div>
-
-                          <div className="border-t border-zinc-100 my-2"></div>
-
-                          <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 bg-zinc-100 border border-zinc-200 rounded-2xl flex items-center justify-center text-[10px] text-zinc-400 font-extrabold select-none shrink-0">
-                              [QR CODE]
-                            </div>
-                            <div className="space-y-1 flex-1">
-                              <p className="text-[10px] text-zinc-500 font-semibold leading-relaxed">Scannez ce code QR avec votre application d'authentification pour commencer la configuration.</p>
-                              <button
-                                type="button"
-                                onClick={() => alert("La fonctionnalité 2FA est en cours de déploiement sur les serveurs locaux.")}
-                                className="text-[10px] text-[#00898a] hover:underline font-extrabold cursor-pointer"
-                              >
-                                Activer via clé secrète
-                              </button>
-                            </div>
-                          </div>
                         </div>
                       </div>
                     )}
