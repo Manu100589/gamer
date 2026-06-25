@@ -638,6 +638,10 @@ function SalesHistoryView({
   salesHistPaymentFilter, setSalesHistPaymentFilter,
   setShowCancelSaleModal, setShowReceiptModal
 }) {
+  const [activeSection, setActiveSection] = React.useState("ventes"); // "ventes" or "sessions"
+
+  const isConsoleSale = (s) => s.type === "console" || (s.gameCost && s.gameCost > 0);
+
   const start = React.useMemo(() => {
     const [year, month, day] = salesHistStartDate.split('-').map(Number);
     const d = new Date(year, month - 1, day, 0, 0, 0, 0);
@@ -708,6 +712,7 @@ function SalesHistoryView({
       
       const matchesSearch = customerName.toLowerCase().includes(salesHistSearchQuery.toLowerCase()) ||
                             saleId.toLowerCase().includes(salesHistSearchQuery.toLowerCase()) ||
+                            (s.consoleName && s.consoleName.toLowerCase().includes(salesHistSearchQuery.toLowerCase())) ||
                             matchesItems;
       if (!matchesSearch) return false;
       
@@ -722,31 +727,61 @@ function SalesHistoryView({
     });
   }, [sales, start, end, salesHistSearchQuery, salesHistSellerFilter, salesHistPaymentFilter]);
 
+  const sectionFilteredSales = React.useMemo(() => {
+    return filteredPeriodSales.filter(s => {
+      if (activeSection === "sessions") {
+        return isConsoleSale(s);
+      } else {
+        return !isConsoleSale(s);
+      }
+    });
+  }, [filteredPeriodSales, activeSection]);
+
   // Active vs Cancelled counts
-  const activeSales = React.useMemo(() => filteredPeriodSales.filter(s => s.status !== "annulée"), [filteredPeriodSales]);
-  const cancelledSales = React.useMemo(() => filteredPeriodSales.filter(s => s.status === "annulée"), [filteredPeriodSales]);
+  const activeSales = React.useMemo(() => sectionFilteredSales.filter(s => s.status !== "annulée"), [sectionFilteredSales]);
+  const cancelledSales = React.useMemo(() => sectionFilteredSales.filter(s => s.status === "annulée"), [sectionFilteredSales]);
 
   // Feed list based on filter tab selection
   const feedSales = React.useMemo(() => {
-    return salesHistFilterTab === "annulees" ? cancelledSales : filteredPeriodSales;
-  }, [salesHistFilterTab, filteredPeriodSales, cancelledSales]);
+    return salesHistFilterTab === "annulees" ? cancelledSales : sectionFilteredSales;
+  }, [salesHistFilterTab, sectionFilteredSales, cancelledSales]);
 
   // KPI calculations
   const caTotal = React.useMemo(() => activeSales.reduce((sum, s) => sum + (s.total || 0), 0), [activeSales]);
   const activeSalesCount = activeSales.length;
-  const panierMoyen = activeSalesCount > 0 ? caTotal / activeSalesCount : 0;
   const cancelledSalesCount = cancelledSales.length;
 
   const cashSalesTotal = React.useMemo(() => {
     return activeSales.filter(s => {
       const method = (s.paymentMethod || "espèces").toLowerCase();
-      return method === "espèces" || method === "especes" || method.includes("espèces + mobile");
+      return method === "espèces" || method === "especes" || method.includes("espèces + mobile") || method.includes("mixte");
     }).reduce((sum, s) => {
       if ((s.paymentMethod || "").toLowerCase().includes("espèces + mobile") || (s.paymentMethod || "").toLowerCase().includes("mixte")) {
         return sum + (s.cashUsed || (s.total / 2));
       }
       return sum + (s.total || 0);
     }, 0);
+  }, [activeSales]);
+
+  const mobileSalesTotal = React.useMemo(() => {
+    return activeSales.filter(s => {
+      const method = (s.paymentMethod || "").toLowerCase();
+      return method.includes("mobile") || method.includes("wave") || method.includes("momo") || method.includes("mixte") || method.includes("espèces + mobile");
+    }).reduce((sum, s) => {
+      if (s.paymentMethod.toLowerCase().includes("espèces + mobile") || s.paymentMethod.toLowerCase().includes("mixte")) {
+        return sum + (s.mobileUsed || (s.total / 2));
+      }
+      return sum + (s.total || 0);
+    }, 0);
+  }, [activeSales]);
+
+  // Game portion vs Snack portion (for sessions)
+  const gamesRevenueTotal = React.useMemo(() => {
+    return activeSales.reduce((sum, s) => sum + (s.gameCost || 0), 0);
+  }, [activeSales]);
+
+  const snacksRevenueTotal = React.useMemo(() => {
+    return activeSales.reduce((sum, s) => sum + (s.snackCost || 0), 0);
   }, [activeSales]);
 
   // Get unique operators for selection dropdown
@@ -808,7 +843,7 @@ function SalesHistoryView({
           <span className="sticker-badge bg-zinc-900 border border-zinc-800 text-zinc-400 font-extrabold px-3 py-1 text-[9px] uppercase tracking-widest inline-block rounded-md">
             ps lounge – ps lounge
           </span>
-          <h2 className="text-xl font-black text-white tracking-wide uppercase mt-1">Historique des ventes</h2>
+          <h2 className="text-xl font-black text-white tracking-wide uppercase mt-1">Historique des ventes et sessions</h2>
         </div>
         <button 
           onClick={triggerRefreshAnimation}
@@ -819,38 +854,96 @@ function SalesHistoryView({
         </button>
       </div>
 
-      {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* CA TOTAL */}
-        <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
-          <div className="flex justify-between items-start text-zinc-500 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">CA TOTAL</span>
-            <span className="text-sm bg-emerald-500/10 p-1.5 rounded-lg font-bold">💰</span>
-          </div>
-          <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(caTotal)}</p>
-          <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">{activeSalesCount} ventes actives</span>
-        </div>
-
-        {/* ANNULÉES */}
-        <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
-          <div className="flex justify-between items-start text-zinc-500 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">ANNULÉES</span>
-            <span className="text-sm bg-rose-500/10 p-1.5 rounded-lg font-bold">❌</span>
-          </div>
-          <p className="text-base font-black text-rose-500 font-mono tracking-tight">{cancelledSalesCount}</p>
-          <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Ventes annulées</span>
-        </div>
-
-        {/* ESPÈCES */}
-        <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
-          <div className="flex justify-between items-start text-zinc-500 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">ESPÈCES</span>
-            <span className="text-sm bg-amber-500/10 p-1.5 rounded-lg font-bold">💵</span>
-          </div>
-          <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(cashSalesTotal)}</p>
-          <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Ventes en espèces</span>
-        </div>
+      {/* Navigation Onglets Principaux */}
+      <div className="flex bg-zinc-950/60 p-1 border border-zinc-900 rounded-2xl">
+        <button
+          onClick={() => setActiveSection("ventes")}
+          className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${
+            activeSection === "ventes"
+              ? "bg-zinc-800 text-white shadow-md border border-zinc-750/30"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <span>📦 Ventes Produits & Snacks</span>
+        </button>
+        <button
+          onClick={() => setActiveSection("sessions")}
+          className={`flex-1 py-3 text-xs font-black tracking-wider uppercase rounded-xl transition-all flex items-center justify-center gap-2 ${
+            activeSection === "sessions"
+              ? "bg-zinc-800 text-white shadow-md border border-zinc-750/30"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <span>🕹️ Sessions Consoles</span>
+        </button>
       </div>
+
+      {/* KPI Cards Row */}
+      {activeSection === "ventes" ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* CA TOTAL VENTES */}
+          <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-start text-zinc-500 mb-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">CA TOTAL VENTES</span>
+              <span className="text-sm bg-emerald-500/10 p-1.5 rounded-lg font-bold">💰</span>
+            </div>
+            <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(caTotal)}</p>
+            <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">{activeSalesCount} ventes actives</span>
+          </div>
+
+          {/* CA ESPÈCES */}
+          <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-start text-zinc-500 mb-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">CA ESPÈCES</span>
+              <span className="text-sm bg-amber-500/10 p-1.5 rounded-lg font-bold">💵</span>
+            </div>
+            <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(cashSalesTotal)}</p>
+            <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Règlements espèces</span>
+          </div>
+
+          {/* CA MOBILE MONEY */}
+          <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-start text-zinc-500 mb-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">CA MOBILE MONEY</span>
+              <span className="text-sm bg-blue-500/10 p-1.5 rounded-lg font-bold">📱</span>
+            </div>
+            <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(mobileSalesTotal)}</p>
+            <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Règlements mobiles</span>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* CA TOTAL SESSIONS */}
+          <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-start text-zinc-500 mb-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">REVENU TOTAL SESSIONS</span>
+              <span className="text-sm bg-cyan-500/10 p-1.5 rounded-lg font-bold">🕹️</span>
+            </div>
+            <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(caTotal)}</p>
+            <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">{activeSalesCount} sessions actives</span>
+          </div>
+
+          {/* REVENU JEUX */}
+          <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-start text-zinc-500 mb-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">REVENU JEUX (STATIONS)</span>
+              <span className="text-sm bg-purple-500/10 p-1.5 rounded-lg font-bold">🎮</span>
+            </div>
+            <p className="text-base font-black text-cyan-400 font-mono tracking-tight">{formatPrice(gamesRevenueTotal)}</p>
+            <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Temps de jeu uniquement</span>
+          </div>
+
+          {/* REVENU CONSO SESSIONS */}
+          <div className="glass-panel p-5 rounded-2xl border border-zinc-850 bg-zinc-950/40 relative overflow-hidden group hover:border-zinc-750 transition-all duration-300">
+            <div className="flex justify-between items-start text-zinc-500 mb-1">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider">SNACKS SUR SESSION</span>
+              <span className="text-sm bg-rose-500/10 p-1.5 rounded-lg font-bold">🍿</span>
+            </div>
+            <p className="text-base font-black text-white font-mono tracking-tight">{formatPrice(snacksRevenueTotal)}</p>
+            <span className="text-[10px] text-zinc-500 font-semibold mt-1 block">Snacks facturés sur sessions</span>
+          </div>
+        </div>
+      )}
 
       {/* Filters and Navigation Tabs */}
       <div className="flex flex-col gap-4">
@@ -953,14 +1046,14 @@ function SalesHistoryView({
             </div>
 
             <div>
-              <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Recherche (Client, Produit, ID)</label>
+              <label className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-1">Recherche ({activeSection === "sessions" ? "Joueur, Console, ID" : "Client, Produit, ID"})</label>
               <div className="relative">
                 <Search className="w-3.5 h-3.5 text-zinc-600 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input 
                   type="text" 
                   value={salesHistSearchQuery} 
                   onChange={e => setSalesHistSearchQuery(e.target.value)} 
-                  placeholder="Tapez le nom d'un client, d'un produit ou l'identifiant..."
+                  placeholder={activeSection === "sessions" ? "Tapez le nom d'un joueur, d'une console (ex. Station 1) ou l'identifiant..." : "Tapez le nom d'un client, d'un produit ou l'identifiant..."}
                   className="w-full bg-zinc-900 border border-zinc-800 focus:border-violet-600/50 rounded-xl pl-9 pr-4 py-2 text-xs text-white outline-none transition-all" 
                 />
               </div>
@@ -973,7 +1066,7 @@ function SalesHistoryView({
       <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
         {feedSales.length === 0 ? (
           <div className="glass-panel text-center py-12 border border-zinc-900 text-zinc-500 text-xs font-semibold rounded-2xl bg-zinc-950/20">
-            Aucune vente trouvée correspondant aux critères.
+            Aucune entrée trouvée correspondant aux critères.
           </div>
         ) : (
           feedSales.map((sale, index) => {
@@ -990,11 +1083,10 @@ function SalesHistoryView({
               return `${item.product.name} ×${item.quantity}`;
             }).filter(Boolean);
             
-            if (sale.gameCost > 0) {
-              items.unshift("🕹️ Session Console");
-            }
-            
-            const itemsDetailText = items.join(", ");
+            const itemsDetailText = activeSection === "sessions"
+              ? `🕹️ Jeu : ${formatPrice(sale.gameCost)} ${sale.snackCost > 0 ? ` • 🍿 Snacks : ${formatPrice(sale.snackCost)} (${items.join(", ")})` : ""}`
+              : (items.join(", ") || "Aucun article");
+              
             const isCancelled = sale.status === "annulée";
 
             // Payment badge color
@@ -1020,9 +1112,9 @@ function SalesHistoryView({
                 {/* Row 1: Header (Index + Type & Status) */}
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-zinc-500 font-bold font-mono">#{filteredPeriodSales.length - index}</span>
+                    <span className="text-[10px] text-zinc-500 font-bold font-mono">#{sectionFilteredSales.length - index}</span>
                     <span className="text-[10px] text-amber-400 italic font-black uppercase tracking-wider font-mono">
-                      {sale.gameCost > 0 ? "station" : "local"}
+                      {activeSection === "sessions" ? (sale.consoleName || "console") : "local"}
                     </span>
                   </div>
                   
@@ -1048,12 +1140,12 @@ function SalesHistoryView({
                 {/* Row 3: Customer Icon & Name */}
                 <div className="flex items-center gap-1.5 text-xs font-black text-white tracking-wide">
                   <User className="w-3.5 h-3.5 text-zinc-500" />
-                  <span>{sale.customer || "Client Comptant"}</span>
+                  <span>{sale.customer || (activeSection === "sessions" ? "Joueur" : "Client Comptant")}</span>
                 </div>
 
                 {/* Row 4: Items sold description */}
                 <div className="text-[11px] text-zinc-400 font-semibold italic leading-relaxed bg-zinc-950/40 p-2.5 rounded-xl border border-zinc-900/40">
-                  {itemsDetailText || "Aucun article"}
+                  {itemsDetailText}
                 </div>
 
                 {/* Row 5: Total Amount and Payment badge */}
@@ -1083,7 +1175,8 @@ function SalesHistoryView({
                       total: sale.total,
                       date: new Date(sale.date).toLocaleTimeString(),
                       type: sale.gameCost > 0 ? "Clôture Station & Snacks" : "Facture Directe",
-                      paymentMethod: sale.paymentMethod
+                      paymentMethod: sale.paymentMethod,
+                      item: sale.consoleName || "Session Station"
                     })}
                     className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-850 text-zinc-300 hover:text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
                   >
@@ -3468,6 +3561,11 @@ export default function App() {
     const inv = isEvent ? showPaymentModal : (directInvoice || showPaymentModal);
     if (!inv) return;
     const total = inv.total;
+    let consoleName = null;
+    if (inv.type === "console" && inv.consoleId) {
+      const consoleObj = consoles.find(c => c.id === inv.consoleId);
+      consoleName = consoleObj ? consoleObj.name : `Console ID ${inv.consoleId}`;
+    }
 
     let cashUsed = 0;
     let mobileUsed = 0;
@@ -3594,10 +3692,7 @@ export default function App() {
     }
 
     if (inv.type === "console" && inv.consoleId) {
-      setDailySessionsCount(prev => prev + 1);
-
-      const consoleObj = consoles.find(c => c.id === inv.consoleId);
-      const consoleName = consoleObj ? consoleObj.name : `Console ID ${inv.consoleId}`;
+       setDailySessionsCount(prev => prev + 1);
 
       setTopConsolesState(prev => {
         const exists = prev.find(item => item.name === consoleName);
@@ -3715,7 +3810,8 @@ export default function App() {
       paymentMethod: pmText,
       cashUsed: cashUsed,
       mobileUsed: mobileUsed,
-      type: inv.type === "console" ? "console" : "pos"
+      type: inv.type === "console" ? "console" : "pos",
+      consoleName: consoleName
     };
     setSales(prev => [newCompletedSale, ...prev]);
 
@@ -4160,6 +4256,29 @@ export default function App() {
           transactionsCount: (prev.transactionsCount || 0) + 1
         }));
       }
+
+      // Record prepaid session sale in history
+      const now = new Date();
+      const prepaidSaleId = `SESS-PRE-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}-${Date.now().toString().slice(-4)}`;
+      const pmText = paymentMethod === "espèces" ? "espèces" : "mobile money";
+      const prepaidSale = {
+        id: prepaidSaleId,
+        customer: fullName,
+        seller: role === "admin" ? "Administrateur" : "Gérant",
+        total: sessionPrice,
+        paid: sessionPrice,
+        itemsList: [],
+        gameCost: sessionPrice,
+        snackCost: 0,
+        date: now.toISOString(),
+        status: "Terminée",
+        paymentMethod: pmText,
+        cashUsed: cashUsed,
+        mobileUsed: mobileUsed,
+        type: "console",
+        consoleName: consoleObj.name
+      };
+      setSales(prev => [prepaidSale, ...prev]);
     }
 
     // Auto register new player or update existing profile
@@ -4461,7 +4580,8 @@ export default function App() {
       date: new Date().toISOString(),
       status: "Terminée",
       paymentMethod: "espèces",
-      type: "console"
+      type: "console",
+      consoleName: consoleName
     };
     setSales(prev => [newCompletedSale, ...prev]);
 
@@ -4493,6 +4613,7 @@ export default function App() {
   };
 
   const handleStopPaidSession = (consoleId) => {
+    setDailySessionsCount(prev => prev + 1);
     setConsoles(prev => prev.map(c => {
       if (c.id === consoleId) {
         const sessionElapsed = c.activeSession?.timeElapsedSeconds || 0;
@@ -5632,7 +5753,8 @@ export default function App() {
           date: new Date().toISOString(),
           status: "Terminée",
           paymentMethod: "espèces",
-          type: "console"
+          type: "console",
+          consoleName: randomConsole.name
         };
         setSales(prev => [newCompletedSale, ...prev]);
 
@@ -5856,7 +5978,7 @@ export default function App() {
               }`}
             >
               <History className="w-4 h-4 text-pink-400" />
-              Historique des Ventes
+              Historique des ventes et sessions
             </button>
 
             <button
@@ -5994,7 +6116,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : activeTab === "comptabilite" ? "Comptabilité & Stock" : activeTab === "salesHistory" ? "Historique des Ventes" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : activeTab === "comptabilite" ? "Comptabilité & Stock" : activeTab === "salesHistory" ? "Historique des ventes et sessions" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
