@@ -1358,7 +1358,7 @@ function CancelSaleModal({ sale, onClose, onConfirm }) {
 export default function App() {
   // App states
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [role, setRole] = useState("admin"); // 'admin' or 'gerant'
+  const [role, setRole] = useState(() => localStorage.getItem("system_user_role") || "admin"); // 'admin' or 'gerant'
   const [consoles, setConsoles] = useState(() => {
     const initializedTest = localStorage.getItem("system_test_reset_v5_zero_stats");
     const saved = localStorage.getItem("system_consoles");
@@ -1405,6 +1405,18 @@ export default function App() {
       adminPassword: "housepub",
       gerantUsername: "Gérant",
       gerantPassword: "housepub",
+      adminFirstName: "Dilane",
+      adminLastName: "Narcisse",
+      adminPhone: "655769172",
+      adminPhoneCode: "+237",
+      adminPhoneFlag: "🇨🇲",
+      adminEmail: "bagnomonarcisse@gmail.com",
+      gerantFirstName: "Gérant",
+      gerantLastName: "Caisse",
+      gerantPhone: "655769172",
+      gerantPhoneCode: "+237",
+      gerantPhoneFlag: "🇨🇲",
+      gerantEmail: "gerant@gmail.com",
     };
     if (saved) {
       try {
@@ -1443,6 +1455,7 @@ export default function App() {
 
     if (loginPassword === correctPassword) {
       localStorage.setItem("is_logged_in", "true");
+      localStorage.setItem("system_user_role", loginRole);
       setIsLoggedIn(true);
       setRole(loginRole);
       setLoginPassword("");
@@ -1456,8 +1469,134 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem("is_logged_in");
+    localStorage.removeItem("system_user_role");
     setIsLoggedIn(false);
     addLog("system_logout", `Utilisateur déconnecté : ${role === "admin" ? "Administrateur" : "Gérant"}`, "console");
+  };
+
+  // --- Profile Page States & Effects ---
+  const [profileActiveTab, setProfileActiveTab] = useState("personal");
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [profilePhoneCode, setProfilePhoneCode] = useState("+237");
+  const [profilePhoneFlag, setProfilePhoneFlag] = useState("🇨🇲");
+  const [profileEmail, setProfileEmail] = useState("");
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+
+  const [showPhoneCountryDropdown, setShowPhoneCountryDropdown] = useState(false);
+
+  const triggerToast = (text) => {
+    setToastText(text);
+    gsap.fromTo(
+      ".notification-toast",
+      { opacity: 0, y: -20 },
+      { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
+        setTimeout(() => {
+          gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
+        }, 3000);
+      }}
+    );
+  };
+
+  useEffect(() => {
+    if (activeTab === "profile") {
+      if (role === "admin") {
+        setProfileFirstName(systemSettings.adminFirstName || "Dilane");
+        setProfileLastName(systemSettings.adminLastName || "Narcisse");
+        setProfilePhone(systemSettings.adminPhone || "655769172");
+        setProfilePhoneCode(systemSettings.adminPhoneCode || "+237");
+        setProfilePhoneFlag(systemSettings.adminPhoneFlag || "🇨🇲");
+        setProfileEmail(systemSettings.adminEmail || "bagnomonarcisse@gmail.com");
+      } else {
+        setProfileFirstName(systemSettings.gerantFirstName || "Gérant");
+        setProfileLastName(systemSettings.gerantLastName || "Caisse");
+        setProfilePhone(systemSettings.gerantPhone || "655769172");
+        setProfilePhoneCode(systemSettings.gerantPhoneCode || "+237");
+        setProfilePhoneFlag(systemSettings.gerantPhoneFlag || "🇨🇲");
+        setProfileEmail(systemSettings.gerantEmail || "gerant@gmail.com");
+      }
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setProfileActiveTab("personal");
+    }
+  }, [activeTab, role, systemSettings]);
+
+  const handleSaveProfilePersonal = () => {
+    if (!profileFirstName.trim() || !profileLastName.trim() || !profilePhone.trim()) {
+      triggerToast("Veuillez remplir tous les champs obligatoires.");
+      return;
+    }
+
+    setSystemSettings(prev => {
+      const updated = { ...prev };
+      if (role === "admin") {
+        updated.adminFirstName = profileFirstName.trim();
+        updated.adminLastName = profileLastName.trim();
+        updated.adminPhone = profilePhone.trim();
+        updated.adminPhoneCode = profilePhoneCode;
+        updated.adminPhoneFlag = profilePhoneFlag;
+      } else {
+        updated.gerantFirstName = profileFirstName.trim();
+        updated.gerantLastName = profileLastName.trim();
+        updated.gerantPhone = profilePhone.trim();
+        updated.gerantPhoneCode = profilePhoneCode;
+        updated.gerantPhoneFlag = profilePhoneFlag;
+      }
+      return updated;
+    });
+
+    addLog(
+      "profile_update",
+      `Profil ${role === "admin" ? "Administrateur" : "Gérant"} mis à jour (${profileFirstName} ${profileLastName})`,
+      "console"
+    );
+
+    triggerToast("Profil enregistré avec succès !");
+  };
+
+  const handleSaveProfilePassword = () => {
+    if (!currentPassword || !newPassword || !confirmNewPassword) {
+      triggerToast("Veuillez remplir tous les champs du mot de passe.");
+      return;
+    }
+
+    const actualCurrentPassword = role === "admin" ? (systemSettings.adminPassword || "housepub") : (systemSettings.gerantPassword || "housepub");
+
+    if (currentPassword !== actualCurrentPassword) {
+      triggerToast("Le mot de passe actuel est incorrect.");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      triggerToast("Les nouveaux mots de passe ne correspondent pas.");
+      return;
+    }
+
+    setSystemSettings(prev => {
+      const updated = { ...prev };
+      if (role === "admin") {
+        updated.adminPassword = newPassword;
+      } else {
+        updated.gerantPassword = newPassword;
+      }
+      return updated;
+    });
+
+    addLog(
+      "profile_password_update",
+      `Mot de passe ${role === "admin" ? "Administrateur" : "Gérant"} mis à jour`,
+      "console"
+    );
+
+    triggerToast("Mot de passe mis à jour avec succès !");
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmNewPassword("");
   };
 
   const [showAdminSettingsModal, setShowAdminSettingsModal] = useState(false);
@@ -6625,6 +6764,18 @@ export default function App() {
               Historique des Shifts
             </button>
 
+            <button
+              onClick={() => setActiveTab("profile")}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
+                activeTab === "profile"
+                  ? "bg-gradient-to-r from-blue-900/30 to-rose-900/10 text-blue-300 border-l-2 border-blue-500 shadow-inner"
+                  : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/40"
+              }`}
+            >
+              <User className="w-4 h-4 text-emerald-400" />
+              Mon Profil
+            </button>
+
             {role === "admin" && (
               <button
                 onClick={() => setActiveTab("settings")}
@@ -6700,7 +6851,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-extrabold tracking-wider text-white uppercase italic flex items-center gap-2">
               <span className="text-blue-500 font-black">⚡</span>
-              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : activeTab === "comptabilite" ? "Comptabilité & Stock" : activeTab === "salesHistory" ? "Historique des ventes et sessions" : "Gestion de Caisse"}
+              {activeTab === "dashboard" ? "Tableau de Bord" : activeTab === "consoles" ? "Hub Stations PS" : activeTab === "snack" ? "Snack Bar POS" : activeTab === "stocks" ? "Gestion des Stocks" : activeTab === "expenses" ? "Gestion des Dépenses" : activeTab === "purchases" ? "Gestion des Achats" : activeTab === "fournisseurs" ? "Gestion des Fournisseurs" : activeTab === "settings" ? "Paramètres Système" : activeTab === "invoices" ? "Factures en cours" : activeTab === "players" ? "Gestion Joueurs" : activeTab === "dailyReport" ? "Rapport Journalier" : activeTab === "comptabilite" ? "Comptabilité & Stock" : activeTab === "salesHistory" ? "Historique des ventes et sessions" : activeTab === "profile" ? "Mon Profil" : "Gestion de Caisse"}
             </h2>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></div>
             <span className="text-xs text-zinc-400 font-medium hidden md:inline">Caisse connectée</span>
@@ -6724,26 +6875,18 @@ export default function App() {
 
             <div 
               onClick={() => {
-                if (role === 'admin') {
-                  handleOpenAdminSettings();
-                } else {
-                  setToastText("Accès Refusé : Privilèges Administrateur requis pour modifier ces identifiants.");
-                  gsap.fromTo(
-                    ".notification-toast",
-                    { opacity: 0, y: -20 },
-                    { opacity: 1, y: 0, duration: 0.3, ease: "power2.out", onComplete: () => {
-                      setTimeout(() => {
-                        gsap.to(".notification-toast", { opacity: 0, y: -20, duration: 0.3 });
-                      }, 3000);
-                    }}
-                  );
-                }
+                setActiveTab("profile");
+                addLog("ui_navigation", "Navigation vers Profil par clic avatar", "console");
               }}
               className="flex items-center gap-3 cursor-pointer hover:bg-zinc-900/50 p-1.5 rounded-xl transition-all active:scale-98 select-none border border-transparent hover:border-zinc-800/60"
             >
               <div className="text-right">
                 <p className="text-xs font-bold text-zinc-200">Terminal #01</p>
-                <p className="text-[10px] text-zinc-500 font-medium">{role === 'admin' ? (systemSettings.adminUsername || 'Administrateur') : (systemSettings.gerantUsername || 'Gérant')}</p>
+                <p className="text-[10px] text-zinc-500 font-medium">
+                  {role === 'admin' 
+                    ? (systemSettings.adminFirstName ? `${systemSettings.adminFirstName} ${systemSettings.adminLastName}` : (systemSettings.adminUsername || 'Administrateur')) 
+                    : (systemSettings.gerantFirstName ? `${systemSettings.gerantFirstName} ${systemSettings.gerantLastName}` : (systemSettings.gerantUsername || 'Gérant'))}
+                </p>
               </div>
               <div className="w-9 h-9 rounded-full bg-zinc-850 border border-zinc-700/50 flex items-center justify-center overflow-hidden">
                 {systemSettings.logoUrl ? (
@@ -10312,6 +10455,257 @@ export default function App() {
                     })()}
                   </div>
 
+                </div>
+              );
+            })()}
+
+            {/* ==================== VUE : MON PROFIL ==================== */}
+            {activeTab === "profile" && (() => {
+              const countries = [
+                { name: "Cameroun", code: "+237", flag: "🇨🇲" },
+                { name: "Gabon", code: "+241", flag: "🇬🇦" },
+                { name: "Congo", code: "+242", flag: "🇨🇬" },
+                { name: "Côte d'Ivoire", code: "+225", flag: "🇨🇮" },
+                { name: "Sénégal", code: "+221", flag: "🇸🇳" },
+                { name: "France", code: "+33", flag: "🇫🇷" }
+              ];
+
+              return (
+                <div className="max-w-xl mx-auto animate-fade-in pb-12">
+                  <div className="bg-white rounded-3xl shadow-2xl border border-zinc-200/80 p-8 space-y-6 text-zinc-800">
+                    <div className="space-y-1">
+                      <h2 className="text-2xl font-black text-zinc-900">Mon profil</h2>
+                      <p className="text-xs text-zinc-500 font-medium">{profileEmail}</p>
+                    </div>
+
+                    {/* Tab switcher */}
+                    <div className="bg-zinc-100 p-1 rounded-2xl flex gap-1 border border-zinc-200/30">
+                      <button
+                        onClick={() => setProfileActiveTab("personal")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-xl transition-all duration-150 ${
+                          profileActiveTab === "personal"
+                            ? "bg-white text-zinc-950 shadow-sm border border-zinc-200/50"
+                            : "text-zinc-500 hover:text-zinc-800 bg-transparent"
+                        }`}
+                      >
+                        <User className="w-4 h-4 text-zinc-600" />
+                        <span>Infos personnelles</span>
+                      </button>
+                      <button
+                        onClick={() => setProfileActiveTab("password")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-xl transition-all duration-150 ${
+                          profileActiveTab === "password"
+                            ? "bg-white text-zinc-950 shadow-sm border border-zinc-200/50"
+                            : "text-zinc-500 hover:text-zinc-800 bg-transparent"
+                        }`}
+                      >
+                        <Lock className="w-4 h-4 text-zinc-650" />
+                        <span>Mot de passe</span>
+                      </button>
+                      <button
+                        onClick={() => setProfileActiveTab("auth")}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 text-xs font-bold rounded-xl transition-all duration-150 ${
+                          profileActiveTab === "auth"
+                            ? "bg-white text-zinc-950 shadow-sm border border-zinc-200/50"
+                            : "text-zinc-500 hover:text-zinc-800 bg-transparent"
+                        }`}
+                      >
+                        <ShieldCheck className="w-4 h-4 text-zinc-650" />
+                        <span>Authentification</span>
+                      </button>
+                    </div>
+
+                    {/* Tab contents */}
+                    {profileActiveTab === "personal" && (
+                      <div className="space-y-5 animate-fade-in">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block">PRÉNOM</label>
+                          <input
+                            type="text"
+                            value={profileFirstName}
+                            onChange={(e) => setProfileFirstName(e.target.value)}
+                            className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 font-medium transition-all"
+                            placeholder="Prénom"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block">NOM</label>
+                          <input
+                            type="text"
+                            value={profileLastName}
+                            onChange={(e) => setProfileLastName(e.target.value)}
+                            className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 font-medium transition-all"
+                            placeholder="Nom"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5 relative">
+                          <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block">TÉLÉPHONE</label>
+                          <div className="flex border border-zinc-200 rounded-xl overflow-hidden focus-within:border-teal-600 focus-within:ring-2 focus-within:ring-teal-500/10 transition-all">
+                            <button
+                              type="button"
+                              onClick={() => setShowPhoneCountryDropdown(!showPhoneCountryDropdown)}
+                              className="flex items-center gap-1.5 px-4 py-3 bg-zinc-50 border-r border-zinc-200 text-sm font-bold text-zinc-700 hover:bg-zinc-100 transition-all select-none"
+                            >
+                              <span>{profilePhoneFlag}</span>
+                              <span>{profilePhoneCode}</span>
+                              <span className="text-[8px] text-zinc-400">▼</span>
+                            </button>
+                            <input
+                              type="text"
+                              value={profilePhone}
+                              onChange={(e) => setProfilePhone(e.target.value)}
+                              className="flex-1 bg-white px-4 py-3 text-sm text-zinc-900 focus:outline-none font-medium"
+                              placeholder="Numéro de téléphone"
+                            />
+                          </div>
+
+                          {showPhoneCountryDropdown && (
+                            <div className="absolute left-0 bottom-full mb-1.5 bg-white border border-zinc-200 rounded-2xl shadow-xl py-1.5 w-48 z-50 animate-fade-in text-xs font-semibold">
+                              <div className="px-3 py-1.5 text-[9px] text-zinc-400 uppercase tracking-wider border-b border-zinc-100 mb-1">Sélectionner un pays</div>
+                              {countries.map(c => (
+                                <button
+                                  key={c.code}
+                                  type="button"
+                                  onClick={() => {
+                                    setProfilePhoneCode(c.code);
+                                    setProfilePhoneFlag(c.flag);
+                                    setShowPhoneCountryDropdown(false);
+                                  }}
+                                  className="w-full text-left px-3 py-2.5 hover:bg-zinc-50 flex items-center gap-2 transition-colors"
+                                >
+                                  <span className="text-base leading-none">{c.flag}</span>
+                                  <span className="text-zinc-700">{c.name}</span>
+                                  <span className="text-zinc-400 ml-auto font-mono font-bold">{c.code}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block">ADRESSE EMAIL</label>
+                          <input
+                            type="email"
+                            value={profileEmail}
+                            disabled
+                            className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-400 font-medium cursor-not-allowed"
+                          />
+                          <p className="text-[10px] text-zinc-400 italic">L'email ne peut pas être modifié ici.</p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block">RÔLE</label>
+                          <input
+                            type="text"
+                            value={role === "admin" ? "Org Admin" : "Gérant de Caisse"}
+                            disabled
+                            className="w-full bg-zinc-50 border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-400 font-medium cursor-not-allowed"
+                          />
+                        </div>
+
+                        <div className="pt-3">
+                          <button
+                            type="button"
+                            onClick={handleSaveProfilePersonal}
+                            className="w-auto px-6 py-3 bg-[#00898a] hover:bg-[#007677] active:scale-98 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-teal-900/10 flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Check className="w-4 h-4 text-white" />
+                            <span>Enregistrer</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {profileActiveTab === "password" && (
+                      <div className="space-y-5 animate-fade-in">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block">MOT DE PASSE ACTUEL</label>
+                          <input
+                            type="password"
+                            value={currentPassword}
+                            onChange={(e) => setCurrentPassword(e.target.value)}
+                            className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 font-medium transition-all"
+                            placeholder="Saisissez votre mot de passe actuel"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block">NOUVEAU MOT DE PASSE</label>
+                          <input
+                            type="password"
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 font-medium transition-all"
+                            placeholder="Nouveau mot de passe"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-wider block">CONFIRMER LE NOUVEAU MOT DE PASSE</label>
+                          <input
+                            type="password"
+                            value={confirmNewPassword}
+                            onChange={(e) => setConfirmNewPassword(e.target.value)}
+                            className="w-full bg-white border border-zinc-200 rounded-xl px-4 py-3 text-sm text-zinc-900 focus:outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-500/10 font-medium transition-all"
+                            placeholder="Confirmez le nouveau mot de passe"
+                          />
+                        </div>
+
+                        <div className="pt-3">
+                          <button
+                            type="button"
+                            onClick={handleSaveProfilePassword}
+                            className="w-auto px-6 py-3 bg-[#00898a] hover:bg-[#007677] active:scale-98 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-teal-900/10 flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Check className="w-4 h-4 text-white" />
+                            <span>Enregistrer le mot de passe</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {profileActiveTab === "auth" && (
+                      <div className="space-y-5 text-zinc-700 animate-fade-in">
+                        <div className="p-4 bg-zinc-50 border border-zinc-200 rounded-2xl flex items-start gap-3">
+                          <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                          <div className="space-y-1 text-xs">
+                            <h4 className="font-bold text-zinc-900">Authentification à double facteur (2FA)</h4>
+                            <p className="text-zinc-500 leading-relaxed">Renforcez la sécurité de votre compte en activant l'authentification à double facteur pour empêcher les accès non autorisés.</p>
+                          </div>
+                        </div>
+
+                        <div className="border border-zinc-200 rounded-2xl p-5 space-y-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-xs font-bold text-zinc-900">Application d'authentification</p>
+                              <p className="text-[10px] text-zinc-400">Utiliser Google Authenticator ou Microsoft Authenticator</p>
+                            </div>
+                            <span className="px-2.5 py-1 bg-amber-100 text-amber-800 text-[10px] font-bold rounded-full uppercase tracking-wider">Recommandé</span>
+                          </div>
+
+                          <div className="border-t border-zinc-100 my-2"></div>
+
+                          <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 bg-zinc-100 border border-zinc-200 rounded-2xl flex items-center justify-center text-[10px] text-zinc-400 font-extrabold select-none shrink-0">
+                              [QR CODE]
+                            </div>
+                            <div className="space-y-1 flex-1">
+                              <p className="text-[10px] text-zinc-500 font-semibold leading-relaxed">Scannez ce code QR avec votre application d'authentification pour commencer la configuration.</p>
+                              <button
+                                type="button"
+                                onClick={() => alert("La fonctionnalité 2FA est en cours de déploiement sur les serveurs locaux.")}
+                                className="text-[10px] text-[#00898a] hover:underline font-extrabold cursor-pointer"
+                              >
+                                Activer via clé secrète
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })()}
