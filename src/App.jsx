@@ -1958,6 +1958,8 @@ export default function App() {
   const [movementAmount, setMovementAmount] = useState("");
   const [movementReason, setMovementReason] = useState("");
   const [movementOperator, setMovementOperator] = useState("");
+  const [movementMethod, setMovementMethod] = useState("espèces"); // 'espèces' or 'mobile_money'
+  const [transferDirection, setTransferDirection] = useState("momo_to_cash"); // 'momo_to_cash' or 'cash_to_momo'
 
   const [caisseTimerTick, setCaisseTimerTick] = useState(0);
   useEffect(() => {
@@ -2030,6 +2032,8 @@ export default function App() {
   const [playNom, setPlayNom] = useState("");
   const [playTel, setPlayTel] = useState("");
   const [playEmail, setPlayEmail] = useState("");
+  const [playNotes, setPlayNotes] = useState("");
+  const [crmFilterTier, setCrmFilterTier] = useState("tous"); // 'tous','bronze','silver','gold','vip'
 
   // Prefill price when selecting snack products
   useEffect(() => {
@@ -2933,17 +2937,27 @@ export default function App() {
     setShowOpenCaisseModal(false);
   };
 
-  const handleAddCaisseMovement = (type, amount, reason, operatorName) => {
+  const handleAddCaisseMovement = (type, amount, reason, operatorName, method = "espèces", transferDir = "momo_to_cash") => {
     const amt = parseFloat(amount) || 0;
     if (amt <= 0) return;
     const op = operatorName.trim() || activeCaisseSession.openedBy;
+    
+    let movementReasonText = reason.trim();
+    if (type === "transfert" && !movementReasonText) {
+      movementReasonText = transferDir === "momo_to_cash"
+        ? "Transfert Mobile Money vers Espèces"
+        : "Transfert Espèces vers Mobile Money";
+    }
+
     const newMovement = {
       id: Date.now(),
-      type, // "entrée" or "sortie"
+      type, // "entrée", "sortie" or "transfert"
       amount: amt,
-      reason: reason.trim(),
+      reason: movementReasonText,
       operator: op,
-      date: new Date().toISOString()
+      date: new Date().toISOString(),
+      method: type === "transfert" ? "transfert" : method, // "espèces" or "mobile_money"
+      transferDir: type === "transfert" ? transferDir : null
     };
 
     setActiveCaisseSession(prev => ({
@@ -2951,15 +2965,45 @@ export default function App() {
       movements: [...(prev.movements || []), newMovement]
     }));
 
-    // If it's a cash movement, it also updates stats.cashBalance!
-    setStats(prev => ({
-      ...prev,
-      cashBalance: type === "entrée" ? prev.cashBalance + amt : prev.cashBalance - amt
-    }));
+    // Update balances!
+    setStats(prev => {
+      let cashDiff = 0;
+      let mobileDiff = 0;
+
+      if (type === "entrée") {
+        if (method === "mobile_money") {
+          mobileDiff = amt;
+        } else {
+          cashDiff = amt;
+        }
+      } else if (type === "sortie") {
+        if (method === "mobile_money") {
+          mobileDiff = -amt;
+        } else {
+          cashDiff = -amt;
+        }
+      } else if (type === "transfert") {
+        if (transferDir === "momo_to_cash") {
+          mobileDiff = -amt;
+          cashDiff = amt;
+        } else {
+          cashDiff = -amt;
+          mobileDiff = amt;
+        }
+      }
+
+      return {
+        ...prev,
+        cashBalance: prev.cashBalance + cashDiff,
+        mobileBalance: (prev.mobileBalance || 0) + mobileDiff
+      };
+    });
 
     addLog(
-      type === "entrée" ? "caisse_in" : "caisse_out",
-      `Mouvement de caisse (${type === "entrée" ? "Entrée" : "Sortie"}) de ${amt.toLocaleString('fr-FR')} FCFA par ${op}. Motif : ${reason}`,
+      type === "entrée" ? "caisse_in" : type === "sortie" ? "caisse_out" : "caisse_transfer",
+      type === "transfert"
+        ? `Transfert de ${amt.toLocaleString('fr-FR')} FCFA (${transferDir === "momo_to_cash" ? "Mobile Money ➔ Espèces" : "Espèces ➔ Mobile Money"}) par ${op}. Motif : ${movementReasonText}`
+        : `Mouvement de caisse (${type === "entrée" ? "Entrée" : "Sortie"}) de ${amt.toLocaleString('fr-FR')} FCFA via ${method === "mobile_money" ? "Mobile Money" : "Espèces"} par ${op}. Motif : ${movementReasonText}`,
       "console"
     );
 
@@ -2967,6 +3011,8 @@ export default function App() {
     setMovementAmount("");
     setMovementReason("");
     setMovementOperator("");
+    setMovementMethod("espèces");
+    setTransferDirection("momo_to_cash");
     setShowAddMovementModal(false);
   };
 
@@ -2976,17 +3022,27 @@ export default function App() {
     const realBal = parseFloat(realBalance) || 0;
     const closedBy = operator.trim() || (role === "admin" ? "Administrateur" : "Gérant");
     
-    const manualInflows = (activeCaisseSession.movements || [])
-      .filter(m => m.type === "entrée")
+    const movements = activeCaisseSession.movements || [];
+    const manualCashInflows = movements
+      .filter(m => m.type === "entrée" && (m.method === "espèces" || !m.method))
       .reduce((sum, m) => sum + m.amount, 0);
-    const manualOutflows = (activeCaisseSession.movements || [])
-      .filter(m => m.type === "sortie")
+    const manualCashOutflows = movements
+      .filter(m => m.type === "sortie" && (m.method === "espèces" || !m.method))
+      .reduce((sum, m) => sum + m.amount, 0);
+      
+    const transferMomoToCash = movements
+      .filter(m => m.type === "transfert" && m.transferDir === "momo_to_cash")
+      .reduce((sum, m) => sum + m.amount, 0);
+    const transferCashToMomo = movements
+      .filter(m => m.type === "transfert" && m.transferDir === "cash_to_momo")
       .reduce((sum, m) => sum + m.amount, 0);
 
     const expectedBal = activeCaisseSession.openingBalance 
       + (activeCaisseSession.paymentEspèces || 0)
-      + manualInflows
-      - manualOutflows
+      + manualCashInflows
+      - manualCashOutflows
+      + transferMomoToCash
+      - transferCashToMomo
       - (activeCaisseSession.expensesMaintenance || 0)
       - (activeCaisseSession.expensesDiverses || 0)
       - (activeCaisseSession.purchasesCash || 0)
@@ -3043,8 +3099,26 @@ export default function App() {
     const totalRevenue = session.gamesRevenue + session.snackRevenue;
     
     const movements = session.movements || [];
-    const manualInflows = movements.filter(m => m.type === "entrée").reduce((sum, m) => sum + m.amount, 0);
-    const manualOutflows = movements.filter(m => m.type === "sortie").reduce((sum, m) => sum + m.amount, 0);
+    const manualCashInflows = movements
+      .filter(m => m.type === "entrée" && (m.method === "espèces" || !m.method))
+      .reduce((sum, m) => sum + m.amount, 0);
+    const manualCashOutflows = movements
+      .filter(m => m.type === "sortie" && (m.method === "espèces" || !m.method))
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const manualMomoInflows = movements
+      .filter(m => m.type === "entrée" && m.method === "mobile_money")
+      .reduce((sum, m) => sum + m.amount, 0);
+    const manualMomoOutflows = movements
+      .filter(m => m.type === "sortie" && m.method === "mobile_money")
+      .reduce((sum, m) => sum + m.amount, 0);
+
+    const transferMomoToCash = movements
+      .filter(m => m.type === "transfert" && m.transferDir === "momo_to_cash")
+      .reduce((sum, m) => sum + m.amount, 0);
+    const transferCashToMomo = movements
+      .filter(m => m.type === "transfert" && m.transferDir === "cash_to_momo")
+      .reduce((sum, m) => sum + m.amount, 0);
 
     const expMaintenance = session.expensesMaintenance || 0;
     const expDiverses = session.expensesDiverses || 0;
@@ -3053,12 +3127,20 @@ export default function App() {
     
     const expectedCash = session.openingBalance 
       + (session.paymentEspèces || 0) 
-      + manualInflows 
-      - manualOutflows 
+      + manualCashInflows 
+      - manualCashOutflows 
+      + transferMomoToCash
+      - transferCashToMomo
       - expMaintenance 
       - expDiverses 
       - purcCash 
       - refunds;
+
+    const expectedMobile = (session.paymentMobileMoney || 0)
+      + manualMomoInflows
+      - manualMomoOutflows
+      + transferCashToMomo
+      - transferMomoToCash;
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -3194,8 +3276,12 @@ export default function App() {
             <td style="text-align: right; color: #16a34a;">+${formatPrice(session.paymentEspèces || 0)}</td>
           </tr>
           <tr>
-            <td>(+) Entrées caisse (apports manuels)</td>
-            <td style="text-align: right; color: #16a34a;">+${formatPrice(manualInflows)}</td>
+            <td>(+) Entrées caisse (espèces manuels)</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(manualCashInflows)}</td>
+          </tr>
+          <tr>
+            <td>(+) Transferts reçus (Momo &rarr; Espèces)</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(transferMomoToCash)}</td>
           </tr>
           <tr>
             <td>(-) Dépenses Maintenance (espèces)</td>
@@ -3210,12 +3296,40 @@ export default function App() {
             <td style="text-align: right; color: #dc2626;">-${formatPrice(purcCash)}</td>
           </tr>
           <tr>
-            <td>(-) Retraits caisse (sorties manuelles)</td>
-            <td style="text-align: right; color: #dc2626;">-${formatPrice(manualOutflows)}</td>
+            <td>(-) Retraits caisse (sorties espèces manuelles)</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(manualCashOutflows)}</td>
+          </tr>
+          <tr>
+            <td>(-) Transferts émis (Espèces &rarr; Momo)</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(transferCashToMomo)}</td>
           </tr>
           <tr>
             <td>(-) Remboursements caisse (espèces)</td>
             <td style="text-align: right; color: #dc2626;">-${formatPrice(refunds)}</td>
+          </tr>
+        </table>
+
+        <h3 style="margin-top: 30px; border-bottom: 1px solid #e4e4e7; padding-bottom: 5px; font-size: 14px; text-transform: uppercase;">Flux Mobile Money (Compte Momo)</h3>
+        <table class="details-table">
+          <tr>
+            <td>Ventes Mobile Money</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(session.paymentMobileMoney || 0)}</td>
+          </tr>
+          <tr>
+            <td>(+) Entrées Momo (manuelles)</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(manualMomoInflows)}</td>
+          </tr>
+          <tr>
+            <td>(+) Transferts reçus (Espèces &rarr; Momo)</td>
+            <td style="text-align: right; color: #16a34a;">+${formatPrice(transferCashToMomo)}</td>
+          </tr>
+          <tr>
+            <td>(-) Retraits Momo (sorties manuelles)</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(manualMomoOutflows)}</td>
+          </tr>
+          <tr>
+            <td>(-) Transferts émis (Momo &rarr; Espèces)</td>
+            <td style="text-align: right; color: #dc2626;">-${formatPrice(transferMomoToCash)}</td>
           </tr>
         </table>
 
@@ -3224,6 +3338,14 @@ export default function App() {
             <tr style="font-weight: 600;">
               <td>Solde Espèces Théorique Attendu :</td>
               <td style="text-align: right;">${formatPrice(expectedCash)}</td>
+            </tr>
+            <tr style="font-weight: 600;">
+              <td>Solde Mobile Money Théorique Attendu :</td>
+              <td style="text-align: right;">${formatPrice(expectedMobile)}</td>
+            </tr>
+            <tr style="font-weight: 600; border-top: 1px solid #e4e4e7;">
+              <td style="padding-top: 5px;">Total Trésorerie Théorique :</td>
+              <td style="text-align: right; padding-top: 5px; font-weight: 700;">${formatPrice(expectedCash + expectedMobile)}</td>
             </tr>
             <tr style="font-weight: 800; font-size: 16px; border-top: 1px solid #e4e4e7;">
               <td style="padding-top: 10px;">Solde Espèces Réel Compté :</td>
@@ -3257,10 +3379,20 @@ export default function App() {
               ${movements.map(m => `
                 <tr>
                   <td style="padding: 5px 10px;">${new Date(m.date).toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}</td>
-                  <td style="padding: 5px 10px; font-weight: bold; color: ${m.type === 'entrée' ? '#16a34a' : '#dc2626'};">${m.type.toUpperCase()}</td>
+                  <td style="padding: 5px 10px; font-weight: bold; color: ${m.type === 'entrée' ? '#16a34a' : m.type === 'sortie' ? '#dc2626' : '#2563eb'};">
+                    ${
+                      m.type === 'entrée'
+                        ? `ENTRÉE (${m.method === 'mobile_money' ? 'MOMO' : 'ESPÈCES'})`
+                        : m.type === 'sortie'
+                          ? `SORTIE (${m.method === 'mobile_money' ? 'MOMO' : 'ESPÈCES'})`
+                          : `TRANSFERT`
+                    }
+                  </td>
                   <td style="padding: 5px 10px;">${m.reason}</td>
                   <td style="padding: 5px 10px;">${m.operator}</td>
-                  <td style="padding: 5px 10px; text-align: right; font-weight: bold;">${m.type === 'entrée' ? '+' : '-'}${formatPrice(m.amount)}</td>
+                  <td style="padding: 5px 10px; text-align: right; font-weight: bold; color: ${m.type === 'entrée' ? '#16a34a' : m.type === 'sortie' ? '#dc2626' : '#2563eb'};">
+                    ${m.type === 'entrée' ? '+' : m.type === 'sortie' ? '-' : '⇄ '}${formatPrice(m.amount)}
+                  </td>
                 </tr>
               `).join('')}
             </tbody>
@@ -3511,6 +3643,7 @@ export default function App() {
     setPlayNom("");
     setPlayTel("");
     setPlayEmail("");
+    setPlayNotes("");
   };
 
   const handleAddPlayer = () => {
@@ -3520,6 +3653,7 @@ export default function App() {
       nom: playNom.trim(),
       telephone: playTel.trim(),
       email: playEmail.trim(),
+      notes: playNotes.trim(),
       dateInscription: new Date().toISOString(),
       totalSessions: 0,
       totalSpent: 0,
@@ -3537,7 +3671,8 @@ export default function App() {
       ...p,
       nom: playNom.trim(),
       telephone: playTel.trim(),
-      email: playEmail.trim()
+      email: playEmail.trim(),
+      notes: playNotes.trim()
     } : p));
     resetPlayerForm();
     setShowEditPlayerModal(null);
@@ -4367,9 +4502,11 @@ export default function App() {
   // Modal forms
   const [newPlayerPseudo, setNewPlayerPseudo] = useState("");
   const [newPlayerPhone, setNewPlayerPhone] = useState("");
-  const [newDurationType, setNewDurationType] = useState("unlimited"); // 'unlimited' or 'limited'
+  const [newDurationType, setNewDurationType] = useState("unlimited"); // 'unlimited', 'limited', or 'custom'
   const [newDurationHours, setNewDurationHours] = useState(1);
   const [newPrepaidAmount, setNewPrepaidAmount] = useState(0);
+  const [customForfaitHours, setCustomForfaitHours] = useState("");
+  const [customForfaitPrice, setCustomForfaitPrice] = useState("");
   const [playerSearchVal, setPlayerSearchVal] = useState("");
   const [showPlayerDropdown, setShowPlayerDropdown] = useState(false);
 
@@ -4484,14 +4621,20 @@ export default function App() {
   const handleStartSession = (consoleObj, paymentMethod) => {
     if (!newPlayerPseudo.trim()) return;
 
-    const durationMinutes = newDurationType === "limited" ? newDurationHours * 60 : 0;
+    const durationMinutes = newDurationType === "limited"
+      ? newDurationHours * 60
+      : newDurationType === "custom"
+        ? (parseFloat(customForfaitHours) || 0) * 60
+        : 0;
     const fullName = newPlayerPseudo.trim();
     const cleanPhone = newPlayerPhone.trim();
 
     // Calculate the session price upfront
     const sessionPrice = newDurationType === "limited"
       ? (consoleObj.ratePerHour || 0) * newDurationHours
-      : 0;
+      : newDurationType === "custom"
+        ? (parseFloat(customForfaitPrice) || 0)
+        : 0;
 
     // ── Encaissement immédiat en caisse (forfaits uniquement) ──
     if (sessionPrice > 0 && paymentMethod) {
@@ -4628,13 +4771,19 @@ export default function App() {
     if (sessionPrice > 0 && paymentMethod) {
       const now = new Date();
       const receiptId = `SESS-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+      const forfaitLabel = newDurationType === "custom"
+        ? `Forfait Personnalisé (${customForfaitHours}h) — ${consoleObj.name}`
+        : `Forfait ${newDurationHours}h — ${consoleObj.name}`;
+      const itemLabel = newDurationType === "custom"
+        ? `${consoleObj.name} — ${customForfaitHours}h de jeu (personnalisé)`
+        : `${consoleObj.name} — ${newDurationHours}h de jeu`;
       setShowReceiptModal({
         id: receiptId,
         date: now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
         customer: fullName,
-        type: `Forfait ${newDurationHours}h — ${consoleObj.name}`,
+        type: forfaitLabel,
         paymentMethod: paymentMethod === 'espèces' ? 'Espèces 💵' : 'Mobile Money 📱',
-        item: `${consoleObj.name} — ${newDurationHours}h de jeu`,
+        item: itemLabel,
         gameCost: sessionPrice,
         snackCost: 0,
         total: sessionPrice,
@@ -4647,6 +4796,10 @@ export default function App() {
     setNewPlayerPhone("");
     setNewDurationType("unlimited");
     setNewDurationHours(1);
+    setCustomForfaitHours("");
+    setCustomForfaitPrice("");
+    setPlayerSearchVal("");
+    setShowPlayerDropdown(false);
     setShowPaymentChoiceModal(false);
     setShowStartModal(null);
   };
@@ -9023,177 +9176,245 @@ export default function App() {
               );
             })()}
 
-            {/* ==================== VUE : GESTION DES JOUEURS ==================== */}
+            {/* ==================== VUE : GESTION DES JOUEURS / CRM ==================== */}
             {activeTab === "players" && (() => {
-              const filteredPlayers = players.filter(p =>
-                p.nom.toLowerCase().includes(playerSearch.toLowerCase()) ||
-                (p.telephone && p.telephone.includes(playerSearch)) ||
-                (p.email && p.email.toLowerCase().includes(playerSearch.toLowerCase()))
-              );
+              // Loyalty tier helper
+              const getTier = (spent) => {
+                if (spent >= 50000) return { label: "VIP", emoji: "⭐", color: "text-yellow-400", bg: "bg-yellow-950/40", border: "border-yellow-500/30" };
+                if (spent >= 20000) return { label: "Gold", emoji: "🥇", color: "text-amber-400", bg: "bg-amber-950/40", border: "border-amber-500/30" };
+                if (spent >= 10000) return { label: "Silver", emoji: "🥈", color: "text-zinc-300", bg: "bg-zinc-800/60", border: "border-zinc-500/30" };
+                return { label: "Bronze", emoji: "🥉", color: "text-orange-400", bg: "bg-orange-950/40", border: "border-orange-700/30" };
+              };
 
-              const getPlayerActiveConsole = (playerNom) => {
-                return consoles.find(c => 
-                  c.status === "occupée" && 
-                  c.activeSession && 
+              const tierFilter = crmFilterTier;
+              const filteredPlayers = players.filter(p => {
+                const matchSearch =
+                  p.nom.toLowerCase().includes(playerSearch.toLowerCase()) ||
+                  (p.telephone && p.telephone.includes(playerSearch)) ||
+                  (p.email && p.email.toLowerCase().includes(playerSearch.toLowerCase()));
+                if (!matchSearch) return false;
+                if (tierFilter === "tous") return true;
+                const tier = getTier(p.totalSpent || 0);
+                return tier.label.toLowerCase() === tierFilter;
+              });
+
+              const getPlayerActiveConsole = (playerNom) =>
+                consoles.find(c =>
+                  c.status === "occupée" &&
+                  c.activeSession &&
                   c.activeSession.player.toLowerCase().includes(playerNom.toLowerCase())
                 );
-              };
+
+              // CRM Stats
+              const totalRevFromPlayers = players.reduce((s, p) => s + (p.totalSpent || 0), 0);
+              const playersInGame = consoles.filter(c => c.status === "occupée" && c.activeSession).length;
+              const vipCount = players.filter(p => (p.totalSpent || 0) >= 50000).length;
+              const goldCount = players.filter(p => (p.totalSpent || 0) >= 20000 && (p.totalSpent || 0) < 50000).length;
 
               return (
                 <div className="space-y-6 animate-fade-in pb-12">
-                  <div>
+                  <div className="flex items-center justify-between">
                     <span className="sticker-badge bg-zinc-900 text-fuchsia-400 font-black px-3 py-1.5 text-[9px] uppercase tracking-widest inline-block font-sans">
-                      Base de Données Joueurs / Fidélité
+                      🎮 CRM — Base de Données Joueurs & Fidélité
                     </span>
                   </div>
 
-                  {/* Summary Cards */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Joueurs Inscrits</span>
-                      <span className="text-xl font-extrabold text-fuchsia-400">{players.length} membres</span>
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1 shadow-md border border-fuchsia-900/20">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Total Membres</span>
+                      <span className="text-2xl font-extrabold text-fuchsia-400">{players.length}</span>
+                      <span className="text-[9px] text-zinc-600">inscrits</span>
                     </div>
-                    <div className="glass-panel p-5 rounded-2xl flex flex-col gap-1.5 shadow-md">
-                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Joueurs Actifs en Salle</span>
-                      <span className="text-xl font-extrabold text-white">
-                        {consoles.filter(c => c.status === "occupée" && c.activeSession).length} en jeu
-                      </span>
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1 shadow-md border border-cyan-900/20">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">En Jeu</span>
+                      <span className="text-2xl font-extrabold text-cyan-400">{playersInGame}</span>
+                      <span className="text-[9px] text-zinc-600">actifs maintenant</span>
+                    </div>
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1 shadow-md border border-amber-900/20">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Rev. Fidèles</span>
+                      <span className="text-2xl font-extrabold text-emerald-400 font-mono text-sm">{totalRevFromPlayers.toLocaleString('fr-FR')} F</span>
+                      <span className="text-[9px] text-zinc-600">total cumulé</span>
+                    </div>
+                    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-1 shadow-md border border-yellow-900/20">
+                      <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">VIP & Gold</span>
+                      <span className="text-2xl font-extrabold text-yellow-400">{vipCount + goldCount}</span>
+                      <span className="text-[9px] text-zinc-600">{vipCount} VIP · {goldCount} Gold</span>
                     </div>
                   </div>
 
-                  {/* Search bar + New player action */}
-                  <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-900/60 p-4 rounded-2xl border border-zinc-800/80">
-                    <div className="relative w-full md:w-80">
-                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-zinc-500">
-                        <Search className="w-4 h-4" />
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="Rechercher un joueur..."
-                        value={playerSearch}
-                        onChange={(e) => setPlayerSearch(e.target.value)}
-                        className="w-full bg-zinc-950 border border-zinc-850 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-fuchsia-500 transition-all font-semibold"
-                      />
+                  {/* Filters + Search + New player */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-900/60 p-4 rounded-2xl border border-zinc-800/80">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {["tous", "vip", "gold", "silver", "bronze"].map(tier => (
+                        <button
+                          key={tier}
+                          type="button"
+                          onClick={() => setCrmFilterTier(tier)}
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all uppercase tracking-wider ${
+                            crmFilterTier === tier
+                              ? "bg-fuchsia-600 border-fuchsia-500 text-white"
+                              : "bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200 hover:border-zinc-600"
+                          }`}
+                        >
+                          {tier === "tous" ? "Tous" : tier === "vip" ? "⭐ VIP" : tier === "gold" ? "🥇 Gold" : tier === "silver" ? "🥈 Silver" : "🥉 Bronze"}
+                        </button>
+                      ))}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetPlayerForm();
-                        setShowAddPlayerModal(true);
-                      }}
-                      className="py-2.5 px-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-fuchsia-900/20 active:scale-95 transition-all flex items-center gap-1.5"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>Nouveau joueur</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-zinc-500">
+                          <Search className="w-4 h-4" />
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Rechercher..."
+                          value={playerSearch}
+                          onChange={(e) => setPlayerSearch(e.target.value)}
+                          className="w-52 bg-zinc-950 border border-zinc-850 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-fuchsia-500 transition-all font-semibold"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { resetPlayerForm(); setShowAddPlayerModal(true); }}
+                        className="py-2.5 px-4 bg-fuchsia-600 hover:bg-fuchsia-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-fuchsia-900/20 active:scale-95 transition-all flex items-center gap-1.5"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Nouveau joueur</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Players list Table */}
-                  <div className="glass-panel rounded-2xl border border-zinc-850 overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="bg-zinc-900/50 border-b border-zinc-800 text-zinc-400 font-bold uppercase tracking-wider">
-                            <th className="p-4">Nom du Joueur</th>
-                            <th className="p-4">Console</th>
-                            <th className="p-4">Temps</th>
-                            <th className="p-4">Montant</th>
-                            <th className="p-4 text-center">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-900">
-                          {filteredPlayers.map((p, idx) => {
-                            const activeConsole = getPlayerActiveConsole(p.nom);
-                            
-                            let consoleName = "Aucune";
-                            let tempsText = `${Math.floor((p.totalTimeMinutes || 0) / 60)}h`;
-                            let montantText = formatPrice(p.totalSpent || 0);
+                  {/* Players Cards Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {filteredPlayers.map((p) => {
+                      const activeConsole = getPlayerActiveConsole(p.nom);
+                      const tier = getTier(p.totalSpent || 0);
+                      const hrs = Math.floor((p.totalTimeMinutes || 0) / 60);
+                      const mins = (p.totalTimeMinutes || 0) % 60;
+                      const lastSeen = p.dateInscription
+                        ? new Date(p.dateInscription).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })
+                        : 'N/A';
 
-                            if (activeConsole && activeConsole.activeSession) {
-                              consoleName = activeConsole.name.split(" ")[0];
-                              
-                              const elapsedSec = activeConsole.activeSession.timeElapsedSeconds || 0;
-                              const hrs = Math.max(1, Math.round(elapsedSec / 3605));
-                              tempsText = `${hrs}h`;
-                              montantText = formatPrice(activeConsole.activeSession.totalAmountDue + (activeConsole.activeSession.extraSnacksBill || 0));
-                            }
-
-                            return (
-                              <tr key={p.id} className="hover:bg-zinc-900/20 transition-all font-medium">
-                                <td className="p-4">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-7 h-7 rounded-full bg-zinc-950/60 border border-zinc-800 flex items-center justify-center font-bold text-[10px] text-fuchsia-400 uppercase">
-                                      {p.nom.slice(0, 2)}
-                                    </div>
-                                    <div>
-                                      <span className="text-white font-bold block">{p.nom}</span>
-                                      <span className="text-[9px] text-zinc-500 block font-mono">{p.telephone || "Sans téléphone"}</span>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="p-4">
-                                  {activeConsole ? (
-                                    <span className="px-2 py-1 bg-cyan-950/50 text-cyan-400 border border-cyan-800/30 rounded-lg font-black uppercase text-[10px]">
-                                      🎮 {consoleName}
-                                    </span>
-                                  ) : (
-                                    <span className="text-zinc-500 italic">Aucune</span>
-                                  )}
-                                </td>
-                                <td className="p-4 font-mono font-bold text-zinc-300">
-                                  {tempsText}
-                                </td>
-                                <td className="p-4 font-mono font-extrabold text-emerald-400 text-sm">
-                                  {montantText}
-                                </td>
-                                <td className="p-4">
-                                  <div className="flex items-center justify-center gap-1.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => setShowViewPlayerModal(p)}
-                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
-                                    >
-                                      👁️ Voir
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setPlayNom(p.nom);
-                                        setPlayTel(p.telephone || "");
-                                        setPlayEmail(p.email || "");
-                                        setShowEditPlayerModal(p);
-                                      }}
-                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-amber-500 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
-                                    >
-                                      ✏️ Modifier
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeletePlayer(p.id)}
-                                      disabled={role !== "admin"}
-                                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-800 text-rose-500 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
-                                    >
-                                      🗑️ Supprimer
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-
-                          {filteredPlayers.length === 0 && (
-                            <tr>
-                              <td colSpan="5" className="p-8 text-center text-zinc-500 italic">
-                                Aucun joueur trouvé.
-                              </td>
-                            </tr>
+                      return (
+                        <div key={p.id} className={`glass-panel rounded-2xl border p-4 space-y-3 transition-all hover:scale-[1.01] relative overflow-hidden ${
+                          activeConsole ? 'border-cyan-800/40' : 'border-zinc-800/60'
+                        }`}>
+                          {/* Active pulse */}
+                          {activeConsole && (
+                            <div className="absolute top-3 right-3">
+                              <span className="flex items-center gap-1 text-[9px] font-black text-cyan-400 uppercase">
+                                <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping"></span>
+                                En jeu
+                              </span>
+                            </div>
                           )}
-                        </tbody>
-                      </table>
-                    </div>
+
+                          {/* Header */}
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-fuchsia-600 to-indigo-600 flex items-center justify-center font-black text-white text-sm uppercase shadow-md flex-shrink-0">
+                              {p.nom.slice(0, 2)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="text-white font-black text-sm truncate">{p.nom}</span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${tier.color} ${tier.bg} ${tier.border} flex-shrink-0`}>
+                                  {tier.emoji} {tier.label}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-zinc-500 font-mono">{p.telephone || 'Pas de téléphone'}</span>
+                            </div>
+                          </div>
+
+                          {/* Stats row */}
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-zinc-950/60 rounded-xl p-2 border border-zinc-900">
+                              <span className="text-[8px] text-zinc-500 block font-bold uppercase">Sessions</span>
+                              <span className="text-sm font-black text-white">{p.totalSessions || 0}</span>
+                            </div>
+                            <div className="bg-zinc-950/60 rounded-xl p-2 border border-zinc-900">
+                              <span className="text-[8px] text-zinc-500 block font-bold uppercase">Temps</span>
+                              <span className="text-sm font-black text-white font-mono">{hrs}h{mins > 0 ? `${mins}` : ''}</span>
+                            </div>
+                            <div className="bg-zinc-950/60 rounded-xl p-2 border border-zinc-900">
+                              <span className="text-[8px] text-zinc-500 block font-bold uppercase">Dépenses</span>
+                              <span className="text-xs font-black text-emerald-400 font-mono">{(p.totalSpent || 0).toLocaleString('fr-FR')}F</span>
+                            </div>
+                          </div>
+
+                          {/* Progress bar toward next tier */}
+                          {(() => {
+                            const spent = p.totalSpent || 0;
+                            let next = 10000, label = "Silver";
+                            if (spent >= 50000) { next = null; label = null; }
+                            else if (spent >= 20000) { next = 50000; label = "VIP"; }
+                            else if (spent >= 10000) { next = 20000; label = "Gold"; }
+                            if (!next) return (
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1 bg-yellow-500/30 rounded-full overflow-hidden">
+                                  <div className="h-full w-full bg-gradient-to-r from-yellow-400 to-amber-400 rounded-full"></div>
+                                </div>
+                                <span className="text-[9px] text-yellow-400 font-bold">⭐ Niveau MAX</span>
+                              </div>
+                            );
+                            const pct = Math.min(100, (spent / next) * 100);
+                            return (
+                              <div>
+                                <div className="flex justify-between mb-1">
+                                  <span className="text-[9px] text-zinc-500 font-semibold">Vers {label}</span>
+                                  <span className="text-[9px] text-zinc-500 font-mono">{spent.toLocaleString('fr-FR')} / {next.toLocaleString('fr-FR')} FCFA</span>
+                                </div>
+                                <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+                                  <div className="h-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 rounded-full transition-all" style={{ width: `${pct}%` }}></div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Notes */}
+                          {p.notes && (
+                            <div className="bg-zinc-950/50 rounded-xl px-3 py-2 border border-zinc-900">
+                              <span className="text-[9px] text-zinc-500 font-bold uppercase">📝 Note :</span>
+                              <p className="text-[10px] text-zinc-400 mt-0.5">{p.notes}</p>
+                            </div>
+                          )}
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-2 pt-1 border-t border-zinc-900">
+                            <button
+                              type="button"
+                              onClick={() => setShowViewPlayerModal(p)}
+                              className="flex-1 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                            >
+                              👁️ Profil
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setPlayNom(p.nom); setPlayTel(p.telephone || ""); setPlayEmail(p.email || ""); setPlayNotes(p.notes || ""); setShowEditPlayerModal(p); }}
+                              className="flex-1 py-1.5 bg-zinc-900 hover:bg-zinc-800 text-amber-500 rounded-lg font-bold text-[10px] border border-zinc-800 transition-colors"
+                            >
+                              ✏️ Modifier
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeletePlayer(p.id)}
+                              disabled={role !== "admin"}
+                              className="py-1.5 px-3 bg-zinc-900 hover:bg-zinc-800 text-rose-500 rounded-lg font-bold text-[10px] border border-zinc-800 disabled:opacity-30 transition-colors"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {filteredPlayers.length === 0 && (
+                      <div className="col-span-3 p-12 text-center text-zinc-500 italic glass-panel rounded-2xl border border-zinc-850">
+                        <p className="text-2xl mb-2">🎮</p>
+                        <p>Aucun joueur trouvé.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -11078,6 +11299,8 @@ export default function App() {
                           type="button"
                           onClick={() => {
                             setMovementType("entrée");
+                            setMovementMethod("espèces");
+                            setTransferDirection("momo_to_cash");
                             setMovementAmount("");
                             setMovementReason("");
                             setMovementOperator(activeCaisseSession.openedBy || "");
@@ -11143,20 +11366,49 @@ export default function App() {
                         const totalSales = jeux + snack;
                         const transactions = activeCaisseSession.transactionsCount || 0;
                         
-                        const manualInflows = (activeCaisseSession.movements || [])
-                          .filter(m => m.type === "entrée")
+                        const movements = activeCaisseSession.movements || [];
+                        const manualCashInflows = movements
+                          .filter(m => m.type === "entrée" && (m.method === "espèces" || !m.method))
                           .reduce((sum, m) => sum + m.amount, 0);
-                        const manualOutflows = (activeCaisseSession.movements || [])
-                          .filter(m => m.type === "sortie")
+                        const manualCashOutflows = movements
+                          .filter(m => m.type === "sortie" && (m.method === "espèces" || !m.method))
                           .reduce((sum, m) => sum + m.amount, 0);
-                          
+                        const manualMomoInflows = movements
+                          .filter(m => m.type === "entrée" && m.method === "mobile_money")
+                          .reduce((sum, m) => sum + m.amount, 0);
+                        const manualMomoOutflows = movements
+                          .filter(m => m.type === "sortie" && m.method === "mobile_money")
+                          .reduce((sum, m) => sum + m.amount, 0);
+
+                        const transferMomoToCash = movements
+                          .filter(m => m.type === "transfert" && m.transferDir === "momo_to_cash")
+                          .reduce((sum, m) => sum + m.amount, 0);
+                        const transferCashToMomo = movements
+                          .filter(m => m.type === "transfert" && m.transferDir === "cash_to_momo")
+                          .reduce((sum, m) => sum + m.amount, 0);
+
                         const expMaintenance = activeCaisseSession.expensesMaintenance || 0;
                         const expDiverses = activeCaisseSession.expensesDiverses || 0;
                         const purcCash = activeCaisseSession.purchasesCash || 0;
                         const refunds = activeCaisseSession.refunds || 0;
                         
-                        // expected cash balance
-                        const expectedCash = opening + (activeCaisseSession.paymentEspèces || 0) + manualInflows - manualOutflows - expMaintenance - expDiverses - purcCash - refunds;
+                        // expected balances
+                        const expectedCash = opening 
+                          + (activeCaisseSession.paymentEspèces || 0) 
+                          + manualCashInflows 
+                          - manualCashOutflows 
+                          + transferMomoToCash
+                          - transferCashToMomo
+                          - expMaintenance 
+                          - expDiverses 
+                          - purcCash 
+                          - refunds;
+
+                        const expectedMobile = (activeCaisseSession.paymentMobileMoney || 0)
+                          + manualMomoInflows
+                          - manualMomoOutflows
+                          + transferCashToMomo
+                          - transferMomoToCash;
 
                         return (
                           <div className="space-y-6">
@@ -11218,7 +11470,7 @@ export default function App() {
                             <div className="glass-panel p-6 rounded-2xl border border-zinc-850 space-y-4">
                               <h4 className="text-xs font-black text-white uppercase tracking-wider">Répartition des paiements</h4>
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 flex justify-between items-center">
+                        <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 flex justify-between items-center">
                                   <span className="text-xs text-zinc-400 font-semibold">Espèces</span>
                                   <span className="text-sm font-black text-emerald-400 font-mono">
                                     {(activeCaisseSession.paymentEspèces || 0).toLocaleString('fr-FR')} FCFA
@@ -11248,26 +11500,88 @@ export default function App() {
                                 </h4>
                                 <div className="space-y-3.5 text-xs">
                                   <div className="flex justify-between items-center text-zinc-400">
-                                    <span>Fond initial :</span>
+                                    <span>Fond initial (Espèces) :</span>
                                     <span className="font-mono text-zinc-300 font-bold">{opening.toLocaleString('fr-FR')} FCFA</span>
                                   </div>
                                   <div className="flex justify-between items-center text-zinc-400">
                                     <span>+ Ventes espèces :</span>
                                     <span className="font-mono text-emerald-400 font-bold">+{ (activeCaisseSession.paymentEspèces || 0).toLocaleString('fr-FR') } FCFA</span>
                                   </div>
+                                  {manualCashInflows > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-400">
+                                      <span>+ Entrées espèces (apports) :</span>
+                                      <span className="font-mono text-emerald-400 font-bold">+{ manualCashInflows.toLocaleString('fr-FR') } FCFA</span>
+                                    </div>
+                                  )}
+                                  {transferMomoToCash > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-400">
+                                      <span>+ Transferts reçus (Momo ➔ Espèces) :</span>
+                                      <span className="font-mono text-emerald-400 font-bold">+{ transferMomoToCash.toLocaleString('fr-FR') } FCFA</span>
+                                    </div>
+                                  )}
+                                  {manualCashOutflows > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-400">
+                                      <span>- Sorties espèces (retraits) :</span>
+                                      <span className="font-mono text-rose-400 font-bold">-{ manualCashOutflows.toLocaleString('fr-FR') } FCFA</span>
+                                    </div>
+                                  )}
+                                  {transferCashToMomo > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-400">
+                                      <span>- Transferts émis (Espèces ➔ Momo) :</span>
+                                      <span className="font-mono text-rose-400 font-bold">-{ transferCashToMomo.toLocaleString('fr-FR') } FCFA</span>
+                                    </div>
+                                  )}
+                                  {(expMaintenance + expDiverses + purcCash + refunds) > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-450 border-b border-zinc-900 pb-2">
+                                      <span>- Charges espèces (Achats / Dépenses) :</span>
+                                      <span className="font-mono text-rose-450 font-bold">
+                                        -{ (expMaintenance + expDiverses + purcCash + refunds).toLocaleString('fr-FR') } FCFA
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="pt-1.5 flex justify-between items-center text-zinc-300 border-t border-zinc-900">
+                                    <span>Solde Espèces théorique :</span>
+                                    <span className="font-mono text-emerald-400 font-bold">{expectedCash.toLocaleString('fr-FR')} FCFA</span>
+                                  </div>
+                                  
+                                  <div className="border-t border-zinc-900 my-1"></div>
+                                  
                                   <div className="flex justify-between items-center text-zinc-400">
-                                    <span>+ Entrées (apports) :</span>
-                                    <span className="font-mono text-emerald-400 font-bold">+{ manualInflows.toLocaleString('fr-FR') } FCFA</span>
+                                    <span>+ Ventes Mobile Money :</span>
+                                    <span className="font-mono text-blue-400 font-bold">+{ (activeCaisseSession.paymentMobileMoney || 0).toLocaleString('fr-FR') } FCFA</span>
                                   </div>
-                                  <div className="flex justify-between items-center text-zinc-450 border-b border-zinc-900 pb-2">
-                                    <span>- Sorties (retraits manuels / charges shift) :</span>
-                                    <span className="font-mono text-rose-400 font-bold">
-                                      -{ (manualOutflows + expMaintenance + expDiverses + purcCash + refunds).toLocaleString('fr-FR') } FCFA
-                                    </span>
+                                  {manualMomoInflows > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-400">
+                                      <span>+ Entrées Momo (apports) :</span>
+                                      <span className="font-mono text-blue-400 font-bold">+{ manualMomoInflows.toLocaleString('fr-FR') } FCFA</span>
+                                    </div>
+                                  )}
+                                  {transferCashToMomo > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-400">
+                                      <span>+ Transferts reçus (Espèces ➔ Momo) :</span>
+                                      <span className="font-mono text-blue-400 font-bold">+{ transferCashToMomo.toLocaleString('fr-FR') } FCFA</span>
+                                    </div>
+                                  )}
+                                  {manualMomoOutflows > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-400">
+                                      <span>- Sorties Momo (retraits) :</span>
+                                      <span className="font-mono text-rose-400 font-bold">-{ manualMomoOutflows.toLocaleString('fr-FR') } FCFA</span>
+                                    </div>
+                                  )}
+                                  {transferMomoToCash > 0 && (
+                                    <div className="flex justify-between items-center text-zinc-400">
+                                      <span>- Transferts émis (Momo ➔ Espèces) :</span>
+                                      <span className="font-mono text-rose-400 font-bold">-{ transferMomoToCash.toLocaleString('fr-FR') } FCFA</span>
+                                    </div>
+                                  )}
+                                  <div className="pt-1.5 flex justify-between items-center text-zinc-300 border-t border-zinc-900 pb-2">
+                                    <span>Solde Momo théorique :</span>
+                                    <span className="font-mono text-blue-400 font-bold">{expectedMobile.toLocaleString('fr-FR')} FCFA</span>
                                   </div>
-                                  <div className="pt-2 flex justify-between items-center text-sm font-black text-amber-400">
-                                    <span>Caisse attendue (tiroir caisse) :</span>
-                                    <span className="font-mono text-base">{expectedCash.toLocaleString('fr-FR')} FCFA</span>
+                                  
+                                  <div className="pt-2 flex justify-between items-center text-sm font-black text-amber-400 border-t border-zinc-900/80">
+                                    <span>Caisse attendue (Total) :</span>
+                                    <span className="font-mono text-base">{(expectedCash + expectedMobile).toLocaleString('fr-FR')} FCFA</span>
                                   </div>
                                 </div>
                               </div>
@@ -11573,42 +11887,127 @@ export default function App() {
             <form 
               onSubmit={(e) => {
                 e.preventDefault();
-                handleAddCaisseMovement(movementType, movementAmount, movementReason, movementOperator);
+                handleAddCaisseMovement(movementType, movementAmount, movementReason, movementOperator, movementMethod, transferDirection);
               }}
               className="space-y-4"
             >
               {/* Type toggle */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Type de flux</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
-                    onClick={() => setMovementType("entrée")}
+                    onClick={() => {
+                      setMovementType("entrée");
+                      setMovementMethod("espèces");
+                    }}
                     className={`py-2.5 rounded-xl border text-center text-xs font-bold transition-all ${
                       movementType === "entrée"
                         ? "bg-emerald-950/30 border-emerald-500/50 text-emerald-400 shadow-inner font-extrabold"
                         : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
                     }`}
                   >
-                    📥 Entrée (Apport)
+                    📥 Entrée
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMovementType("sortie")}
+                    onClick={() => {
+                      setMovementType("sortie");
+                      setMovementMethod("espèces");
+                    }}
                     className={`py-2.5 rounded-xl border text-center text-xs font-bold transition-all ${
                       movementType === "sortie"
                         ? "bg-rose-950/30 border-rose-500/50 text-rose-400 shadow-inner font-extrabold"
                         : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
                     }`}
                   >
-                    📤 Sortie (Retrait / Charge)
+                    📤 Sortie
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMovementType("transfert");
+                    }}
+                    className={`py-2.5 rounded-xl border text-center text-xs font-bold transition-all ${
+                      movementType === "transfert"
+                        ? "bg-blue-950/30 border-blue-500/50 text-blue-400 shadow-inner font-extrabold"
+                        : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    🔄 Transfert
                   </button>
                 </div>
               </div>
 
+              {/* Payment Method selection for entrée/sortie */}
+              {(movementType === "entrée" || movementType === "sortie") && (
+                <div className="space-y-1 animate-fade-in">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Mode de règlement / Compte</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setMovementMethod("espèces")}
+                      className={`py-2 rounded-xl border text-center text-xs font-semibold transition-all ${
+                        movementMethod === "espèces"
+                          ? "bg-zinc-900 border-emerald-500/40 text-emerald-400 font-bold"
+                          : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      💵 Espèces (Cash)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMovementMethod("mobile_money")}
+                      className={`py-2 rounded-xl border text-center text-xs font-semibold transition-all ${
+                        movementMethod === "mobile_money"
+                          ? "bg-zinc-900 border-blue-500/40 text-blue-400 font-bold"
+                          : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      📱 Mobile Money
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Transfer direction selection */}
+              {movementType === "transfert" && (
+                <div className="space-y-1 animate-fade-in">
+                  <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Direction du Transfert</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setTransferDirection("momo_to_cash")}
+                      className={`py-2.5 px-2 rounded-xl border text-center text-[10px] font-bold transition-all flex flex-col items-center justify-center gap-1 ${
+                        transferDirection === "momo_to_cash"
+                          ? "bg-zinc-900 border-amber-500/40 text-amber-400"
+                          : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      <span>📱 Momo ➔ 💵 Espèces</span>
+                      <span className="text-[8px] text-zinc-500 font-normal">(Mobile Money vers Espèces)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTransferDirection("cash_to_momo")}
+                      className={`py-2.5 px-2 rounded-xl border text-center text-[10px] font-bold transition-all flex flex-col items-center justify-center gap-1 ${
+                        transferDirection === "cash_to_momo"
+                          ? "bg-zinc-900 border-cyan-500/40 text-cyan-400"
+                          : "bg-zinc-950 border-zinc-900 text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      <span>💵 Espèces ➔ 📱 Momo</span>
+                      <span className="text-[8px] text-zinc-550 font-normal">(Espèces vers Mobile Money)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Amount input */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Montant du mouvement (FCFA)</label>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">
+                  {movementType === "transfert" ? "Montant du transfert (FCFA)" : "Montant du mouvement (FCFA)"}
+                </label>
                 <input 
                   type="number"
                   required
@@ -11624,8 +12023,12 @@ export default function App() {
                 <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider block">Motif / Description</label>
                 <input 
                   type="text"
-                  required
-                  placeholder="Ex: Apport monnaie matin, Achat ampoule bar..."
+                  required={movementType !== "transfert"}
+                  placeholder={
+                    movementType === "transfert"
+                      ? "Ex: Retrait Momo pour approvisionner le tiroir caisse (Optionnel)"
+                      : "Ex: Apport monnaie matin, Achat ampoule bar..."
+                  }
                   value={movementReason}
                   onChange={(e) => setMovementReason(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500"
@@ -11716,26 +12119,66 @@ export default function App() {
               </div>
               
               {(() => {
-                const expected = activeCaisseSession.openingBalance 
-                  + activeCaisseSession.gamesRevenue 
-                  + activeCaisseSession.snackRevenue 
-                  - activeCaisseSession.purchases
-                  - activeCaisseSession.expensesDiverses
-                  - activeCaisseSession.expensesMaintenance
-                  - activeCaisseSession.refunds;
-                
+                const movements = activeCaisseSession.movements || [];
+                const manualCashIn = movements
+                  .filter(m => m.type === "entrée" && (m.method === "espèces" || !m.method))
+                  .reduce((sum, m) => sum + m.amount, 0);
+                const manualCashOut = movements
+                  .filter(m => m.type === "sortie" && (m.method === "espèces" || !m.method))
+                  .reduce((sum, m) => sum + m.amount, 0);
+                const transferMomoToCash = movements
+                  .filter(m => m.type === "transfert" && m.transferDir === "momo_to_cash")
+                  .reduce((sum, m) => sum + m.amount, 0);
+                const transferCashToMomo = movements
+                  .filter(m => m.type === "transfert" && m.transferDir === "cash_to_momo")
+                  .reduce((sum, m) => sum + m.amount, 0);
+
+                const expectedCash = activeCaisseSession.openingBalance 
+                  + (activeCaisseSession.paymentEspèces || 0)
+                  + manualCashIn
+                  - manualCashOut
+                  + transferMomoToCash
+                  - transferCashToMomo
+                  - (activeCaisseSession.expensesMaintenance || 0)
+                  - (activeCaisseSession.expensesDiverses || 0)
+                  - (activeCaisseSession.purchasesCash || 0)
+                  - (activeCaisseSession.refunds || 0);
+                  
+                const manualMomoIn = movements
+                  .filter(m => m.type === "entrée" && m.method === "mobile_money")
+                  .reduce((sum, m) => sum + m.amount, 0);
+                const manualMomoOut = movements
+                  .filter(m => m.type === "sortie" && m.method === "mobile_money")
+                  .reduce((sum, m) => sum + m.amount, 0);
+                  
+                const expectedMobile = (activeCaisseSession.paymentMobileMoney || 0)
+                  + manualMomoIn
+                  - manualMomoOut
+                  + transferCashToMomo
+                  - transferMomoToCash;
+
                 const real = parseFloat(closeCaisseRealBalance || 0);
-                const variance = real - expected;
+                const variance = real - expectedCash;
 
                 return (
                   <>
-                    <div className="flex justify-between font-bold text-cyan-400 border-t border-zinc-900 pt-2 mt-2 text-sm">
-                      <span>Solde Attendu :</span>
-                      <span className="font-mono">{expected.toLocaleString('fr-FR')} FCFA</span>
+                    <div className="flex justify-between font-bold text-emerald-400 border-t border-zinc-900 pt-2 mt-2 text-xs">
+                      <span>Espèces Attendues :</span>
+                      <span className="font-mono">{expectedCash.toLocaleString('fr-FR')} FCFA</span>
+                    </div>
+
+                    <div className="flex justify-between font-bold text-cyan-400 border-b border-zinc-900 pb-2 text-xs">
+                      <span>Mobile Money Attendu :</span>
+                      <span className="font-mono">{expectedMobile.toLocaleString('fr-FR')} FCFA</span>
+                    </div>
+
+                    <div className="flex justify-between font-bold text-zinc-300 pt-2 text-sm">
+                      <span>Solde Attendu (Total) :</span>
+                      <span className="font-mono">{(expectedCash + expectedMobile).toLocaleString('fr-FR')} FCFA</span>
                     </div>
 
                     <div className="flex justify-between font-bold border-t border-zinc-900 pt-2 text-xs">
-                      <span className="text-zinc-300">Écart de Caisse calculé :</span>
+                      <span className="text-zinc-300">Écart de Caisse Physique (Espèces) :</span>
                       {closeCaisseRealBalance ? (
                         <span className={`font-mono text-sm ${variance === 0 ? 'text-emerald-400' : variance < 0 ? 'text-rose-400' : 'text-amber-400'}`}>
                           {variance > 0 ? '+' : ''}{variance.toLocaleString('fr-FR')} FCFA
@@ -11845,16 +12288,70 @@ export default function App() {
             {/* Forms */}
             <div className="space-y-4">
 
-              {/* Nom du joueur */}
-              <div>
+              {/* Nom du joueur avec autocomplete */}
+              <div className="relative">
                 <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Nom du joueur</label>
                 <input
                   type="text"
-                  placeholder="Ex: Sofiane"
+                  placeholder="Ex: Sofiane (tapez pour chercher)"
                   value={newPlayerPseudo}
-                  onChange={(e) => setNewPlayerPseudo(e.target.value)}
+                  onChange={(e) => {
+                    setNewPlayerPseudo(e.target.value);
+                    setPlayerSearchVal(e.target.value);
+                    setShowPlayerDropdown(e.target.value.trim().length > 0);
+                    // If player found, prefill phone
+                    const found = players.find(p => p.nom.toLowerCase() === e.target.value.toLowerCase());
+                    if (found) setNewPlayerPhone(found.telephone || "");
+                  }}
                   autoFocus
+                  autoComplete="off"
                   className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-3 text-sm font-semibold text-white focus:outline-none focus:border-emerald-500 placeholder-zinc-600"
+                />
+                {/* Autocomplete dropdown */}
+                {showPlayerDropdown && (() => {
+                  const suggestions = players.filter(p =>
+                    p.nom.toLowerCase().includes(playerSearchVal.toLowerCase())
+                  ).slice(0, 5);
+                  if (suggestions.length === 0) return null;
+                  return (
+                    <div className="absolute top-full left-0 right-0 z-10 mt-1 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl overflow-hidden">
+                      {suggestions.map(p => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => {
+                            setNewPlayerPseudo(p.nom);
+                            setNewPlayerPhone(p.telephone || "");
+                            setShowPlayerDropdown(false);
+                          }}
+                          className="w-full px-4 py-2.5 text-left flex items-center gap-3 hover:bg-zinc-800 transition-colors"
+                        >
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-fuchsia-600 to-indigo-600 flex items-center justify-center text-white text-[10px] font-black uppercase flex-shrink-0">
+                            {p.nom.slice(0, 2)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-xs font-bold truncate">{p.nom}</p>
+                            <p className="text-zinc-500 text-[9px] font-mono">{p.telephone || 'Pas de tél.'} · {p.totalSessions || 0} sessions</p>
+                          </div>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-fuchsia-950/60 text-fuchsia-400 border border-fuchsia-800/30 font-bold">
+                            {(p.totalSpent || 0) >= 50000 ? '⭐ VIP' : (p.totalSpent || 0) >= 20000 ? '🥇 Gold' : (p.totalSpent || 0) >= 10000 ? '🥈 Silver' : '🥉 Bronze'}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Téléphone */}
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Téléphone <span className="text-zinc-600 normal-case font-normal">(pour fidélisation)</span></label>
+                <input
+                  type="tel"
+                  placeholder="Ex: +237 6XX XXX XXX"
+                  value={newPlayerPhone}
+                  onChange={(e) => setNewPlayerPhone(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800/80 rounded-xl px-4 py-2.5 text-sm font-mono text-white focus:outline-none focus:border-emerald-500 placeholder-zinc-600"
                 />
               </div>
 
@@ -11878,6 +12375,51 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+
+                {/* Forfait Personnalisé */}
+                <button
+                  type="button"
+                  onClick={() => { setNewDurationType("custom"); setNewDurationHours(0); }}
+                  className={`w-full mt-2 py-2.5 rounded-xl text-xs font-bold border transition-all ${
+                    newDurationType === "custom"
+                      ? "bg-orange-950/40 text-orange-400 border-orange-500/50"
+                      : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-600 hover:text-zinc-300"
+                  }`}
+                >
+                  ✏️ Forfait Personnalisé (durée & prix libres)
+                </button>
+
+                {/* Custom forfait inputs */}
+                {newDurationType === "custom" && (
+                  <div className="mt-2 grid grid-cols-2 gap-2 animate-fade-in">
+                    <div>
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Durée (heures)</label>
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        placeholder="Ex: 1.5"
+                        value={customForfaitHours}
+                        onChange={e => setCustomForfaitHours(e.target.value)}
+                        className="w-full bg-zinc-950 border border-orange-800/40 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">Prix (FCFA)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="100"
+                        placeholder="Ex: 2500"
+                        value={customForfaitPrice}
+                        onChange={e => setCustomForfaitPrice(e.target.value)}
+                        className="w-full bg-zinc-950 border border-orange-800/40 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-orange-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Temps libre */}
                 <button
                   type="button"
                   onClick={() => { setNewDurationType("unlimited"); setNewDurationHours(0); }}
@@ -11887,7 +12429,7 @@ export default function App() {
                       : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-600 hover:text-zinc-300"
                   }`}
                 >
-                  ⏱ Temps libre (sans forfait)
+                  ⏱ Temps libre (sans forfait — paiement à la fin)
                 </button>
               </div>
 
@@ -11897,7 +12439,7 @@ export default function App() {
             {!showPaymentChoiceModal ? (
               <div className="flex items-center gap-3 pt-2">
                 <button 
-                  onClick={() => { setShowStartModal(null); setShowPaymentChoiceModal(false); }}
+                  onClick={() => { setShowStartModal(null); setShowPaymentChoiceModal(false); setShowPlayerDropdown(false); }}
                   className="flex-1 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-xl text-xs font-bold transition-all"
                 >
                   Annuler
@@ -11905,30 +12447,36 @@ export default function App() {
                 <button 
                   onClick={() => {
                     if (!newPlayerPseudo.trim()) return;
+                    if (newDurationType === "custom" && (!customForfaitPrice || !customForfaitHours)) return;
                     if (newDurationType === 'unlimited') {
-                      // Temps libre → pas de paiement, démarrer directement
                       handleStartSession(showStartModal, null);
                     } else {
-                      // Forfait → afficher le choix de paiement
                       setShowPaymentChoiceModal(true);
                     }
                   }}
-                  disabled={!newPlayerPseudo.trim()}
+                  disabled={
+                    !newPlayerPseudo.trim() ||
+                    (newDurationType === "custom" && (!customForfaitPrice || !customForfaitHours))
+                  }
                   className="flex-1 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-800 disabled:to-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950/20 active:scale-[0.98] transition-all"
                 >
-                  {newDurationType === 'limited' ? '💳 Encaisser & Démarrer' : '▶ Démarrer la session'}
+                  {newDurationType === 'unlimited' ? '▶ Démarrer la session' : '💳 Encaisser & Démarrer'}
                 </button>
               </div>
             ) : (
-              // ── Étape paiement ──
               <div className="space-y-3 pt-2">
                 {/* Montant à encaisser */}
                 <div className="p-3 bg-emerald-950/30 border border-emerald-500/30 rounded-xl text-center">
                   <p className="text-[10px] text-emerald-400/70 uppercase font-bold mb-0.5">Montant à encaisser</p>
                   <p className="text-2xl font-black text-emerald-400">
-                    {(showStartModal.ratePerHour * newDurationHours).toLocaleString('fr-FR')} <span className="text-sm font-semibold">FCFA</span>
+                    {newDurationType === "custom"
+                      ? (parseFloat(customForfaitPrice) || 0).toLocaleString('fr-FR')
+                      : (showStartModal.ratePerHour * newDurationHours).toLocaleString('fr-FR')
+                    } <span className="text-sm font-semibold">FCFA</span>
                   </p>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">{newPlayerPseudo} · {newDurationHours}h de jeu</p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                    {newPlayerPseudo} · {newDurationType === "custom" ? `${customForfaitHours}h (forfait perso)` : `${newDurationHours}h de jeu`}
+                  </p>
                 </div>
 
                 <p className="text-[10px] font-bold text-zinc-500 uppercase text-center">Mode de paiement</p>
@@ -12813,14 +13361,15 @@ export default function App() {
               <button onClick={() => setShowAddPlayerModal(false)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Pseudo :</label>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Pseudo / Nom :</label>
                 <input 
                   type="text" 
                   value={playNom}
                   onChange={(e) => setPlayNom(e.target.value)}
                   placeholder="Ex: Kevin"
+                  autoFocus
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-semibold"
                 />
               </div>
@@ -12828,11 +13377,33 @@ export default function App() {
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase block">Téléphone :</label>
                 <input 
-                  type="text" 
+                  type="tel" 
                   value={playTel}
                   onChange={(e) => setPlayTel(e.target.value)}
-                  placeholder="Ex: +237..."
+                  placeholder="Ex: +237 6XX XXX XXX"
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Email <span className="normal-case font-normal text-zinc-600">(optionnel)</span> :</label>
+                <input 
+                  type="email" 
+                  value={playEmail}
+                  onChange={(e) => setPlayEmail(e.target.value)}
+                  placeholder="Ex: kevin@mail.com"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Notes <span className="normal-case font-normal text-zinc-600">(préférences, infos utiles...)</span> :</label>
+                <textarea
+                  rows="2"
+                  value={playNotes}
+                  onChange={(e) => setPlayNotes(e.target.value)}
+                  placeholder="Ex: Préfère FIFA, vient souvent le weekend..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 resize-none"
                 />
               </div>
             </div>
@@ -12871,9 +13442,9 @@ export default function App() {
               <button onClick={() => setShowEditPlayerModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Pseudo :</label>
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Pseudo / Nom :</label>
                 <input 
                   type="text" 
                   value={playNom}
@@ -12885,10 +13456,31 @@ export default function App() {
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-zinc-400 uppercase block">Téléphone :</label>
                 <input 
-                  type="text" 
+                  type="tel" 
                   value={playTel}
                   onChange={(e) => setPlayTel(e.target.value)}
                   className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Email <span className="normal-case font-normal text-zinc-600">(optionnel)</span> :</label>
+                <input 
+                  type="email" 
+                  value={playEmail}
+                  onChange={(e) => setPlayEmail(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase block">Notes <span className="normal-case font-normal text-zinc-600">(préférences, infos utiles...)</span> :</label>
+                <textarea
+                  rows="2"
+                  value={playNotes}
+                  onChange={(e) => setPlayNotes(e.target.value)}
+                  placeholder="Ex: Préfère FIFA, vient souvent le weekend..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-fuchsia-500 resize-none"
                 />
               </div>
             </div>
@@ -12942,72 +13534,109 @@ export default function App() {
                 <button onClick={() => setShowViewPlayerModal(null)} className="text-zinc-500 hover:text-zinc-300 text-sm font-bold">✖</button>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 text-xs">
+              {/* Tier badge */}
+              {(() => {
+                const spent = p.totalSpent || 0;
+                const tier = spent >= 50000 ? { label: "VIP", emoji: "⭐", color: "text-yellow-400", bg: "bg-yellow-950/30", border: "border-yellow-500/30" }
+                  : spent >= 20000 ? { label: "Gold", emoji: "🥇", color: "text-amber-400", bg: "bg-amber-950/30", border: "border-amber-500/30" }
+                  : spent >= 10000 ? { label: "Silver", emoji: "🥈", color: "text-zinc-300", bg: "bg-zinc-800/60", border: "border-zinc-500/30" }
+                  : { label: "Bronze", emoji: "🥉", color: "text-orange-400", bg: "bg-orange-950/30", border: "border-orange-700/30" };
+                let next = 10000, nextLabel = "Silver";
+                if (spent >= 50000) { next = null; nextLabel = null; }
+                else if (spent >= 20000) { next = 50000; nextLabel = "VIP"; }
+                else if (spent >= 10000) { next = 20000; nextLabel = "Gold"; }
+                const pct = next ? Math.min(100, (spent / next) * 100) : 100;
+                return (
+                  <div className={`p-3 rounded-xl border ${tier.bg} ${tier.border} space-y-2`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm font-black ${tier.color}`}>{tier.emoji} Niveau {tier.label}</span>
+                      {nextLabel && <span className="text-[9px] text-zinc-500 font-semibold">→ {nextLabel} : {(next || 0).toLocaleString('fr-FR')} FCFA</span>}
+                    </div>
+                    <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-fuchsia-500 to-indigo-500 rounded-full" style={{ width: `${pct}%` }}></div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Contact info */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
                 <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
-                  <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider block mb-0.5">Numéro de Téléphone</span>
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase block mb-0.5">📱 Téléphone</span>
                   <span className="text-white font-bold font-mono">{p.telephone || "Non renseigné"}</span>
+                </div>
+                <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase block mb-0.5">📧 Email</span>
+                  <span className="text-white font-bold text-[10px]">{p.email || "Non renseigné"}</span>
                 </div>
               </div>
 
+              {/* Active session */}
               {activeConsole ? (
-                <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-4 space-y-2">
+                <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-3 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-black text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-ping"></span>
-                      En Jeu Actuellement
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 text-[9px] font-bold font-mono border border-cyan-800/30 uppercase">
-                      {activeConsole.name}
+                      En Jeu — {activeConsole.name}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <span className="text-[9px] text-zinc-500 block">Temps écoulé :</span>
-                      <strong className="text-white font-mono text-sm">
-                        {Math.max(1, Math.round(activeConsole.activeSession.timeElapsedSeconds / 3600))}h
-                      </strong>
+                      <strong className="text-white font-mono">{Math.max(1, Math.round(activeConsole.activeSession.timeElapsedSeconds / 3600))}h</strong>
                     </div>
                     <div>
-                      <span className="text-[9px] text-zinc-500 block">Facture actuelle :</span>
-                      <strong className="text-emerald-400 font-mono text-sm">
-                        {formatPrice(activeConsole.activeSession.totalAmountDue + (activeConsole.activeSession.extraSnacksBill || 0))}
-                      </strong>
+                      <span className="text-[9px] text-zinc-500 block">Facture :</span>
+                      <strong className="text-emerald-400 font-mono">{formatPrice(activeConsole.activeSession.totalAmountDue + (activeConsole.activeSession.extraSnacksBill || 0))}</strong>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="bg-zinc-950/40 border border-zinc-900 rounded-xl p-3 text-center text-xs text-zinc-500 italic">
-                  Hors ligne (aucun jeu en cours)
+                <div className="bg-zinc-950/40 border border-zinc-900 rounded-xl p-2.5 text-center text-xs text-zinc-500 italic">
+                  Hors ligne actuellement
                 </div>
               )}
 
-              <div className="space-y-2.5">
-                <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-900 pb-1.5">Statistiques de Fidélité</h4>
+              {/* Stats */}
+              <div>
+                <h4 className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider border-b border-zinc-900 pb-1.5 mb-3">📊 Statistiques de Fidélité</h4>
                 <div className="grid grid-cols-3 gap-3 text-center">
                   <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
                     <span className="text-[9px] text-zinc-500 block font-bold">Sessions</span>
-                    <strong className="text-white text-base block mt-0.5">{p.totalSessions || 0}</strong>
+                    <strong className="text-white text-lg block mt-0.5">{p.totalSessions || 0}</strong>
                   </div>
                   <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
                     <span className="text-[9px] text-zinc-500 block font-bold">Temps Total</span>
-                    <strong className="text-white text-base block mt-0.5 font-mono">
-                      {Math.floor((p.totalTimeMinutes || 0) / 60)}h
-                    </strong>
+                    <strong className="text-white text-base block mt-0.5 font-mono">{Math.floor((p.totalTimeMinutes || 0) / 60)}h</strong>
                   </div>
                   <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900">
-                    <span className="text-[9px] text-zinc-500 block font-bold">Dépenses</span>
-                    <strong className="text-emerald-400 text-sm block mt-1 font-mono">
-                      {formatPrice(p.totalSpent || 0)}
-                    </strong>
+                    <span className="text-[9px] text-zinc-500 block font-bold">Total Dépensé</span>
+                    <strong className="text-emerald-400 text-xs block mt-1 font-mono">{(p.totalSpent || 0).toLocaleString('fr-FR')} F</strong>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-zinc-850">
+              {/* Notes */}
+              {p.notes && (
+                <div className="bg-zinc-950/50 rounded-xl p-3 border border-zinc-800">
+                  <span className="text-[9px] text-zinc-500 font-bold uppercase block mb-1">📝 Notes</span>
+                  <p className="text-xs text-zinc-300">{p.notes}</p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2 border-t border-zinc-850">
+                <button
+                  type="button"
+                  onClick={() => { setPlayNom(p.nom); setPlayTel(p.telephone || ""); setPlayEmail(p.email || ""); setPlayNotes(p.notes || ""); setShowViewPlayerModal(null); setShowEditPlayerModal(p); }}
+                  className="flex-1 py-2 bg-amber-950/30 hover:bg-amber-950/50 text-amber-400 border border-amber-800/30 rounded-xl text-xs font-bold transition-all"
+                >
+                  ✏️ Modifier le profil
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowViewPlayerModal(null)}
-                  className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all text-center"
+                  className="flex-1 py-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white rounded-xl text-xs font-bold transition-all"
                 >
                   Fermer
                 </button>
